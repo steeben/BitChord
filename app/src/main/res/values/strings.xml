@@ -1146,5 +1146,4 @@
     <string name="nav_bar_tabs_note">Drag the handles to reorder. Search always sits at the end of the bar.</string>
     <string name="keep_nav_bar_expanded">Keep navigation bar expanded</string>
     <string name="keep_nav_bar_expanded_subtitle">Stops the bar from shrinking while you scroll</string>
-    <string name="drag_to_reorder">Drag to reorder</string>
 </resources>
