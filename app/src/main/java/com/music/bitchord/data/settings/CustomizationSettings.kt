@@ -237,12 +237,12 @@ object CustomizationSettings {
         parse: (String) -> T?,
     ): List<OrderedToggle<T>> {
         if (stored.isNullOrBlank()) return all.map { OrderedToggle(it, it in defaultOn) }
-        val saved = stored.split(",").mapNotNull { entry ->
-            val item = parse(entry.substringBefore(':')) ?: return@mapNotNull null
-            OrderedToggle(item, entry.substringAfter(':', "1") != "0")
+        val saved: List<OrderedToggle<T>> = stored.split(",").mapNotNull { entry ->
+            val item: T = parse(entry.substringBefore(':')) ?: return@mapNotNull null
+            OrderedToggle<T>(item, entry.substringAfter(':', "1") != "0")
         }.distinctBy { it.item }
-        val missing = all.filter { item -> saved.none { it.item == item } }
-            .map { OrderedToggle(it, it in defaultOn) }
+        val missing: List<OrderedToggle<T>> = all.filter { item -> saved.none { it.item == item } }
+            .map { OrderedToggle<T>(it, it in defaultOn) }
         return saved.filter { it.item in all } + missing
     }
 
