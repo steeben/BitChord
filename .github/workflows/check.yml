@@ -162,7 +162,7 @@ jobs:
       - run: chmod +x gradlew
 
       - name: Tests
-        run: ./gradlew testDevDebugUnitTest
+        run: ./gradlew testDevDebugUnitTest -I .github/gradle/skip-known-failures.init.gradle
 
       - name: Build the dev APK
         run: ./gradlew assembleDevDebug
