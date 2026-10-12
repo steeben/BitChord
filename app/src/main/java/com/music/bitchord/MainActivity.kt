@@ -4271,7 +4271,13 @@ private fun BitChordApp(
                 // drops it for a local file via `isOffline`, this catches
                 // the rest.
                 onShare = share.takeIf { song.videoId.isNotBlank() },
-                onCopyLog = if (fromPlayer) {
+                // From the player in any build. In a debug build from any song's
+                // menu too: a track that fails is skipped past within seconds,
+                // after which it is no longer the one playing and the player
+                // cannot offer its log, which is exactly the log wanted. The
+                // lines are filed by track, so the copy still holds that
+                // track's story for as long as the buffer keeps it.
+                onCopyLog = if (fromPlayer || BuildConfig.DEBUG) {
                     {
                         songActions = null
                         scope.launch {
