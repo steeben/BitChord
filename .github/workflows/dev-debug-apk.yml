@@ -57,17 +57,19 @@ jobs:
       # The benchmark build type: the release build's R8 and non-debuggable
       # runtime, signed with the debug key under its own package. A debug build
       # is interpreted and checked at runtime and runs Compose far slower, which
-      # is not what the app feels like to use.
+      # is not what the app feels like to use. Release lint is skipped: it
+      # stops on translation leftovers already in the upstream strings, which
+      # have nothing to do with whether the build works.
       - name: Build
         run: |
           if [ -n "$SHARED_KEYSTORE" ]; then
-            ./gradlew assembleDevBenchmark \
+            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark \
               -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
               -Pandroid.injected.signing.store.password=android \
               -Pandroid.injected.signing.key.alias=androiddebugkey \
               -Pandroid.injected.signing.key.password=android
           else
-            ./gradlew assembleDevBenchmark
+            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark
           fi
 
       # The certificate fingerprint must be identical on every run, or Android
