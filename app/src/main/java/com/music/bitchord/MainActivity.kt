@@ -1114,6 +1114,10 @@ private fun BitChordApp(
     }
     // The lead shelf is listening history, so opening Home after playing
     // something is exactly when it needs re-fetching.
+    // A YouTube Music default library is fetched ahead of the first tap on Library.
+    LaunchedEffect(signedIn, defaultLibrary) {
+        if (signedIn) viewModel.prefetchDefaultLibrary()
+    }
     LaunchedEffect(currentFeed) {
         if (currentFeed == MainViewModel.Feed.HOME) viewModel.onHomeShown()
         // Likewise for Library: a playlist created or a song liked since it
@@ -4515,7 +4519,7 @@ private fun BitChordApp(
                 // cannot offer its log, which is exactly the log wanted. The
                 // lines are filed by track, so the copy still holds that
                 // track's story for as long as the buffer keeps it.
-                onCopyLog = if (fromPlayer || BuildConfig.DEBUG) {
+                onCopyLog = if (fromPlayer || BuildConfig.DEBUG || BuildConfig.BUILD_TYPE == "benchmark") {
                     {
                         songActions = null
                         scope.launch {

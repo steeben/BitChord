@@ -197,14 +197,24 @@ fun HomeScreen(
                     MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
                 }
                 is UiState.Success -> {
-                    if (recentlyPlayedLoading && skeletonShowRecents) {
+                    // The speed dial is built partly from Recently played, so
+                    // until that arrives its placeholder holds the top spot,
+                    // rather than swapping to the Recents one and back.
+                    val holdSpeedDial = recentlyPlayedLoading && skeletonSpeedDialFirst
+                    if (holdSpeedDial) {
+                        speedDialSkeleton()
+                    } else if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                     }
                     // The loading skeleton already owns the hero slot. Until
                     // Recently Played lands, every real shelf must retain its
                     // compact-card layout instead of briefly becoming a hero.
                     itemsIndexedShelves(
-                        shelves = state.data,
+                        shelves = if (holdSpeedDial) {
+                            state.data.filterNot { it.title == SPEED_DIAL_SHELF_TITLE }
+                        } else {
+                            state.data
+                        },
                         onItemClick = onItemClick,
                         onItemLongPress = onItemLongPress,
                         currentSong = currentSong,

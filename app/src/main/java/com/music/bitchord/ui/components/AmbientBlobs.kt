@@ -7,7 +7,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.luminance
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.settings.CustomizationSettings
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -117,3 +121,16 @@ private const val AMBIENT_ALPHA = 0.26f
 private const val AMBIENT_CYCLE_MS = 40_000
 
 private const val AMBIENT_COLOR_FADE_MS = 900
+
+/**
+ * A surface colour for cards, fields and bars that sit on the page: a thin,
+ * see-through frost while the ambient background is on, so the colour behind
+ * reads through it, and [fallback] (the usual solid grey) when it is off.
+ */
+@Composable
+fun frostedSurfaceColor(fallback: Color): Color {
+    val ambient by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
+    if (!ambient) return fallback
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    return if (dark) Color.White.copy(alpha = 0.075f) else Color.Black.copy(alpha = 0.05f)
+}

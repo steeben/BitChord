@@ -83,6 +83,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -103,6 +104,7 @@ import com.music.bitchord.data.settings.LocalMusicSort
 import com.music.bitchord.download.DownloadedCollection
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PlayingAccent
+import com.music.bitchord.ui.components.frostedSurfaceColor
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.hangIntoGutter
 import com.music.bitchord.ui.components.NUMBERED_ROW_DIVIDER_INSET
@@ -317,7 +319,7 @@ fun LocalMusicScreen(
         // ── Tab row ──────────────────────────────────────────────────────────
         TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = frostedSurfaceColor(MaterialTheme.colorScheme.background),
             contentColor = MaterialTheme.colorScheme.primary,
             indicator = { tabPositions ->
                 TabRowDefaults.SecondaryIndicator(
@@ -566,6 +568,10 @@ private fun SongsTab(
             }
             itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
                 SongRow(
+                    // Transparent so the page's own background shows through;
+                    // the playing row gets a soft glow instead.
+                    rowBackground = Color.Transparent,
+                    modifier = Modifier.playingGlow(song.isSameTrackAs(currentSong)),
                     song = song,
                     selected = song.videoId in selectedIds,
                     isCurrent = song.isSameTrackAs(currentSong),
@@ -1441,6 +1447,10 @@ private fun DrillDownSongList(
             }
             itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
                 SongRow(
+                    // Transparent so the page's own background shows through;
+                    // the playing row gets a soft glow instead.
+                    rowBackground = Color.Transparent,
+                    modifier = Modifier.playingGlow(song.isSameTrackAs(currentSong)),
                     song = song,
                     selected = song.videoId in selectedIds,
                     isCurrent = song.isSameTrackAs(currentSong),
@@ -1513,7 +1523,7 @@ private fun LocalSearchField(
         modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1648,7 +1658,7 @@ private fun DownloadSelectionBar(
         modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1751,5 +1761,27 @@ private fun SectionHeader(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+
+/** A soft wash of the accent behind the playing row, fading in and out. */
+@Composable
+private fun Modifier.playingGlow(current: Boolean): Modifier {
+    val strength by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (current) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(450),
+        label = "playingGlow",
+    )
+    return this.drawBehind {
+        if (strength > 0f) {
+            drawRect(
+                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    0f to PlayingAccent.copy(alpha = 0.22f * strength),
+                    0.7f to PlayingAccent.copy(alpha = 0.06f * strength),
+                    1f to Color.Transparent,
+                ),
+            )
+        }
     }
 }

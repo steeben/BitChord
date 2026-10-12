@@ -148,6 +148,7 @@ import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.ui.components.frostedSurfaceColor
 import com.music.bitchord.data.settings.MiniPlayerShape
 import com.music.bitchord.data.settings.DefaultLibrary
 import com.music.bitchord.data.settings.LibraryStartPage
@@ -408,6 +409,7 @@ fun SettingsScreen(
             onQueryChange = { searchQuery = it },
             onSubmit = {},
             placeholder = stringResource(R.string.settings_search_hint),
+            containerColor = frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant),
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 4.dp),
         )
 
@@ -838,6 +840,46 @@ fun SettingsScreen(
                     onClick = { AppSettings.setLiquidGlass(!liquidGlass) },
                 )
             }
+            val ambientTitle = stringResource(R.string.ambient_background)
+            row(ambientTitle, "background", "colour", "color", "blobs", "gradient") {
+                SettingsRow(
+                    icon = Icons.Rounded.BubbleChart,
+                    title = ambientTitle,
+                    subtitle = stringResource(R.string.ambient_background_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = ambientBackground,
+                            onCheckedChange = CustomizationSettings::setAmbientBackground,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setAmbientBackground(!ambientBackground) },
+                )
+            }
+            if (ambientBackground) {
+                val ambientArtTitle = stringResource(R.string.ambient_follows_artwork)
+                row(ambientArtTitle, "background", "album art", "artwork", "colour", "color") {
+                    SettingsRow(
+                        icon = Icons.Rounded.Palette,
+                        title = ambientArtTitle,
+                        subtitle = stringResource(R.string.ambient_follows_artwork_subtitle),
+                        trailing = {
+                            Switch(
+                                checked = ambientFollowsArtwork,
+                                onCheckedChange = CustomizationSettings::setAmbientFollowsArtwork,
+                                colors = SwitchDefaults.colors(
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            )
+                        },
+                        onClick = { CustomizationSettings.setAmbientFollowsArtwork(!ambientFollowsArtwork) },
+                    )
+                }
+            }
             // Left out where the player won't honour it: a window too wide for
             // the player to fill and too narrow to stand a page beside it keeps
             // the sleeve either way. A docked pane is a phone's width, so it does
@@ -1155,46 +1197,6 @@ fun SettingsScreen(
                         selectedIndex = defaultLibraryPage.ordinal,
                         onSelect = { CustomizationSettings.setDefaultLibraryPage(LibraryStartPage.entries[it]) },
                         modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
-                    )
-                }
-            }
-            val ambientTitle = stringResource(R.string.ambient_background)
-            row(ambientTitle, "background", "colour", "color", "blobs", "gradient") {
-                SettingsRow(
-                    icon = Icons.Rounded.BubbleChart,
-                    title = ambientTitle,
-                    subtitle = stringResource(R.string.ambient_background_subtitle),
-                    trailing = {
-                        Switch(
-                            checked = ambientBackground,
-                            onCheckedChange = CustomizationSettings::setAmbientBackground,
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                checkedBorderColor = MaterialTheme.colorScheme.primary,
-                            ),
-                        )
-                    },
-                    onClick = { CustomizationSettings.setAmbientBackground(!ambientBackground) },
-                )
-            }
-            if (ambientBackground) {
-                val ambientArtTitle = stringResource(R.string.ambient_follows_artwork)
-                row(ambientArtTitle, "background", "album art", "artwork", "colour", "color") {
-                    SettingsRow(
-                        icon = Icons.Rounded.Palette,
-                        title = ambientArtTitle,
-                        subtitle = stringResource(R.string.ambient_follows_artwork_subtitle),
-                        trailing = {
-                            Switch(
-                                checked = ambientFollowsArtwork,
-                                onCheckedChange = CustomizationSettings::setAmbientFollowsArtwork,
-                                colors = SwitchDefaults.colors(
-                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                ),
-                            )
-                        },
-                        onClick = { CustomizationSettings.setAmbientFollowsArtwork(!ambientFollowsArtwork) },
                     )
                 }
             }
@@ -2029,7 +2031,7 @@ internal fun AccountCard(
                     Modifier
                         .padding(horizontal = GROUP_INSET)
                         .clip(GroupShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant))
                 },
             )
             .then(
@@ -2460,7 +2462,7 @@ internal fun SettingsGroup(
             .fillMaxWidth()
             .padding(horizontal = GROUP_INSET)
             .clip(GroupShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)),
     ) {
         content()
     }

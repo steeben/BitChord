@@ -54,23 +54,27 @@ jobs:
       # Last.fm keys are optional; scrobbling is simply inactive without them.
       # When the shared key is present it is passed explicitly, so Gradle cannot
       # fall back to a freshly generated debug key.
+      # The benchmark build type: the release build's R8 and non-debuggable
+      # runtime, signed with the debug key under its own package. A debug build
+      # is interpreted and checked at runtime and runs Compose far slower, which
+      # is not what the app feels like to use.
       - name: Build
         run: |
           if [ -n "$SHARED_KEYSTORE" ]; then
-            ./gradlew assembleDevDebug \
+            ./gradlew assembleDevBenchmark \
               -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
               -Pandroid.injected.signing.store.password=android \
               -Pandroid.injected.signing.key.alias=androiddebugkey \
               -Pandroid.injected.signing.key.password=android
           else
-            ./gradlew assembleDevDebug
+            ./gradlew assembleDevBenchmark
           fi
 
       # The certificate fingerprint must be identical on every run, or Android
       # will refuse to install over the previous build.
       - name: Show signing certificate
         run: |
-          APK=$(ls app/build/outputs/apk/dev/debug/*.apk | head -n1)
+          APK=$(ls app/build/outputs/apk/dev/benchmark/*.apk | head -n1)
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -n1)
           FP=$("$APKSIGNER" verify --print-certs "$APK" | grep 'SHA-256' | head -n1)
           echo "$FP"
@@ -83,8 +87,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: bitchord-dev-debug-${{ github.sha }}
-          path: app/build/outputs/apk/dev/debug/*.apk
+          name: bitchord-dev-benchmark-${{ github.sha }}
+          path: app/build/outputs/apk/dev/benchmark/*.apk
           if-no-files-found: error
 
   tests:
