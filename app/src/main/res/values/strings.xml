@@ -433,6 +433,9 @@
     <string name="ambient_follows_artwork">Match the playing song</string>
     <string name="ambient_follows_artwork_subtitle">Colour the background from the current album art</string>
     <string name="sort_last_played">Last played</string>
+    <string name="fork_notice">This app is a fork of BitChord.</string>
+    <string name="fork_releases">Get updates from this fork\'s releases page</string>
+    <string name="fork_obtainx">I suggest using ObtainX for automatic updates.</string>
     <string name="speed_dial_pins">Speed dial pins</string>
     <string name="speed_dial_pins_note">Drag the handles to reorder your pins. Switch one off to unpin it.</string>
     <string name="speed_dial_pins_empty">Nothing is pinned yet. Hold a song, album or playlist and choose Add to speed dial.</string>

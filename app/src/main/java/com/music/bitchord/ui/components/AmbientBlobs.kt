@@ -44,16 +44,18 @@ private fun ambientTone(target: Color): Color {
 }
 
 /**
- * Slow-moving, heavily dimmed colour blobs behind the app's pages, in the
- * spirit of the player's own backdrop but far cheaper: three soft radial
- * gradients drawn straight onto the page's background, no blur pass.
+ * Three soft, semi-large colour blobs behind the app's pages that drift around
+ * and through each other: [primary], a dimmer [primary], and [secondary]. Drawn
+ * as plain radial gradients straight onto the page's background — no blur pass
+ * — so the motion costs three gradient draws a frame.
  *
- * [color] crossfades when it changes. With [animate] off (reduce animation),
+ * Colours crossfade when they change. With [animate] off (reduce animation),
  * the blobs hold still.
  */
 @Composable
-fun rememberAmbientBlobs(color: Color, animate: Boolean): AmbientBlobs {
-    val tone by animateColorAsState(ambientTone(color), tween(AMBIENT_COLOR_FADE_MS), label = "ambientTone")
+fun rememberAmbientBlobs(primary: Color, secondary: Color, animate: Boolean): AmbientBlobs {
+    val first by animateColorAsState(ambientTone(primary), tween(AMBIENT_COLOR_FADE_MS), label = "ambientFirst")
+    val second by animateColorAsState(ambientTone(secondary), tween(AMBIENT_COLOR_FADE_MS), label = "ambientSecond")
     val phase: State<Float> = if (animate) {
         rememberInfiniteTransition(label = "ambientBlobs").animateFloat(
             initialValue = 0f,
@@ -64,11 +66,21 @@ fun rememberAmbientBlobs(color: Color, animate: Boolean): AmbientBlobs {
     } else {
         remember { object : State<Float> { override val value = 0.15f } }
     }
-    return AmbientBlobs({ tone }, phase)
+    return AmbientBlobs({ first }, { second }, phase)
+}
+
+/** A second colour for a single brand colour: the same hue turned a little and darkened. */
+fun ambientCompanion(color: Color): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+    hsv[0] = (hsv[0] + 28f) % 360f
+    hsv[2] = hsv[2] * 0.8f
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
 class AmbientBlobs internal constructor(
-    internal val tone: () -> Color,
+    internal val primary: () -> Color,
+    internal val secondary: () -> Color,
     internal val phase: State<Float>,
 )
 
@@ -78,29 +90,39 @@ fun Modifier.ambientBlobs(blobs: AmbientBlobs?): Modifier =
         this
     } else {
         drawBehind {
+            // One full turn of [phase] is one loop; each blob runs its own
+            // Lissajous path at a different whole-number speed so the three
+            // keep crossing and overlapping but the loop still joins up.
             val t = blobs.phase.value * 2f * PI.toFloat()
-            val base = blobs.tone()
-            val radius = max(size.width, size.height) * 0.62f
-            // Three blobs on their own slow orbits, out of step with each other.
-            val centres = listOf(
-                Offset(
-                    size.width * (0.18f + 0.14f * cos(t)),
-                    size.height * (0.12f + 0.08f * sin(t)),
+            val w = size.width
+            val h = size.height
+            val radius = max(w, h) * AMBIENT_RADIUS_FRACTION
+            val main = blobs.primary()
+            val blobs3 = listOf(
+                Triple(
+                    Offset(w * (0.5f + 0.38f * sin(t)), h * (0.35f + 0.28f * sin(2f * t + 0.6f))),
+                    main,
+                    AMBIENT_ALPHA,
                 ),
-                Offset(
-                    size.width * (0.86f + 0.10f * sin(t + 2.1f)),
-                    size.height * (0.42f + 0.10f * cos(t + 2.1f)),
+                Triple(
+                    Offset(w * (0.5f + 0.38f * cos(2f * t + 1.3f)), h * (0.6f + 0.3f * sin(t + 2.2f))),
+                    main.copy(red = main.red * 0.7f, green = main.green * 0.7f, blue = main.blue * 0.7f),
+                    AMBIENT_ALPHA * 0.9f,
                 ),
-                Offset(
-                    size.width * (0.30f + 0.16f * cos(t + 4.2f)),
-                    size.height * (0.88f + 0.06f * sin(t + 4.2f)),
+                Triple(
+                    Offset(w * (0.5f + 0.4f * sin(3f * t + 2.4f)), h * (0.5f + 0.34f * cos(t + 0.9f))),
+                    blobs.secondary(),
+                    AMBIENT_ALPHA * 0.95f,
                 ),
             )
-            val strengths = floatArrayOf(AMBIENT_ALPHA, AMBIENT_ALPHA * 0.75f, AMBIENT_ALPHA * 0.6f)
-            centres.forEachIndexed { index, centre ->
+            blobs3.forEach { (centre, colour, strength) ->
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(base.copy(alpha = strengths[index]), Color.Transparent),
+                        colors = listOf(
+                            colour.copy(alpha = strength),
+                            colour.copy(alpha = strength * 0.45f),
+                            Color.Transparent,
+                        ),
                         center = centre,
                         radius = radius,
                     ),
@@ -115,10 +137,13 @@ fun Modifier.ambientBlobs(blobs: AmbientBlobs?): Modifier =
 private const val AMBIENT_MAX_VALUE = 0.85f
 
 /** How strongly the nearest blob tints the page at its centre. */
-private const val AMBIENT_ALPHA = 0.26f
+private const val AMBIENT_ALPHA = 0.30f
 
-/** One full orbit of the blobs: slow enough to notice only over time. */
-private const val AMBIENT_CYCLE_MS = 40_000
+/** Each blob's reach, as a share of the page's longer side. */
+private const val AMBIENT_RADIUS_FRACTION = 0.48f
+
+/** One full loop of the blobs' paths. */
+private const val AMBIENT_CYCLE_MS = 36_000
 
 private const val AMBIENT_COLOR_FADE_MS = 900
 

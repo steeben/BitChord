@@ -174,6 +174,7 @@ import com.music.bitchord.ui.components.AmbientSpotifyColor
 import com.music.bitchord.ui.components.AmbientYouTubeColor
 import com.music.bitchord.ui.components.ambientBlobs
 import com.music.bitchord.ui.components.rememberAmbientBlobs
+import com.music.bitchord.ui.components.ambientCompanion
 import com.music.bitchord.ui.screens.libraryLinks
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.ListenTogetherScreen
@@ -2555,20 +2556,29 @@ private fun BitChordApp(
     // song's artwork colour when Settings asks for that.
     val ambientOn by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
     val ambientFollowsArtwork by CustomizationSettings.ambientFollowsArtwork.collectAsStateWithLifecycle()
-    val ambientArtColor = if (ambientOn && ambientFollowsArtwork) {
-        com.music.bitchord.ui.theme.rememberArtworkPalette(player.song?.thumbnailUrl).accent
+    // The artwork's two most common colours, when the background follows it.
+    val ambientArtColors = if (ambientOn && ambientFollowsArtwork && player.song != null) {
+        com.music.bitchord.ui.player.rememberArtworkColors(player.song?.thumbnailUrl).colors
     } else {
         null
     }
-    val ambientColor = when {
+    val ambientPrimary = when {
         showSpotify -> AmbientSpotifyColor
         detail?.browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> AmbientYouTubeColor
-        ambientArtColor != null && player.song != null -> ambientArtColor
+        !ambientArtColors.isNullOrEmpty() -> ambientArtColors[0]
         else -> AmbientAppColor
+    }
+    val ambientSecondary = if (
+        !showSpotify && detail?.browseId != YT_MUSIC_LIBRARY_BROWSE_ID &&
+        ambientArtColors != null && ambientArtColors.size > 1
+    ) {
+        ambientArtColors[1]
+    } else {
+        ambientCompanion(ambientPrimary)
     }
     val reduceAnimationSetting by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val ambientBlobs = if (ambientOn) {
-        rememberAmbientBlobs(ambientColor, animate = !reduceAnimationSetting)
+        rememberAmbientBlobs(ambientPrimary, ambientSecondary, animate = !reduceAnimationSetting)
     } else {
         null
     }

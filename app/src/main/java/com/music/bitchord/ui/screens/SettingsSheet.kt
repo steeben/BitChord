@@ -1649,6 +1649,38 @@ fun SettingsScreen(
                 .fillMaxWidth()
                 .padding(top = 24.dp, bottom = 8.dp),
         )
+        // This build's own colophon: where it comes from and where its updates are.
+        Text(
+            text = buildAnnotatedString {
+                val linkStyles = TextLinkStyles(
+                    style = SpanStyle(
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                )
+                append(stringResource(R.string.fork_notice))
+                append("\n")
+                withLink(LinkAnnotation.Url(FORK_RELEASES_URL, linkStyles)) {
+                    append(stringResource(R.string.fork_releases))
+                }
+                append("\n\n")
+                append(stringResource(R.string.fork_obtainx))
+                append("\n")
+                withLink(LinkAnnotation.Url(OBTAINX_GITHUB_URL, linkStyles)) {
+                    append("GitHub")
+                }
+                append("  ")
+                withLink(LinkAnnotation.Url(OBTAINX_FDROID_URL, linkStyles)) {
+                    append("F-Droid")
+                }
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
+        )
         }
     }
 
@@ -2814,3 +2846,8 @@ internal fun SegmentedControl(
         }
     }
 }
+
+/** This fork's releases, for updates. */
+private const val FORK_RELEASES_URL = "https://github.com/steeben/BitChord/releases"
+private const val OBTAINX_GITHUB_URL = "https://github.com/bikram-agarwal/ObtainX"
+private const val OBTAINX_FDROID_URL = "https://f-droid.org/packages/dev.bikram.obtainx/"
