@@ -43,15 +43,42 @@ jobs:
         run: |
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
             mkdir -p ~/.android
-            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+            echo "$DEBUG_KEYSTORE_BASE64" | tr -d '\n\r ' | base64 -d > "$RUNNER_TEMP/shared-debug.keystore"
+            cp "$RUNNER_TEMP/shared-debug.keystore" ~/.android/debug.keystore
+            echo "SHARED_KEYSTORE=$RUNNER_TEMP/shared-debug.keystore" >> "$GITHUB_ENV"
             echo "Using the shared debug signing key."
           else
             echo "::warning::DEBUG_KEYSTORE_BASE64 is not set, so this build has a throwaway signing key and must be installed over an uninstall."
           fi
 
       # Last.fm keys are optional; scrobbling is simply inactive without them.
+      # When the shared key is present it is passed explicitly, so Gradle cannot
+      # fall back to a freshly generated debug key.
       - name: Build
-        run: ./gradlew assembleDevDebug
+        run: |
+          if [ -n "$SHARED_KEYSTORE" ]; then
+            ./gradlew assembleDevDebug \
+              -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
+              -Pandroid.injected.signing.store.password=android \
+              -Pandroid.injected.signing.key.alias=androiddebugkey \
+              -Pandroid.injected.signing.key.password=android
+          else
+            ./gradlew assembleDevDebug
+          fi
+
+      # The certificate fingerprint must be identical on every run, or Android
+      # will refuse to install over the previous build.
+      - name: Show signing certificate
+        run: |
+          APK=$(ls app/build/outputs/apk/dev/debug/*.apk | head -n1)
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -n1)
+          FP=$("$APKSIGNER" verify --print-certs "$APK" | grep 'SHA-256' | head -n1)
+          echo "$FP"
+          {
+            echo "### Signing certificate"
+            echo '`'"$FP"'`'
+            if [ -n "$SHARED_KEYSTORE" ]; then echo "Shared key: yes"; else echo "Shared key: NO (throwaway key)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
