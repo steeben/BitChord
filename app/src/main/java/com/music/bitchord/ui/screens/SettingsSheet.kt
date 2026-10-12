@@ -1650,6 +1650,9 @@ fun SettingsScreen(
                 .padding(top = 24.dp, bottom = 8.dp),
         )
         // This build's own colophon: where it comes from and where its updates are.
+        val forkNotice = stringResource(R.string.fork_notice)
+        val forkReleases = stringResource(R.string.fork_releases)
+        val forkObtainX = stringResource(R.string.fork_obtainx)
         Text(
             text = buildAnnotatedString {
                 val linkStyles = TextLinkStyles(
@@ -1658,13 +1661,13 @@ fun SettingsScreen(
                         textDecoration = TextDecoration.Underline,
                     ),
                 )
-                append(stringResource(R.string.fork_notice))
+                append(forkNotice)
                 append("\n")
                 withLink(LinkAnnotation.Url(FORK_RELEASES_URL, linkStyles)) {
-                    append(stringResource(R.string.fork_releases))
+                    append(forkReleases)
                 }
                 append("\n\n")
-                append(stringResource(R.string.fork_obtainx))
+                append(forkObtainX)
                 append("\n")
                 withLink(LinkAnnotation.Url(OBTAINX_GITHUB_URL, linkStyles)) {
                     append("GitHub")
