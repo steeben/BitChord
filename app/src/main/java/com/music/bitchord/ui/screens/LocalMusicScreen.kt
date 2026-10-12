@@ -194,11 +194,10 @@ fun LocalMusicScreen(
     } else {
         AppSettings.localMusicSort.collectAsStateWithLifecycle()
     }
-    val viewType by if (isDownloads) {
-        AppSettings.downloadedMusicViewType.collectAsStateWithLifecycle()
-    } else {
-        AppSettings.localMusicViewType.collectAsStateWithLifecycle()
-    }
+    // Each tab keeps its own list/grid choice; a drill-down list follows Songs.
+    val tabViews by com.music.bitchord.data.settings.CustomizationSettings.libraryTabViews
+        .collectAsStateWithLifecycle()
+    val viewType = tabViews.getOrElse(selectedTab) { LibraryViewType.LIST }
     val sortedSongs = remember(songs, sortOrder) { songs.sortedForLibrary(sortOrder) }
     var selectedDownloadIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     // Kept separately from the tracks selected for deletion: different albums
@@ -301,8 +300,7 @@ fun LocalMusicScreen(
             viewType = viewType,
             onViewTypeToggle = {
                 val next = if (viewType == LibraryViewType.GRID) LibraryViewType.LIST else LibraryViewType.GRID
-                if (isDownloads) AppSettings.setDownloadedMusicViewType(next)
-                else AppSettings.setLocalMusicViewType(next)
+                com.music.bitchord.data.settings.CustomizationSettings.setLibraryTabView(selectedTab, next)
             },
             modifier = Modifier.padding(
                 // The same clearance every other page under the frosted bar
@@ -392,7 +390,7 @@ fun LocalMusicScreen(
                         label = drillDownLabel ?: "",
                         artworkUrl = drillDownArt,
                         songs = drillDownSongs,
-                        viewType = viewType,
+                        viewType = tabViews.getOrElse(LOCAL_TAB_SONGS) { LibraryViewType.LIST },
                         selectedIds = selectedDownloadIds,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
@@ -1498,6 +1496,10 @@ private fun List<Song>.sortedForLibrary(order: LocalMusicSort): List<Song> = whe
         compareByDescending<Song> { it.localDateModifiedSeconds ?: Long.MIN_VALUE }
             .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title },
     )
+    LocalMusicSort.LAST_PLAYED -> sortedWith(
+        compareByDescending<Song> { com.music.bitchord.data.settings.LastPlayed.at(it.videoId) }
+            .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title },
+    )
 }
 
 /**
@@ -1640,6 +1642,7 @@ private fun LocalMusicSort.localizedLabel(): String = when (this) {
     LocalMusicSort.TITLE_DESC -> stringResource(R.string.sort_title_descending)
     LocalMusicSort.DATE_ADDED -> stringResource(R.string.sort_date_added)
     LocalMusicSort.DATE_MODIFIED -> stringResource(R.string.sort_date_modified)
+    LocalMusicSort.LAST_PLAYED -> stringResource(R.string.sort_last_played)
 }
 
 /** The Downloads-only replacement for the usual search and sort controls. */

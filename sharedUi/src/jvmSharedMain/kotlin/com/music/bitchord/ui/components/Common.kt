@@ -284,7 +284,7 @@ fun SongRow(
      * background — an album page tinted from its sleeve would otherwise drag a
      * black band across itself on every swipe.
      */
-    rowBackground: Color = MaterialTheme.colorScheme.background,
+    rowBackground: Color = if (pageIsFrosted()) Color.Transparent else MaterialTheme.colorScheme.background,
     /**
      * Drawn in place of the artwork, for lists where every row would otherwise
      * repeat the same cover — an album's own track listing.

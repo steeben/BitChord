@@ -390,7 +390,16 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
+                val ambientOn by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
+                val frosted = if (!ambientOn) {
+                    null
+                } else if (darkTheme) {
+                    Color.White.copy(alpha = 0.075f)
+                } else {
+                    Color.Black.copy(alpha = 0.05f)
+                }
                 CompositionLocalProvider(
+                    com.music.bitchord.ui.components.LocalFrostedSurface provides frosted,
                     LocalOverscrollFactory provides iosOverscrollFactory,
                     LocalLiquidGlassEnabled provides liquidGlassEnabled,
                     LocalAppBackdrop provides appBackdrop,

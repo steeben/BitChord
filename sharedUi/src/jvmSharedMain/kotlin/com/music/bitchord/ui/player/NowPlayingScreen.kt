@@ -2596,10 +2596,29 @@ fun NowPlayingScreen(
                                 )
                                 return@awaitEachGesture
                             }
-                            // Anywhere else on the player, an upward swipe pulls
-                            // the queue in just as one on the artwork does. Any
-                            // other vertical drag is held to the end so nothing
-                            // downstream of it reaches the sheet.
+                            // On the main player, everywhere behaves as the
+                            // artwork does: up pulls the queue in, and down is
+                            // left for the sheet, so the player comes down from
+                            // the controls as well.
+                            if (!panelUp) {
+                                dragQueueIn(
+                                    down = down,
+                                    travel = dismissBandBottom - dismissBandTop - HEADER_HEIGHT.toPx(),
+                                    slide = queueSlide,
+                                    onHold = { queueDragging = it },
+                                    onSettle = { open ->
+                                        if (open != queueOpen) {
+                                            haptics.play(if (open) Haptic.Expand else Haptic.Tap)
+                                            if (open) queueControlsOpen = true
+                                            queueOpen = open
+                                        }
+                                        queueReleased++
+                                    },
+                                )
+                                return@awaitEachGesture
+                            }
+                            // With a panel up, any other vertical drag is held to
+                            // the end so nothing downstream of it reaches the sheet.
                             dragQueueInElseHold(
                                 down = down,
                                 travel = if (panelUp) {

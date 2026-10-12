@@ -1,5 +1,11 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.ui.graphics.compositeOver
+
+import androidx.compose.material3.Button
+
+import com.music.bitchord.ui.components.frostedOr
+
 import com.music.bitchord.ui.components.contextClick
 import androidx.compose.ui.unit.Dp
 import com.music.bitchord.sharedui.resources.*
@@ -444,12 +450,20 @@ private fun TopResultCard(
     onPlaylist: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    // A rounded frosted card, faintly tinted with the artwork's own colour.
+    val tint = com.music.bitchord.ui.theme.rememberArtworkPalette(song.thumbnailUrl, artPx = ROW_ART_PX).accent
+    val cardColor = tint.copy(alpha = 0.16f)
+        .compositeOver(frostedOr(MaterialTheme.colorScheme.surfaceVariant))
+    val cardShape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 18.dp, bottom = 8.dp)
+            .clip(cardShape)
+            .background(cardColor, cardShape)
             .longPressMenuClickable(onClick = onPlay, onLongClick = onLongPress)
-            .contextClick(onLongPress),
+            .contextClick(onLongPress)
+            .padding(14.dp),
     ) {
         Text(
             text = "Top result",
@@ -489,17 +503,24 @@ private fun TopResultCard(
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(
+            // Filled, so they stand out against the tinted card.
+            Button(
                 onClick = onPlay,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = MaterialTheme.colorScheme.surface,
+                ),
             ) {
                 Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text(stringResource(Res.string.play))
             }
-            OutlinedButton(
+            Button(
                 onClick = onPlaylist,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
             ) {
                 Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
@@ -896,7 +917,7 @@ private fun SearchFilterTabs(filter: SearchFilter, onFilterChange: (SearchFilter
                     .clip(FILTER_PILL_SHAPE)
                     .background(
                         if (selected) MaterialTheme.colorScheme.onBackground
-                        else MaterialTheme.colorScheme.surfaceVariant,
+                        else frostedOr(MaterialTheme.colorScheme.surfaceVariant),
                     )
                     // Only the pill that isn't already selected has anything to
                     // report — re-tapping the current filter changes nothing, so

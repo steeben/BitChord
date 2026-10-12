@@ -56,7 +56,12 @@ object CustomizationSettings {
      * Over a Spotify Canvas, shrink the controls to the foot of the screen
      * instead of hiding them: title, live lyrics and transport stay.
      */
-    val compactCanvasControls = MutableStateFlow(false)
+    val compactCanvasControls = MutableStateFlow(true)
+
+    private val DEFAULT_TAB_VIEWS = listOf(LibraryViewType.LIST, LibraryViewType.LIST, LibraryViewType.GRID)
+
+    /** List or grid for each folder tab — songs, artists, albums — on its own. */
+    val libraryTabViews = MutableStateFlow(DEFAULT_TAB_VIEWS)
 
     /** Slow colour blobs behind the app's pages. */
     val ambientBackground = MutableStateFlow(true)
@@ -75,7 +80,7 @@ object CustomizationSettings {
      */
     val homeSections = MutableStateFlow<List<OrderedToggle<String>>>(listOf(OrderedToggle(SPEED_DIAL_TITLE, true)))
 
-    /** Items pinned to the speed dial, newest first. */
+    /** Items pinned to the speed dial, in the order they were pinned. */
     val speedDialPins = MutableStateFlow<List<ShelfItem>>(emptyList())
 
     fun init(prefs: SharedPreferences) {
@@ -92,7 +97,12 @@ object CustomizationSettings {
         keepNavBarExpanded.value = p.getBoolean(KEY_KEEP_NAV_EXPANDED, false)
         miniPlayerShape.value = MiniPlayerShape.entries
             .firstOrNull { it.name == p.getString(KEY_MINI_PLAYER_SHAPE, null) } ?: MiniPlayerShape.CIRCULAR
-        compactCanvasControls.value = p.getBoolean(KEY_COMPACT_CANVAS_CONTROLS, false)
+        compactCanvasControls.value = p.getBoolean(KEY_COMPACT_CANVAS_CONTROLS, true)
+        libraryTabViews.value = p.getString(KEY_LIBRARY_TAB_VIEWS, null)
+            ?.split(",")
+            ?.mapNotNull { name -> LibraryViewType.entries.firstOrNull { it.name == name } }
+            ?.takeIf { it.size == DEFAULT_TAB_VIEWS.size }
+            ?: DEFAULT_TAB_VIEWS
         ambientBackground.value = p.getBoolean(KEY_AMBIENT_BACKGROUND, true)
         ambientFollowsArtwork.value = p.getBoolean(KEY_AMBIENT_FOLLOWS_ARTWORK, false)
         defaultLibrary.value = p.getString(KEY_DEFAULT_LIBRARY_ID, null)?.takeIf { it.isNotBlank() }?.let {
@@ -166,7 +176,7 @@ object CustomizationSettings {
         val current = speedDialPins.value
         val pinned = current.none { it.speedDialId == id }
         val updated = if (pinned) {
-            (listOf(item) + current).take(SPEED_DIAL_SIZE)
+            (current + item).takeLast(SPEED_DIAL_SIZE)
         } else {
             current.filterNot { it.speedDialId == id }
         }
@@ -262,6 +272,14 @@ object CustomizationSettings {
         prefs?.edit()?.putString(KEY_DEFAULT_LIBRARY_PAGE, value.name)?.apply()
     }
 
+    fun setLibraryTabView(tab: Int, value: LibraryViewType) {
+        val updated = libraryTabViews.value.toMutableList()
+        if (tab !in updated.indices) return
+        updated[tab] = value
+        libraryTabViews.value = updated
+        prefs?.edit()?.putString(KEY_LIBRARY_TAB_VIEWS, updated.joinToString(",") { it.name })?.apply()
+    }
+
     fun setAmbientBackground(value: Boolean) {
         ambientBackground.value = value
         prefs?.edit()?.putBoolean(KEY_AMBIENT_BACKGROUND, value)?.apply()
@@ -323,6 +341,7 @@ object CustomizationSettings {
     private const val KEY_HOME_SECTIONS = "custom_home_sections"
     private const val KEY_COMPACT_CANVAS_CONTROLS = "custom_compact_canvas_controls"
     private const val KEY_AMBIENT_BACKGROUND = "custom_ambient_background"
+    private const val KEY_LIBRARY_TAB_VIEWS = "custom_library_tab_views"
     private const val KEY_AMBIENT_FOLLOWS_ARTWORK = "custom_ambient_follows_artwork"
     private const val KEY_DEFAULT_LIBRARY_ID = "custom_default_library_id"
     private const val KEY_DEFAULT_LIBRARY_TITLE = "custom_default_library_title"
@@ -335,3 +354,30 @@ object CustomizationSettings {
 
 /** What identifies an item on the speed dial: its track, or the page it opens. */
 val ShelfItem.speedDialId: String? get() = videoId ?: browseId
+
+/**
+ * When each track was last started, by video id, for the folders' "Last played"
+ * sort. Kept on this device only; YouTube's own history is per account and
+ * not something a folder of local files could be matched against.
+ */
+object LastPlayed {
+    private var prefs: SharedPreferences? = null
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun init(context: android.content.Context) {
+        val p = context.getSharedPreferences("bitchord_last_played", android.content.Context.MODE_PRIVATE)
+        prefs = p
+        cache.clear()
+        p.all.forEach { (key, value) -> (value as? Long)?.let { cache[key] = it } }
+    }
+
+    fun record(videoId: String) {
+        if (videoId.isBlank()) return
+        val now = System.currentTimeMillis()
+        cache[videoId] = now
+        prefs?.edit()?.putLong(videoId, now)?.apply()
+    }
+
+    /** Milliseconds since the epoch, or 0 for never. */
+    fun at(videoId: String): Long = cache[videoId] ?: 0L
+}

@@ -946,6 +946,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onResult: (added: Int, alreadyThere: Int, failed: Int) -> Unit = { _, _, _ -> },
     ) {
         if (!requireSignIn() || playlists.isEmpty()) return
+        // Their pages in memory no longer match the account.
+        detailLoadedAt.clear()
         viewModelScope.launch {
             val outcomes = playlists.map { addOne(it, song) }
             onResult(
@@ -2454,6 +2456,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val resolved = browseTypeOf(browseId, type)
+        // Opened recently: shown straight from memory, without asking again.
+        if (cachedDetailFresh(browseId)) {
+            detailPageCache[browseId]?.let { cached ->
+                _detailStack.value += cached
+                return
+            }
+        }
+        if (isCacheableDetail(browseId)) detailLoadedAt[browseId] = System.currentTimeMillis()
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,
@@ -3306,6 +3316,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+
+    // ── Page memory ─────────────────────────────────────────────────────
+    //
+    // Album and playlist pages, as last seen, kept for a while so reopening one
+    // (a speed dial pin, say) is instant. Updated from the page stack as it
+    // changes, so likes, removals and the rest of a long list being filled in
+    // are all in the copy.
+
+    private val detailPageCache = object : LinkedHashMap<String, DetailPage>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DetailPage>?): Boolean =
+            size > DETAIL_CACHE_SIZE
+    }
+    private val detailLoadedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private fun isCacheableDetail(browseId: String): Boolean =
+        !browseId.startsWith("local:") && !browseId.startsWith(SPOTIFY_PAGE_PREFIX) &&
+            !browseId.startsWith("app:") &&
+            com.music.bitchord.data.spotify.LocalPlaylistStore.getPlaylist(browseId) == null
+
+    private fun cachedDetailFresh(browseId: String): Boolean {
+        val at = detailLoadedAt[browseId] ?: return false
+        return System.currentTimeMillis() - at < DETAIL_CACHE_TTL_MS && detailPageCache.containsKey(browseId)
+    }
+
+    init {
+        viewModelScope.launch {
+            _detailStack.collect { pages ->
+                pages.forEach { page ->
+                    if (page.songs is UiState.Success && isCacheableDetail(page.browseId)) {
+                        synchronized(detailPageCache) { detailPageCache[page.browseId] = page }
+                    }
+                }
+            }
+        }
+    }
+
     // Keeps the disk copy of Home current: written once a load has settled,
     // so the next launch opens on it. See [HomeDiskCache].
     init {
@@ -3326,3 +3372,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 private const val HOME_CACHE_WRITE_DELAY_MS = 2_000L
+
+private const val DETAIL_CACHE_SIZE = 40
+private const val DETAIL_CACHE_TTL_MS = 30 * 60 * 1000L

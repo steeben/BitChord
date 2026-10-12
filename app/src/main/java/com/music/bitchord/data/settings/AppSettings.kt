@@ -120,6 +120,8 @@ enum class LocalMusicSort {
     TITLE_DESC,
     DATE_ADDED,
     DATE_MODIFIED,
+    /** Most recently played first, from [LastPlayed]. */
+    LAST_PLAYED,
 }
 
 /**
@@ -751,6 +753,7 @@ object AppSettings {
         prefs = context.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
         this.authStore = authStore
         com.music.bitchord.data.spotify.LocalPlaylistStore.init(context)
+        LastPlayed.init(context)
         readAll()
         watchConnection(context)
     }

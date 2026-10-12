@@ -54,7 +54,7 @@ fun SearchField(
     /** What the empty field says it is for — the one part that changes per screen. */
     placeholder: String = stringResource(Res.string.search_hint),
     /** The field's fill; the theme's grey unless the page asks for something else. */
-    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    containerColor: Color = frostedOr(MaterialTheme.colorScheme.surfaceVariant),
     modifier: Modifier = Modifier,
 ) {
     val focusManager = LocalFocusManager.current
