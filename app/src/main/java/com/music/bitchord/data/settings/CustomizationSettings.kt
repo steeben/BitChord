@@ -1,7 +1,11 @@
 package com.music.bitchord.data.settings
 
 import android.content.SharedPreferences
+import com.music.bitchord.data.model.HomeShelf
+import com.music.bitchord.data.model.ShelfItem
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** A page the bottom bar can lead to. [id] is the tab index MainActivity keys its pages by. */
 enum class NavPage(val id: Int) {
@@ -42,6 +46,16 @@ object CustomizationSettings {
     val keepNavBarExpanded = MutableStateFlow(false)
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
+    /**
+     * Home page sections by title, in the order to show them, each shown or
+     * hidden. YouTube decides which sections exist, so titles are added here as
+     * the feed first shows them; see [learnHomeSections].
+     */
+    val homeSections = MutableStateFlow<List<OrderedToggle<String>>>(listOf(OrderedToggle(SPEED_DIAL_TITLE, true)))
+
+    /** Items pinned to the speed dial, newest first. */
+    val speedDialPins = MutableStateFlow<List<ShelfItem>>(emptyList())
+
     fun init(prefs: SharedPreferences) {
         this.prefs = prefs
         readAll()
@@ -56,7 +70,128 @@ object CustomizationSettings {
         keepNavBarExpanded.value = p.getBoolean(KEY_KEEP_NAV_EXPANDED, false)
         miniPlayerShape.value = MiniPlayerShape.entries
             .firstOrNull { it.name == p.getString(KEY_MINI_PLAYER_SHAPE, null) } ?: MiniPlayerShape.CIRCULAR
+        homeSections.value = readHomeSections(p.getString(KEY_HOME_SECTIONS, null))
+        speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
     }
+
+    // ── Home sections ───────────────────────────────────────────────────
+
+    /** Adds any section titles not seen before, switched on, at the end of the list. */
+    fun learnHomeSections(titles: List<String>) {
+        val known = homeSections.value
+        val fresh = titles
+            .filter { title ->
+                title.isNotBlank() && known.none { it.item == title } &&
+                    !title.equals(SPEED_DIAL_TITLE, ignoreCase = true)
+            }
+            .distinct()
+        if (fresh.isEmpty()) return
+        setHomeSections((known + fresh.map { OrderedToggle(it, true) }).take(MAX_HOME_SECTIONS))
+    }
+
+    fun setHomeSections(value: List<OrderedToggle<String>>) {
+        homeSections.value = value
+        val json = JSONArray()
+        value.forEach { json.put(JSONObject().put("t", it.item).put("on", it.enabled)) }
+        prefs?.edit()?.putString(KEY_HOME_SECTIONS, json.toString())?.apply()
+    }
+
+    /**
+     * The feed rearranged: sections switched off are dropped, the rest go in the
+     * saved order, and any the settings haven't seen yet keep their feed order
+     * after them.
+     */
+    fun arrangeHome(shelves: List<HomeShelf>, sections: List<OrderedToggle<String>> = homeSections.value): List<HomeShelf> {
+        val rank = sections.withIndex().associate { (index, entry) -> entry.item to index }
+        val hidden = sections.filterNot { it.enabled }.mapTo(HashSet()) { it.item }
+        return shelves
+            .filterNot { it.title in hidden }
+            .withIndex()
+            .sortedWith(compareBy({ rank[it.value.title] ?: Int.MAX_VALUE }, { it.index }))
+            .map { it.value }
+    }
+
+    private fun readHomeSections(stored: String?): List<OrderedToggle<String>> {
+        val default = listOf(OrderedToggle(SPEED_DIAL_TITLE, true))
+        if (stored.isNullOrBlank()) return default
+        return runCatching {
+            val json = JSONArray(stored)
+            (0 until json.length()).map { i ->
+                val entry = json.getJSONObject(i)
+                OrderedToggle(entry.getString("t"), entry.optBoolean("on", true))
+            }.distinctBy { it.item }
+        }.getOrDefault(default).let { list ->
+            if (list.any { it.item == SPEED_DIAL_TITLE }) list else listOf(OrderedToggle(SPEED_DIAL_TITLE, true)) + list
+        }
+    }
+
+    // ── Speed dial ──────────────────────────────────────────────────────
+
+    fun isPinnedToSpeedDial(id: String?): Boolean =
+        id != null && speedDialPins.value.any { it.speedDialId == id }
+
+    /** Pins [item], or unpins it if it is already pinned. Returns whether it is pinned now. */
+    fun toggleSpeedDial(item: ShelfItem): Boolean {
+        val id = item.speedDialId ?: return false
+        val current = speedDialPins.value
+        val pinned = current.none { it.speedDialId == id }
+        val updated = if (pinned) {
+            (listOf(item) + current).take(SPEED_DIAL_SIZE)
+        } else {
+            current.filterNot { it.speedDialId == id }
+        }
+        speedDialPins.value = updated
+        val json = JSONArray()
+        updated.forEach { pin ->
+            json.put(
+                JSONObject()
+                    .put("title", pin.title)
+                    .put("subtitle", pin.subtitle)
+                    .put("thumb", pin.thumbnailUrl ?: JSONObject.NULL)
+                    .put("video", pin.videoId ?: JSONObject.NULL)
+                    .put("browse", pin.browseId ?: JSONObject.NULL),
+            )
+        }
+        prefs?.edit()?.putString(KEY_SPEED_DIAL_PINS, json.toString())?.apply()
+        return pinned
+    }
+
+    /**
+     * Up to [SPEED_DIAL_SIZE] items: pins first, then YouTube's own speed dial
+     * when the feed has one, then recently played, then the rest of the feed.
+     */
+    fun buildSpeedDial(pins: List<ShelfItem>, shelves: List<HomeShelf>): List<ShelfItem> {
+        fun shelf(title: String) = shelves.firstOrNull { it.title.equals(title, ignoreCase = true) }?.items.orEmpty()
+        val official = shelf(SPEED_DIAL_TITLE)
+        val recents = shelf(RECENTS_TITLE)
+        val rest = shelves
+            .filterNot { it.title.equals(SPEED_DIAL_TITLE, true) || it.title.equals(RECENTS_TITLE, true) }
+            .flatMap { it.items }
+        return (pins + official + recents + rest)
+            .filter { it.speedDialId != null }
+            .distinctBy { it.speedDialId }
+            .take(SPEED_DIAL_SIZE)
+    }
+
+    private fun readPins(stored: String?): List<ShelfItem> {
+        if (stored.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val json = JSONArray(stored)
+            (0 until json.length()).map { i ->
+                val o = json.getJSONObject(i)
+                ShelfItem(
+                    title = o.optString("title"),
+                    subtitle = o.optString("subtitle"),
+                    thumbnailUrl = o.optStringOrNull("thumb"),
+                    videoId = o.optStringOrNull("video"),
+                    browseId = o.optStringOrNull("browse"),
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun JSONObject.optStringOrNull(key: String): String? =
+        if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
 
     /** The pages the bar shows, Search last. */
     fun visibleNavPages(tabs: List<OrderedToggle<NavPage>> = navTabs.value): List<NavPage> =
@@ -114,8 +249,19 @@ object CustomizationSettings {
     internal fun <T> writeOrdered(value: List<OrderedToggle<T>>, name: (T) -> String): String =
         value.joinToString(",") { "${name(it.item)}:${if (it.enabled) 1 else 0}" }
 
+    /** The title the speed dial goes by, both YouTube's and the one built here. */
+    const val SPEED_DIAL_TITLE = "Speed dial"
+    private const val RECENTS_TITLE = "Recents"
+    const val SPEED_DIAL_SIZE = 27
+    private const val MAX_HOME_SECTIONS = 60
+
     private const val KEY_NAV_TABS = "custom_nav_tabs"
+    private const val KEY_HOME_SECTIONS = "custom_home_sections"
+    private const val KEY_SPEED_DIAL_PINS = "custom_speed_dial_pins"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"
 }
+
+/** What identifies an item on the speed dial: its track, or the page it opens. */
+val ShelfItem.speedDialId: String? get() = videoId ?: browseId

@@ -417,6 +417,13 @@
     <string name="download_quality_dialog_subtitle">For files kept on this device</string>
     <string name="downloaded">Downloaded</string>
     <string name="drag_to_reorder">Drag to reorder</string>
+    <string name="add_to_speed_dial">Add to speed dial</string>
+    <string name="remove_from_speed_dial">Remove from speed dial</string>
+    <string name="added_to_speed_dial">Added to speed dial</string>
+    <string name="removed_from_speed_dial">Removed from speed dial</string>
+    <string name="home_sections">Home sections</string>
+    <string name="home_sections_subtitle">Reorder or hide what Home shows</string>
+    <string name="home_sections_note">Drag the handles to reorder, and switch off sections you don\'t want. New sections from YouTube Music are added here the first time Home shows them.</string>
     <string name="enabled">Enabled</string>
     <string name="enter_token_instead">Enter a token instead</string>
     <string name="enter_token_instead_subtitle">Use this if the login page does not load</string>

@@ -149,6 +149,7 @@ import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.data.settings.speedDialId
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
 import com.music.bitchord.ui.components.AccountProfileSelector
@@ -696,6 +697,34 @@ private fun BitChordApp(
     SystemBarIcons(dark = !darkTheme && !showNowPlaying && !showReplay && replayStory == null)
 
     val homeState by viewModel.home.collectAsStateWithLifecycle()
+    val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
+    val speedDialPins by CustomizationSettings.speedDialPins.collectAsStateWithLifecycle()
+    val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
+    // New sections become settable in Settings the first time the feed shows them.
+    LaunchedEffect(homeState) {
+        (homeState as? UiState.Success)?.data?.let { shelves ->
+            CustomizationSettings.learnHomeSections(shelves.map { it.title })
+        }
+    }
+    // The feed as Home draws it: the speed dial built in, then the sections in
+    // the order Settings gives them, minus the hidden ones.
+    val arrangedHomeState = remember(homeState, homeSections, speedDialPins) {
+        when (val state = homeState) {
+            is UiState.Success -> {
+                val dial = CustomizationSettings.buildSpeedDial(speedDialPins, state.data)
+                val feed = state.data.filterNot {
+                    it.title.equals(CustomizationSettings.SPEED_DIAL_TITLE, ignoreCase = true)
+                }
+                val shelves = if (dial.isEmpty()) {
+                    feed
+                } else {
+                    listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, dial)) + feed
+                }
+                UiState.Success(CustomizationSettings.arrangeHome(shelves, homeSections))
+            }
+            else -> state
+        }
+    }
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
     val homeRecentlyPlayedLoading by viewModel.homeRecentlyPlayedLoading.collectAsStateWithLifecycle()
 
@@ -3012,7 +3041,8 @@ private fun BitChordApp(
                         )
                     } else when (key.removePrefix(TAB_KEY).toIntOrNull() ?: selectedTab) {
                         TAB_HOME -> HomeScreen(
-                            state = homeState,
+                            state = arrangedHomeState,
+                            speedDialPinned = speedDialPinnedIds,
                             listState = homeListState,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
@@ -4212,6 +4242,28 @@ private fun BitChordApp(
                 onPlayNext = { playNext(song); songActions = null },
                 onAddToQueue = { addToQueue(song); songActions = null },
                 onStartRadio = { startRadio(song); songActions = null },
+                onToggleSpeedDial = if (song.videoId.isNotBlank() && song.localUri == null) {
+                    {
+                        val pinned = CustomizationSettings.toggleSpeedDial(
+                            ShelfItem(
+                                title = song.title,
+                                subtitle = song.artist,
+                                thumbnailUrl = song.thumbnailUrl,
+                                videoId = song.videoId,
+                                browseId = null,
+                            ),
+                        )
+                        songActions = null
+                        showQueueNotice(
+                            context.getString(
+                                if (pinned) R.string.added_to_speed_dial else R.string.removed_from_speed_dial,
+                            ),
+                        )
+                    }
+                } else {
+                    null
+                },
+                inSpeedDial = song.videoId in speedDialPinnedIds,
                 // Stays open: the row it replaces itself with is the
                 // progress, and closing the sheet would hide the only
                 // answer to "did that work?".
@@ -4625,6 +4677,26 @@ private fun BitChordApp(
                             browseActions = null
                         }
                     },
+                inSpeedDial = target.browseId in speedDialPinnedIds,
+                onToggleSpeedDial = target.browseId?.takeIf { remote }?.let { id ->
+                    {
+                        val pinned = CustomizationSettings.toggleSpeedDial(
+                            ShelfItem(
+                                title = target.title,
+                                subtitle = target.subtitle,
+                                thumbnailUrl = target.thumbnailUrl,
+                                videoId = null,
+                                browseId = id,
+                            ),
+                        )
+                        browseActions = null
+                        showQueueNotice(
+                            context.getString(
+                                if (pinned) R.string.added_to_speed_dial else R.string.removed_from_speed_dial,
+                            ),
+                        )
+                    }
+                },
                 isPinned = pinnableId != null && pinnableId in pinnedPlaylists,
                 onTogglePin = pinnableId?.let { id ->
                     {

@@ -138,6 +138,8 @@ fun HomeScreen(
     leadHero: Boolean = true,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    /** Ids (video or browse) pinned to the speed dial, marked on its tiles. */
+    speedDialPinned: Set<String> = emptySet(),
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -198,6 +200,7 @@ fun HomeScreen(
                         currentSong = currentSong,
                         isPlaying = isPlaying,
                         firstIsHero = leadHero && !recentlyPlayedLoading,
+                        speedDialPinned = speedDialPinned,
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
                             AppUi.host.setHomeRecentsViewType(
@@ -246,13 +249,23 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     currentSong: Song?,
     isPlaying: Boolean,
     firstIsHero: Boolean = true,
+    speedDialPinned: Set<String> = emptySet(),
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
 ) {
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            if (index == 0 && shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
+            if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
+                SpeedDialShelf(
+                    shelf = shelf,
+                    pinnedIds = speedDialPinned,
+                    onItemClick = openItem,
+                    onItemLongPress = onItemLongPress,
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                )
+            } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,

@@ -1110,7 +1110,7 @@ fun NowPlayingScreen(
             )
         }
     }
-    val compact: () -> Float = { queueCompact.value }
+    val deckCompact: () -> Float = { queueCompact.value }
 
     // Horizontal fling anywhere on the player skips tracks; the artwork
     // follows the finger so the gesture has something to hold on to.
@@ -3614,9 +3614,9 @@ fun NowPlayingScreen(
             // centre rather than drifting up under the seek bar.
             // With the queue open the controls shrink and their gaps close up,
             // and the volume bar folds away, so the queue gets the room.
-            Spacer(Modifier.height(8.dp + controlSpread / 2).collapseBy { compact() * 0.75f })
+            Spacer(Modifier.height(8.dp + controlSpread / 2).collapseBy { deckCompact() * 0.75f })
 
-            Box(Modifier.shrinkBy { 1f - COMPACT_TRANSPORT_SHRINK * compact() }) {
+            Box(Modifier.shrinkBy { 1f - COMPACT_TRANSPORT_SHRINK * deckCompact() }) {
                 TransportRow(
                     isPlaying = isPlaying,
                     isLoading = isLoading || audioVersionSwitching,
@@ -3629,12 +3629,12 @@ fun NowPlayingScreen(
                 )
             }
 
-            Spacer(Modifier.height(12.dp + controlSpread / 2).collapseBy { compact() * 0.75f })
+            Spacer(Modifier.height(12.dp + controlSpread / 2).collapseBy { deckCompact() * 0.75f })
 
             // Hidden in Settings, the volume bar takes no room at all: the
             // artwork and the gaps above take up the height instead.
             if (!hideVolumeBar) {
-                Box(Modifier.collapseBy(compact)) {
+                Box(Modifier.collapseBy(deckCompact)) {
                     VolumeRow(
                         value = { volume.level.value },
                         onValueChange = onVolumeChange,
@@ -3647,7 +3647,7 @@ fun NowPlayingScreen(
             // Balance that invisible inset with the caption gap below the icons.
             Spacer(Modifier.height(6.dp))
 
-            Box(Modifier.shrinkBy { 1f - COMPACT_ACTIONS_SHRINK * compact() }) {
+            Box(Modifier.shrinkBy { 1f - COMPACT_ACTIONS_SHRINK * deckCompact() }) {
                 playerActions()
             }
             Spacer(Modifier.height(18.dp))

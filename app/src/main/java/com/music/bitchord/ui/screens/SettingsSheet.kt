@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.UnfoldMore
+import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -237,6 +238,7 @@ fun SettingsScreen(
     val startPage by CustomizationSettings.startPage.collectAsStateWithLifecycle()
     val navTabs by CustomizationSettings.navTabs.collectAsStateWithLifecycle()
     val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
+    val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val hideSongStatus by AppSettings.hideSongStatus.collectAsStateWithLifecycle()
     val swipeToPlayNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
@@ -1072,6 +1074,27 @@ fun SettingsScreen(
                         onDismiss = { editing = false },
                         // At least one tab beside Search stays on.
                         canDisable = { list, _ -> list.count { it.enabled } > 1 },
+                    )
+                }
+            }
+            val homeSectionsTitle = stringResource(R.string.home_sections)
+            row(homeSectionsTitle, "home", "shelves", "quick picks", "speed dial", "reorder", "hide") {
+                var editing by remember { mutableStateOf(false) }
+                SettingsRow(
+                    icon = Icons.Rounded.ViewAgenda,
+                    title = homeSectionsTitle,
+                    subtitle = stringResource(R.string.home_sections_subtitle),
+                    trailing = { Chevron() },
+                    onClick = { editing = true },
+                )
+                if (editing) {
+                    ReorderDialog(
+                        title = homeSectionsTitle,
+                        note = stringResource(R.string.home_sections_note),
+                        items = homeSections,
+                        label = { it },
+                        onChange = CustomizationSettings::setHomeSections,
+                        onDismiss = { editing = false },
                     )
                 }
             }
