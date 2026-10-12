@@ -78,6 +78,8 @@ Download the latest APK from the [Releases](https://github.com/steeben/BitChord/
 > [!TIP]
 > I suggest using [ObtainX](https://github.com/bikram-agarwal/ObtainX) ([F-Droid](https://f-droid.org/packages/dev.bikram.obtainx/)) for automatic updates. Add this repository to it and it will pick up new releases as they are published.
 
+The app installs as **BitChord Dial**, a separate app from the official BitChord, so the two can sit side by side and neither touches the other's data. You'll need to sign in again the first time.
+
 Each release is signed with the same key, so a new version installs over the old one and keeps your sign-in and settings. The app also checks this repository for updates when it launches.
 
 To build it yourself, see [CONTRIBUTING.md](CONTRIBUTING.md) and, for the desktop app, [DESKTOP.md](DESKTOP.md).

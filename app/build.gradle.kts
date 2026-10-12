@@ -118,8 +118,10 @@ android {
     productFlavors {
         create("dev") {
             dimension = "env"
-            applicationId = "com.dev.bitchord"
-            resValue("string", "app_name", "BitChord Dev")
+            // This fork's own app: a different package from upstream's, so it
+            // installs beside the official BitChord instead of replacing it.
+            applicationId = "com.steeben.bitchord"
+            resValue("string", "app_name", "BitChord Dial")
         }
         create("prod") {
             dimension = "env"
@@ -187,7 +189,9 @@ android {
         create("benchmark") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
-            applicationIdSuffix = ".benchmark"
+            // -PnoBenchmarkSuffix gives the build the app's own package, which
+            // is what releases and CI builds use so each installs over the last.
+            if (!project.hasProperty("noBenchmarkSuffix")) applicationIdSuffix = ".benchmark"
             matchingFallbacks += listOf("release")
         }
     }
@@ -433,10 +437,10 @@ val verifyDevInstall = tasks.register("verifyDevInstall") {
             .drop(1)
             .mapNotNull { line -> line.split('\t').takeIf { it.size == 2 && it[1] == "device" }?.get(0) }
         serials.forEach { serial ->
-            logger.lifecycle("verifyDevInstall: compiling com.dev.bitchord on $serial")
+            logger.lifecycle("verifyDevInstall: compiling com.steeben.bitchord on $serial")
             ProcessBuilder(
                 adbPath, "-s", serial, "shell", "cmd", "package", "compile",
-                "-m", "verify", "-f", "com.dev.bitchord",
+                "-m", "verify", "-f", "com.steeben.bitchord",
             ).inheritIO().start().waitFor()
         }
     }

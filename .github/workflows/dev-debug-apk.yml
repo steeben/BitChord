@@ -63,13 +63,13 @@ jobs:
       - name: Build
         run: |
           if [ -n "$SHARED_KEYSTORE" ]; then
-            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark \
+            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix \
               -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
               -Pandroid.injected.signing.store.password=android \
               -Pandroid.injected.signing.key.alias=androiddebugkey \
               -Pandroid.injected.signing.key.password=android
           else
-            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark
+            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix
           fi
 
       # The certificate fingerprint must be identical on every run, or Android
