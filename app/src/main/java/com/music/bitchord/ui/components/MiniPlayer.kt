@@ -57,6 +57,8 @@ import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.data.settings.MiniPlayerShape
 import com.music.bitchord.sharedui.resources.Res as SharedRes
 import com.music.bitchord.sharedui.resources.ic_player_next
 import com.music.bitchord.ui.components.thumbnailBorder
@@ -365,7 +367,14 @@ fun MiniPlayer(
     // height if the row's contents ever change it — which is what keeps a pill
     // a pill instead of a rounded rectangle. Same idiom as [FloatingBottomBar]
     // directly below it, so the two shapes are the same family.
-    val shape = RoundedCornerShape(percent = 50)
+    val shapeChoice by CustomizationSettings.miniPlayerShape.collectAsStateWithLifecycle()
+    val shape = remember(shapeChoice) {
+        when (shapeChoice) {
+            MiniPlayerShape.CIRCULAR -> RoundedCornerShape(percent = 50)
+            // Concentric with the artwork: its corner plus the padding around it.
+            MiniPlayerShape.SQUARED -> RoundedCornerShape(ART_CORNER + ROW_PADDING_VERTICAL)
+        }
+    }
     Box(
         modifier = modifier
             .padding(horizontal = BAR_GUTTER)

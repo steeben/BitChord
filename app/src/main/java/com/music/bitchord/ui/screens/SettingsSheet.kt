@@ -39,6 +39,10 @@ import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Brightness4
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CropSquare
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -81,6 +85,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -138,6 +144,8 @@ import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.data.settings.MiniPlayerShape
 import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
@@ -225,6 +233,10 @@ fun SettingsScreen(
     val exportDownloads by AppSettings.exportDownloads.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
+    val miniPlayerShape by CustomizationSettings.miniPlayerShape.collectAsStateWithLifecycle()
+    val startPage by CustomizationSettings.startPage.collectAsStateWithLifecycle()
+    val navTabs by CustomizationSettings.navTabs.collectAsStateWithLifecycle()
+    val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
     val hideSongStatus by AppSettings.hideSongStatus.collectAsStateWithLifecycle()
     val swipeToPlayNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
@@ -991,6 +1003,96 @@ fun SettingsScreen(
                         onClick = onTranslationLanguage,
                     )
                 }
+            }
+        }
+
+        SearchableSettingsGroup(search, header = stringResource(R.string.layout_settings)) {
+            val miniShapeTitle = stringResource(R.string.mini_player_shape)
+            row(miniShapeTitle, "mini player", "rounded", "square", "pill") {
+                SettingsRow(icon = Icons.Rounded.CropSquare, title = miniShapeTitle)
+                SegmentedControl(
+                    options = listOf(
+                        stringResource(R.string.mini_player_shape_circular),
+                        stringResource(R.string.mini_player_shape_squared),
+                    ),
+                    selectedIndex = MiniPlayerShape.entries.indexOf(miniPlayerShape),
+                    onSelect = { CustomizationSettings.setMiniPlayerShape(MiniPlayerShape.entries[it]) },
+                    modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
+                )
+            }
+            val startScreenTitle = stringResource(R.string.start_screen)
+            row(startScreenTitle, "default", "open", "launch", "tab") {
+                var open by remember { mutableStateOf(false) }
+                Box {
+                    SettingsRow(
+                        icon = Icons.Rounded.Home,
+                        title = startScreenTitle,
+                        subtitle = stringResource(R.string.start_screen_subtitle),
+                        value = startPage.label(),
+                        onClick = { open = true },
+                    )
+                    DropdownMenu(
+                        expanded = open,
+                        onDismissRequest = { open = false },
+                    ) {
+                        CustomizationSettings.visibleNavPages(navTabs).forEach { page ->
+                            DropdownMenuItem(
+                                text = { Text(page.label()) },
+                                trailingIcon = if (page == startPage) {
+                                    { Icon(Icons.Rounded.Check, contentDescription = null) }
+                                } else {
+                                    null
+                                },
+                                onClick = {
+                                    CustomizationSettings.setStartPage(page)
+                                    open = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            val navTabsTitle = stringResource(R.string.nav_bar_tabs)
+            row(navTabsTitle, "navigation", "bar", "tabs", "explore", "playlists", "reorder") {
+                var editing by remember { mutableStateOf(false) }
+                SettingsRow(
+                    icon = Icons.Rounded.Dashboard,
+                    title = navTabsTitle,
+                    subtitle = stringResource(R.string.nav_bar_tabs_subtitle),
+                    trailing = { Chevron() },
+                    onClick = { editing = true },
+                )
+                if (editing) {
+                    ReorderDialog(
+                        title = navTabsTitle,
+                        note = stringResource(R.string.nav_bar_tabs_note),
+                        items = navTabs,
+                        label = { it.label() },
+                        onChange = CustomizationSettings::setNavTabs,
+                        onDismiss = { editing = false },
+                        // At least one tab beside Search stays on.
+                        canDisable = { list, _ -> list.count { it.enabled } > 1 },
+                    )
+                }
+            }
+            val keepExpandedTitle = stringResource(R.string.keep_nav_bar_expanded)
+            row(keepExpandedTitle, "navigation", "bar", "minimize", "shrink", "collapse", "scroll") {
+                SettingsRow(
+                    icon = Icons.Rounded.UnfoldMore,
+                    title = keepExpandedTitle,
+                    subtitle = stringResource(R.string.keep_nav_bar_expanded_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = keepNavBarExpanded,
+                            onCheckedChange = CustomizationSettings::setKeepNavBarExpanded,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setKeepNavBarExpanded(!keepNavBarExpanded) },
+                )
             }
         }
 

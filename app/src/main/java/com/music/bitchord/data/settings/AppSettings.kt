@@ -773,6 +773,7 @@ object AppSettings {
 
     private fun readAll() {
         migrateSingleQuality()
+        CustomizationSettings.init(prefs)
         audioQualityWifi.value = readQuality(KEY_QUALITY_WIFI)
         audioQualityCellular.value = readQuality(KEY_QUALITY_CELLULAR)
         upgradeLengthSlackSeconds.value = prefs.getInt(

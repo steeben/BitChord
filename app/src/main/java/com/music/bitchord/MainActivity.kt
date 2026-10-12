@@ -61,6 +61,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -80,6 +81,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -146,6 +148,7 @@ import kotlinx.coroutines.withContext
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.settings.CustomizationSettings
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
 import com.music.bitchord.ui.components.AccountProfileSelector
@@ -227,6 +230,7 @@ import com.music.bitchord.ui.components.BottomTab
 import com.music.bitchord.ui.components.FLOATING_BAR_MAX_WIDTH
 import com.music.bitchord.ui.components.FloatingBottomBar
 import com.music.bitchord.ui.components.GlassNavBar
+import com.music.bitchord.ui.components.floatingtabbar.FloatingTabBarInlineBehavior
 import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.FrostedTopBar
 import com.music.bitchord.ui.components.LastfmLoginAlert
@@ -474,8 +478,21 @@ private fun BitChordApp(
     // What folds [GlassNavBar] between its expanded and inline shapes. Held here
     // rather than inside the bar because the page's scroll is what drives it,
     // and the page is a sibling of the bar rather than a child.
-    val navBarScroll = rememberFloatingTabBarScrollConnection()
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val navTabConfig by CustomizationSettings.navTabs.collectAsStateWithLifecycle()
+    val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
+    val navBarScroll = rememberFloatingTabBarScrollConnection(
+        inlineBehavior = if (keepNavBarExpanded) {
+            FloatingTabBarInlineBehavior.Never
+        } else {
+            FloatingTabBarInlineBehavior.OnScrollDown
+        },
+    )
+    // The pages the bar shows, by page id, Search last.
+    val barPages = remember(navTabConfig) { CustomizationSettings.visibleNavPages(navTabConfig).map { it.id } }
+    val startTab = remember(barPages) {
+        CustomizationSettings.startPage.value.id.takeIf { it in barPages } ?: barPages.first()
+    }
+    var selectedTab by rememberSaveable { mutableIntStateOf(startTab) }
     /**
      * Whether the player's sheet is up. The player is always a full-screen
      * take-over raised over the page, on every window size — the library
@@ -990,10 +1007,13 @@ private fun BitChordApp(
     val historyListState = rememberLazyListState()
     val libraryShowAllGridState = rememberLazyGridState()
     val searchListState = rememberLazyListState()
+    val playlistsGridState = rememberLazyGridState()
+    val playlistsListState = rememberLazyListState()
     val currentListState = when (selectedTab) {
         TAB_HOME -> homeListState
         TAB_EXPLORE -> if (selectedMoodGenre == null) exploreListState else moodGenreListState
         TAB_LIBRARY -> libraryListState
+        TAB_PLAYLISTS -> playlistsListState
         else -> searchListState
     }
 
@@ -1008,6 +1028,7 @@ private fun BitChordApp(
         selectedTab == TAB_HOME -> MainViewModel.Feed.HOME
         selectedTab == TAB_EXPLORE -> MainViewModel.Feed.EXPLORE
         selectedTab == TAB_LIBRARY -> MainViewModel.Feed.LIBRARY
+        selectedTab == TAB_PLAYLISTS -> MainViewModel.Feed.LIBRARY
         else -> null
     }
     // The lead shelf is listening history, so opening Home after playing
@@ -1087,13 +1108,22 @@ private fun BitChordApp(
     val replayLabel = stringResource(R.string.replay)
     val queueLabel = stringResource(R.string.queue)
     val sharedLinkLabel = stringResource(R.string.shared_link)
-    val tabs = remember(homeLabel, exploreLabel, libraryLabel, searchLabel) {
-        listOf(
-            BottomTab(homeLabel, BitChordIcons.Home),
-            BottomTab(exploreLabel, BitChordIcons.TabExplore),
-            BottomTab(libraryLabel, BitChordIcons.TabLibrary),
-            BottomTab(searchLabel, BitChordIcons.TabSearch),
+    val playlistsLabel = stringResource(R.string.playlists)
+    val pageTabs = remember(homeLabel, exploreLabel, libraryLabel, searchLabel, playlistsLabel) {
+        mapOf(
+            TAB_HOME to BottomTab(homeLabel, BitChordIcons.Home),
+            TAB_EXPLORE to BottomTab(exploreLabel, BitChordIcons.TabExplore),
+            TAB_LIBRARY to BottomTab(libraryLabel, BitChordIcons.TabLibrary),
+            TAB_SEARCH to BottomTab(searchLabel, BitChordIcons.TabSearch),
+            TAB_PLAYLISTS to BottomTab(playlistsLabel, Icons.AutoMirrored.Rounded.QueueMusic),
         )
+    }
+    val tabs = remember(pageTabs, barPages) { barPages.map { pageTabs.getValue(it) } }
+    // A page reached some other way than the bar (say Explore, opened from the
+    // player while hidden from the bar) leaves the bar's highlight where it was.
+    val lastBarIndex = remember { intArrayOf(0) }
+    val selectedBarIndex = barPages.indexOf(selectedTab).let { index ->
+        if (index >= 0) index.also { lastBarIndex[0] = it } else lastBarIndex[0].coerceIn(0, barPages.lastIndex)
     }
 
     val scope = rememberCoroutineScope()
@@ -2485,14 +2515,14 @@ private fun BitChordApp(
             // Only when Settings was the whole of what was on screen. Opened
             // over Replay or over a release page, closing it reveals that again
             // rather than throwing both away.
-            if (detail == null && !showReplay) selectedTab = TAB_HOME
+            if (detail == null && !showReplay) selectedTab = startTab
         }
         BackHandler(
             enabled = detail == null && !showSettings && !showAccountScrobbling && !showSpotify &&
                 !showSources && !showListenTogether && !showEqualizer && !showReplay && selectedMoodGenre == null &&
-                selectedTab != TAB_HOME,
+                selectedTab != startTab,
         ) {
-            selectedTab = TAB_HOME
+            selectedTab = startTab
         }
         BackHandler(enabled = showUpdateDialog) { showUpdateDialog = false }
         BackHandler(enabled = showListenBrainzLogin) { showListenBrainzLogin = false }
@@ -3217,6 +3247,41 @@ private fun BitChordApp(
                                 )
                             },
                         )
+                        TAB_PLAYLISTS -> {
+                            val playlistShelf = (libraryState as? UiState.Success)?.data?.shelves
+                                ?.firstOrNull { it.title == YtMusicRepository.PLAYLISTS_SHELF }
+                            val items = playlistShelf?.items.orEmpty() + localPlaylistItems
+                            if (libraryState is UiState.Success || localPlaylistItems.isNotEmpty()) {
+                                LibraryGridPage(
+                                    shelf = HomeShelf(YtMusicRepository.PLAYLISTS_SHELF, items),
+                                    gridState = playlistsGridState,
+                                    onItemClick = onLibraryItemClick,
+                                    onItemLongPress = onBrowseLongPress,
+                                    onNewPlaylist = if (signedIn) {
+                                        { creatingPlaylist = true }
+                                    } else {
+                                        null
+                                    },
+                                    contentPadding = listPadding,
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    if (libraryState is UiState.Loading) {
+                                        CircularProgressIndicator()
+                                    } else {
+                                        TextButton(
+                                            onClick = if (signedIn) {
+                                                viewModel::loadLibrary
+                                            } else {
+                                                { webSession = WebSessionMode.SIGN_IN }
+                                            },
+                                        ) {
+                                            Text(stringResource(if (signedIn) R.string.retry else R.string.sign_in))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         else -> LibraryScreen(
                             signedIn = signedIn,
                             state = libraryState,
@@ -3435,7 +3500,7 @@ private fun BitChordApp(
                         detail != null && detailActiveShelf != null -> detailActiveShelf?.title.orEmpty()
                         detail != null -> detail.title
                         selectedMoodGenre != null -> selectedMoodGenre?.title.orEmpty()
-                        else -> tabs[selectedTab].let {
+                        else -> pageTabs.getValue(selectedTab).let {
                             if (it.label == "Play") stringResource(R.string.listen_now) else it.label
                         }
                     },
@@ -3458,7 +3523,7 @@ private fun BitChordApp(
                         // stays out of the way until that has been scrolled off.
                         showReplay -> replayScrolled
                         detail != null -> detailScrolled
-                        else -> scrolled || selectedTab == TAB_SEARCH
+                        else -> scrolled || selectedTab == TAB_SEARCH || selectedTab == TAB_PLAYLISTS
                     },
                     refreshing = currentFeed != null && currentFeed in refreshing,
                     pullFraction = { currentPull?.distanceFraction ?: 0f },
@@ -3764,8 +3829,8 @@ private fun BitChordApp(
                     // and the pair folds together on scroll. See [GlassNavBar].
                     GlassNavBar(
                         tabs = tabs,
-                        selectedIndex = selectedTab,
-                        onTabSelected = onTabSelected,
+                        selectedIndex = selectedBarIndex,
+                        onTabSelected = { index -> onTabSelected(barPages[index]) },
                         scrollConnection = navBarScroll,
                         song = player.song,
                         isPlaying = player.isPlaying,
@@ -3827,9 +3892,9 @@ private fun BitChordApp(
                     }
                     FloatingBottomBar(
                         tabs = tabs,
-                        selectedIndex = selectedTab,
+                        selectedIndex = selectedBarIndex,
                         hazeState = hazeState,
-                        onTabSelected = onTabSelected,
+                        onTabSelected = { index -> onTabSelected(barPages[index]) },
                     )
                 }
             }
@@ -5377,6 +5442,7 @@ private const val TAB_HOME = 0
 private const val TAB_EXPLORE = 1
 private const val TAB_LIBRARY = 2
 private const val TAB_SEARCH = 3
+private const val TAB_PLAYLISTS = 4
 
 /**
  * What a tab's key is prefixed with in the content switcher above.
