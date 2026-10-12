@@ -1,158 +1,99 @@
 <div align="center">
 
-<br/>
-<br/>
+<img src="Logo.png" alt="BitChord app icon" width="140" />
 
-<img src="Logo.png" alt="BitChord app icon" width="200" />
+# BitChord, customized
 
-# BitChord
+### A personalized fork of the BitChord YouTube Music client
 
-### Aesthetic YouTube Music Client
+[![Latest release](https://img.shields.io/github/v/release/steeben/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/steeben/BitChord/releases)
+[![License](https://img.shields.io/github/license/steeben/BitChord?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
-<br/>
-
-[![Latest release](https://img.shields.io/github/v/release/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![License](https://img.shields.io/github/license/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/kushagrasinghx/BitChord/total?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![Listening now](https://api.bitchord.kushagrasingh.in/api/stats/live/badge.svg)](https://api.bitchord.kushagrasingh.in/api/stats/live)
-
-<br/>
-
-[**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
-
-<br/>
-
-<a href="https://fmhy.net/mobile#youtube-music" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/available/fmhy/cozy.svg" alt="Featured on FMHY" height="55"/></a>
-<a href="https://trendshift.io/repositories/177639?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/177639/daily?language=Kotlin" alt="kushagrasinghx%2FBitChord | Trendshift" width="250" height="55"/></a>
-<a href="https://trendshift.io/repositories/177639?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/177639/weekly?language=Kotlin" alt="kushagrasinghx%2FBitChord | Trendshift" width="250" height="55"/></a>
+[**Screenshots**](#screenshots) · [**What's different**](#whats-different-in-this-fork) · [**Install**](#install-and-updates) · [**Credits**](#credits)
 
 </div>
+
+> [!NOTE]
+> This is a fork of [BitChord](https://github.com/kushagrasinghx/BitChord) by [kushagrasinghx](https://github.com/kushagrasinghx). Everything BitChord does (Hi-Res audio, crossfade, word-synced lyrics, Spotify, scrobbling and the rest) is still here. This page covers only what the fork adds or changes. For the full upstream feature list, see the [original README](https://github.com/kushagrasinghx/BitChord#features).
 
 > [!IMPORTANT]
-> BitChord is not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
+> Not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
 
 ---
 
+## Screenshots
+
 <div align="center">
-
-<img src="Banner.png" alt="BitChord banner" width="100%" />
-
-<h1><a id="features"></a>Features</h1>
-
 <table>
   <tr>
-    <td width="50%" valign="top">
-
-#### Playback
-- **Search, browse and play** anything available on YouTube Music.
-- **Hi-Res lossless audio** — FLAC/ALAC from a configured module source, with YouTube Music as fallback.
-- **Gapless playback with true crossfade**, adjustable 0–12s.
-- **Automix [Beta]** — DJ-style transitions with beat-matching and tempo-stretching.
-- **Offline downloads** — save tracks with embedded metadata.
-- **Local music library** integration.
-- **Background playback** via a proper foreground media session.
-- **Apple-like lyrics animation** — credit to [binimum](https://github.com/binimum/am-lyrics).
-
-#### Connectivity & Accounts
-- **Sign in with your Google account** for personalized content.
-- **Spotify integration** — connect your account to play your playlists and Liked Songs.
-- **Discord Rich Presence** — in-app login, live track/artist/album and progress.
-- **Scrobbling** to Last.fm and ListenBrainz.
-- **Pluggable sources** — add, edit, test and health-check module sources.
-
-    </td>
-    <td width="50%" valign="top">
-
-#### Experience
-- **Animated album canvas** — motion artwork on the now-playing screen.
-- **Word-synced lyrics** — word/syllable-level highlighting from multiple sources.
-- **Lyrics providers** — credit to [lrc.red](https://lrc.red), [BiniLyrics](https://github.com/binimum), [BetterLyrics](https://github.com/better-lyrics/better-lyrics), [PaxSenix](https://lyrics.paxsenix.org), [LyricsPlus](https://github.com/ibratabian17/YouLyPlus), [SimpMusic](https://github.com/maxrave-dev/SimpMusic), [Unison](https://unison.boidu.dev), [Megalobiz](https://www.megalobiz.com), [KuGou](https://www.kugou.com), [LRCLIB](https://lrclib.net), [Musixmatch](https://www.musixmatch.com) and [Genius](https://genius.com).
-- **Dynamic, artwork-driven theming** — Material palette extracted from album art.
-- **Frosted-glass UI** — Telegram-style translucent bars via Haze, Material 3 theming.
-
-#### Controls & Tweaks
-- **Per-network audio quality** — separate quality ceilings for Wi-Fi and mobile data.
-- **Playback speed control** (0.5×–2.0×) and **skip silence**.
-- **Sleep timer** — fixed presets or "stop after this track".
-- **System equalizer** integration.
-- **Stats for nerds** — codec, bit depth, sample rate, and more on the now-playing screen.
-
-    </td>
+    <td align="center"><img src="docs/screenshots/home.jpg" width="220" /><br/><sub>Speed dial and a custom nav bar</sub></td>
+    <td align="center"><img src="docs/screenshots/library.jpg" width="220" /><br/><sub>YouTube Music library</sub></td>
+    <td align="center"><img src="docs/screenshots/player.jpg" width="220" /><br/><sub>Now playing</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/canvas.jpg" width="220" /><br/><sub>Compact controls over Spotify Canvas</sub></td>
+    <td align="center"><img src="docs/screenshots/queue.jpg" width="220" /><br/><sub>Queue with compact controls</sub></td>
+    <td align="center"><img src="docs/screenshots/lyrics.jpg" width="220" /><br/><sub>Lyrics</sub></td>
   </tr>
 </table>
-
 </div>
 
 ---
 
-<div align="center">
+## What's different in this fork
 
-<h1><a id="download"></a>Download</h1>
+### Your own music
+- **Play your uploaded YouTube Music songs.** Tracks you uploaded to your YouTube Music library now play like any other song.
+- **A "YouTube Music" category in the Library tab** that shows your whole YouTube Music library (Songs, Artists, Albums), cached so it doesn't reload every time you open it.
+- **Pick a default library.** Long-press a library, or choose it in Settings, and tapping Library on the nav bar goes straight there. You can also choose which page it opens on. The back arrow in the top-left returns to the main library page.
+- **List or grid per library tab**, and a **Last played** sort.
 
-<a href="https://github.com/kushagrasinghx/BitChord/releases" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/supported/android/cozy.svg" alt="Download for Android" height="55"/></a>
-<a href="https://github.com/kushagrasinghx/BitChord/releases" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/supported/windows/cozy.svg" alt="Download for Windows" height="55"/></a>
+### Home
+- **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home. Hold the "Speed Dial" heading to reorder your pins.
+- **Reorder the Home layout** and **hide sections** you don't use.
 
-Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx/BitChord/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
+### Navigation
+- **Customize the nav bar.** Reorder the tabs, or swap one out for a **Playlists** shortcut.
+- **Keep the miniplayer and navigation bar expanded** instead of collapsing as you scroll.
+- Choose which screen the app **starts on**, and whether the miniplayer is **circular or a rounded square**.
 
-For the Windows and Linux desktop app, see [DESKTOP.md](DESKTOP.md).
+### Appearance
+- **Ambient background.** Soft, slowly drifting colour blobs sit behind the app, with frosted surfaces on top. The colour can **match the current song's album art**, or stay on a fixed colour (green in Spotify libraries, red in YouTube Music).
 
-</div>
+### Player
+- **Spotify Canvas with controls that stay.** When a Canvas video is playing, the player controls shrink and stay visible instead of fading out. You can turn this off again in the Canvas settings.
+- **A cleaner queue.** The redundant entries are gone: the current song is at the top and the next songs follow below. Scroll up to see what you already played. The player controls shrink to make room for more of the queue, and shrink the same way on the lyrics screen.
+- **Gestures.** Swipe up on the controls area to open the queue, and swipe down to close it. Swipe down on the player screen to minimize it. The system back gesture plays the same slide-down.
 
----
-
-<div align="center">
-
-<h1><a id="contributing"></a>Contributing</h1>
-
-We welcome contributions to BitChord! Please review our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a Pull Request.
-
-[**Contributing Guide**](CONTRIBUTING.md) · [**Code of Conduct**](CODE_OF_CONDUCT.md) · [**Maintainers**](MAINTAINERS.md) · [**Additional Docs**](ADDITIONAL.md)
-
-### Thanks to all contributors ❤
-
-<a href="https://github.com/kushagrasinghx/BitChord/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/kushagrasinghx/BitChord/contributors/contributors.svg" />
-</a>
-
-</div>
+### Under the hood
+- The Home feed and library pages are cached on disk and in memory for a faster start.
+- Builds are optimized for speed.
 
 ---
 
-<div align="center">
+## Install and updates
 
-<h1><a id="support"></a>Support</h1>
+Download the latest APK from the [Releases](https://github.com/steeben/BitChord/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
 
-BitChord is free and always will be — if it's earned a spot in your rotation, you can chip in here:
+> [!TIP]
+> I suggest using [ObtainX](https://github.com/bikram-agarwal/ObtainX) ([F-Droid](https://f-droid.org/packages/dev.bikram.obtainx/)) for automatic updates. Add this repository to it and it will pick up new releases as they are published.
 
-<a href="https://ko-fi.com/kushagrasinghx" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/kofi-singular-alt/cozy.svg" alt="Support me on Ko-fi" height="55"/></a>
-<a href="https://paypal.me/kuxhagrasingh" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/paypal-plural/cozy.svg" alt="Support us on PayPal" height="55"/></a>
+Each release is signed with the same key, so a new version installs over the old one and keeps your sign-in and settings. The app also checks this repository for updates when it launches.
 
-<br/>
-<img src="upi_support.jpg" alt="UPI Support" width="250" />
-
-</div>
+To build it yourself, see [CONTRIBUTING.md](CONTRIBUTING.md) and, for the desktop app, [DESKTOP.md](DESKTOP.md).
 
 ---
 
-<div align="center">
+## Credits
 
-<h1><a id="disclaimer"></a>Disclaimer & Legal Notice</h1>
+This project exists because of [BitChord](https://github.com/kushagrasinghx/BitChord) and its contributors. The lyrics providers, audio sources and everything else it builds on are credited in the [upstream README](https://github.com/kushagrasinghx/BitChord#features). The uploaded-songs fix draws on how [Metrolist](https://github.com/MetrolistGroup/Metrolist) and its InnerTube library handle uploads.
 
-BitChord is an independent, community-driven third-party audio player and client. It is **not** associated with Google LLC, YouTube Music, Deezer, Telegram, or any of their parent companies.
+If you like BitChord, consider [supporting its author](https://github.com/kushagrasinghx/BitChord#support).
 
-* **No Media Hosting:** BitChord does not host, upload, or store copyrighted music files. It operates strictly as an interface to scan local device storage or stream media directly from public, public-facing, or user-authenticated APIs.
-* **Fair Use & API Usage:** This software is created solely for personal research, educational, and fair-use purposes. The user is entirely responsible for ensuring their usage aligns with their local copyright laws and YouTube Terms of Service.
-* **No Ad-Blocking Guarantee:** While BitChord focuses on providing a clean listening environment, it does not guarantee permanent bypasses or modifications to commercial third-party platform conditions.
-* **Copyleft:** BitChord is free software under the GPLv3. The license does not let anyone forbid others from selling or redistributing copies, but any distribution must come with the Corresponding Source under the same license.
+## Disclaimer
 
-</div>
+BitChord is an independent, community-driven third-party audio player and client. It is **not** associated with Google LLC, YouTube Music, Deezer, Telegram, or any of their parent companies. It does not host, upload, or store copyrighted music files, and it is provided for personal, educational and fair-use purposes. You are responsible for ensuring your use follows your local copyright laws and the YouTube Terms of Service.
 
----
+## License
 
-<div align="center">
-
-<h1><a id="license"></a>License</h1>
-
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
-
-</div>
+Licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE).
