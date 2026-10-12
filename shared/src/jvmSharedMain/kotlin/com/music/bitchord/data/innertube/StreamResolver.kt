@@ -493,6 +493,7 @@ object StreamResolver {
         requireM4a: Boolean = false,
         uploaded: Boolean = false,
         escalateToUpload: Boolean = true,
+        playRefusedUpload: Boolean = false,
     ): Stream? {
         val skip = mutableSetOf<String>()
         repeat(INNERTUBEX_ATTEMPTS) { attempt ->
@@ -510,6 +511,17 @@ object StreamResolver {
                 return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
             }
             TrackLog.w(TAG, "InnerTubeX ${found.profileId} minted an unusable URL for $videoId: $verdict")
+
+            // A private upload has no other copy: every other client is refused
+            // it and extraction reports it private. So for a track known to be
+            // one, a stream the probe will not vouch for is still the only one
+            // there is, and is handed to the player to try — as Metrolist does,
+            // which does not probe at all. If the player is refused too, that
+            // arrives through [onPlaybackRefused] with the real status code.
+            if (playRefusedUpload && uploaded && verdict == Probe.REFUSED) {
+                TrackLog.w(TAG, "playing $videoId's upload stream despite the probe: it is the only copy")
+                return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
+            }
             skip += found.profileId
 
             // While signed in, the very first stream an ordinary ask is handed
@@ -576,7 +588,8 @@ object StreamResolver {
     ): Stream? {
         val known = UploadedTracks.contains(videoId)
         if (known) {
-            innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = true)?.let { return it }
+            innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = true, playRefusedUpload = true)
+                ?.let { return it }
             // Marked as an upload but not served as one: ask the ordinary way
             // before giving up, in case the mark was wrong. The escalation is
             // switched off, since the upload ask is the one that just failed.
@@ -858,15 +871,17 @@ object StreamResolver {
         val end = minOf(start + PlayerClient.rangeBytesFor(url), length ?: Long.MAX_VALUE) - 1
         val builder = okhttp3.Request.Builder().url(url)
             .header("Range", "bytes=$start-$end")
-        mediaHeadersFor(url).forEach { (name, value) -> builder.header(name, value) }
+        val sentHeaders = mediaHeadersFor(url)
+        sentHeaders.forEach { (name, value) -> builder.header(name, value) }
         return try {
             prober.newCall(builder.build()).execute().use { response ->
-                when {
+                val contentType = response.header("Content-Type")
+                val verdict = when {
                     response.code in REFUSAL_CODES -> Probe.REFUSED
                     response.code !in 200..299 && response.code != 416 -> Probe.UNREACHABLE
                     // A refusal dressed as a success: an error page, or the
                     // consent/captcha interstitial, rather than audio.
-                    response.header("Content-Type")?.startsWith("audio/") != true -> Probe.REFUSED
+                    contentType?.startsWith("audio/") != true -> Probe.REFUSED
                     // Headers can arrive long before a body that never does —
                     // exactly the shaping this whole path exists to sidestep.
                     // Insisting on the bytes is the point: a trickle that
@@ -874,6 +889,18 @@ object StreamResolver {
                     response.body?.source()?.request(PROBE_READ_BYTES) != true -> Probe.UNREACHABLE
                     else -> Probe.OK
                 }
+                if (verdict != Probe.OK) {
+                    // What was asked and what came back, with nothing that could
+                    // authorise a request: header names rather than values, and
+                    // the stream's own descriptors rather than its URL.
+                    TrackLog.w(
+                        TAG,
+                        "probe $verdict: HTTP ${response.code} type=$contentType " +
+                            "range=bytes=$start-$end ${describeMediaUrl(url)} " +
+                            "sent=${sentHeaders.keys.sorted()}",
+                    )
+                }
+                verdict
             }
         } catch (e: Exception) {
             TrackLog.w(TAG, "probe failed: ${e.message}")
@@ -882,6 +909,15 @@ object StreamResolver {
     }
 
     private val REFUSAL_CODES = setOf(403, 404, 410)
+
+    /** A stream URL reduced to what describes it and nothing that could be replayed. */
+    private fun describeMediaUrl(url: String): String {
+        val parsed = url.toHttpUrlOrNull() ?: return "url=unparseable"
+        return "host=${parsed.host} path=${parsed.encodedPath} " +
+            "c=${parsed.queryParameter("c")} itag=${parsed.queryParameter("itag")} " +
+            "mime=${parsed.queryParameter("mime")} clen=${parsed.queryParameter("clen")} " +
+            "pot=${parsed.queryParameter("pot") != null}"
+    }
 
     /**
      * The probe's own client: the app's, but on a short leash.
