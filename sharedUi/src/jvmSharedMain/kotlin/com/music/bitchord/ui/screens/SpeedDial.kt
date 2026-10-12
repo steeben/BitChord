@@ -1,6 +1,8 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,12 +61,24 @@ internal fun SpeedDialShelf(
     onItemLongPress: ((ShelfItem) -> Unit)?,
     currentSong: Song?,
     isPlaying: Boolean,
+    /** Holding the heading, to rearrange the pins. */
+    onHeaderLongPress: (() -> Unit)? = null,
 ) {
     val pages = shelf.items.chunked(SPEED_DIAL_PER_PAGE)
     if (pages.isEmpty()) return
     val pagerState = rememberPagerState { pages.size }
     Column(Modifier.padding(bottom = 26.dp)) {
-        SectionHeader(shelf.title, shelf.subtitle)
+        Box(
+            if (onHeaderLongPress != null) {
+                Modifier.pointerInput(onHeaderLongPress) {
+                    detectTapGestures(onLongPress = { onHeaderLongPress() })
+                }
+            } else {
+                Modifier
+            },
+        ) {
+            SectionHeader(shelf.title, shelf.subtitle)
+        }
         HorizontalPager(
             state = pagerState,
             pageSpacing = 12.dp,

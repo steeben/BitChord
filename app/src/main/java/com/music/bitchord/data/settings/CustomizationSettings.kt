@@ -47,6 +47,12 @@ object CustomizationSettings {
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
     /**
+     * Over a Spotify Canvas, shrink the controls to the foot of the screen
+     * instead of hiding them: title, live lyrics and transport stay.
+     */
+    val compactCanvasControls = MutableStateFlow(false)
+
+    /**
      * Home page sections by title, in the order to show them, each shown or
      * hidden. YouTube decides which sections exist, so titles are added here as
      * the feed first shows them; see [learnHomeSections].
@@ -70,6 +76,7 @@ object CustomizationSettings {
         keepNavBarExpanded.value = p.getBoolean(KEY_KEEP_NAV_EXPANDED, false)
         miniPlayerShape.value = MiniPlayerShape.entries
             .firstOrNull { it.name == p.getString(KEY_MINI_PLAYER_SHAPE, null) } ?: MiniPlayerShape.CIRCULAR
+        compactCanvasControls.value = p.getBoolean(KEY_COMPACT_CANVAS_CONTROLS, false)
         homeSections.value = readHomeSections(p.getString(KEY_HOME_SECTIONS, null))
         speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
     }
@@ -140,6 +147,13 @@ object CustomizationSettings {
         } else {
             current.filterNot { it.speedDialId == id }
         }
+        setSpeedDialPins(updated)
+        return pinned
+    }
+
+    /** Replaces the pins, in the order given. */
+    fun setSpeedDialPins(value: List<ShelfItem>) {
+        val updated = value.distinctBy { it.speedDialId }.take(SPEED_DIAL_SIZE)
         speedDialPins.value = updated
         val json = JSONArray()
         updated.forEach { pin ->
@@ -153,7 +167,6 @@ object CustomizationSettings {
             )
         }
         prefs?.edit()?.putString(KEY_SPEED_DIAL_PINS, json.toString())?.apply()
-        return pinned
     }
 
     /**
@@ -213,6 +226,11 @@ object CustomizationSettings {
         prefs?.edit()?.putBoolean(KEY_KEEP_NAV_EXPANDED, value)?.apply()
     }
 
+    fun setCompactCanvasControls(value: Boolean) {
+        compactCanvasControls.value = value
+        prefs?.edit()?.putBoolean(KEY_COMPACT_CANVAS_CONTROLS, value)?.apply()
+    }
+
     fun setMiniPlayerShape(value: MiniPlayerShape) {
         miniPlayerShape.value = value
         prefs?.edit()?.putString(KEY_MINI_PLAYER_SHAPE, value.name)?.apply()
@@ -257,6 +275,7 @@ object CustomizationSettings {
 
     private const val KEY_NAV_TABS = "custom_nav_tabs"
     private const val KEY_HOME_SECTIONS = "custom_home_sections"
+    private const val KEY_COMPACT_CANVAS_CONTROLS = "custom_compact_canvas_controls"
     private const val KEY_SPEED_DIAL_PINS = "custom_speed_dial_pins"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"

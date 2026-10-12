@@ -140,6 +140,8 @@ fun HomeScreen(
     isPlaying: Boolean = false,
     /** Ids (video or browse) pinned to the speed dial, marked on its tiles. */
     speedDialPinned: Set<String> = emptySet(),
+    /** Holding the speed dial's heading, to rearrange its pins. */
+    onSpeedDialHeaderLongPress: (() -> Unit)? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -201,6 +203,7 @@ fun HomeScreen(
                         isPlaying = isPlaying,
                         firstIsHero = leadHero && !recentlyPlayedLoading,
                         speedDialPinned = speedDialPinned,
+                        onSpeedDialHeaderLongPress = onSpeedDialHeaderLongPress,
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
                             AppUi.host.setHomeRecentsViewType(
@@ -250,6 +253,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     isPlaying: Boolean,
     firstIsHero: Boolean = true,
     speedDialPinned: Set<String> = emptySet(),
+    onSpeedDialHeaderLongPress: (() -> Unit)? = null,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
 ) {
@@ -264,6 +268,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     onItemLongPress = onItemLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
+                    onHeaderLongPress = onSpeedDialHeaderLongPress,
                 )
             } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                 RecentShelf(

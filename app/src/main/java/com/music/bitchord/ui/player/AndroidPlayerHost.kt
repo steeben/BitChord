@@ -56,6 +56,8 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         override val fullBleedArtwork get() = AppSettings.fullBleedArtwork
         override val hideSongStatus get() = AppSettings.hideSongStatus
         override val hideVolumeBar get() = AppSettings.hideVolumeBar
+        override val compactCanvasControls
+            get() = com.music.bitchord.data.settings.CustomizationSettings.compactCanvasControls
         override val lastPlayerScreen get() = AppSettings.lastPlayerScreen
         override val legacyMeshGradient get() = AppSettings.legacyMeshGradient
         override val lyricsBlur get() = AppSettings.lyricsBlur

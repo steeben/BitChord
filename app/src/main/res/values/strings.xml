@@ -417,6 +417,11 @@
     <string name="download_quality_dialog_subtitle">For files kept on this device</string>
     <string name="downloaded">Downloaded</string>
     <string name="drag_to_reorder">Drag to reorder</string>
+    <string name="spotify_canvas_compact_controls">Keep controls visible</string>
+    <string name="spotify_canvas_compact_controls_subtitle">Instead of hiding, the controls shrink to the bottom of the screen, keeping the song, live lyrics and play controls</string>
+    <string name="speed_dial_pins">Speed dial pins</string>
+    <string name="speed_dial_pins_note">Drag the handles to reorder your pins. Switch one off to unpin it.</string>
+    <string name="speed_dial_pins_empty">Nothing is pinned yet. Hold a song, album or playlist and choose Add to speed dial.</string>
     <string name="add_to_speed_dial">Add to speed dial</string>
     <string name="remove_from_speed_dial">Remove from speed dial</string>
     <string name="added_to_speed_dial">Added to speed dial</string>

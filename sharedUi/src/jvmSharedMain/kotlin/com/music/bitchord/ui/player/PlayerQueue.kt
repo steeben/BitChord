@@ -222,6 +222,11 @@ internal fun InlineQueue(
     collapsePlayerOnScroll: Boolean = false,
     onRevealPlayer: () -> Unit = {},
     onHidePlayer: () -> Unit = {},
+    /**
+     * Whether the list leads with the playing track. Off where the player's
+     * own header right above the list already shows it.
+     */
+    showNowPlaying: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -290,7 +295,7 @@ internal fun InlineQueue(
                     .then(if (collapsePlayerOnScroll) Modifier.nestedScroll(controlsOnScroll) else Modifier),
                 contentPadding = PaddingValues(horizontal = PLAYER_GUTTER),
             ) {
-                if (nowPlaying != null) {
+                if (nowPlaying != null && showNowPlaying) {
                     item(key = "header-now-playing") {
                         QueueHeading(
                             title = stringResource(Res.string.now_playing),
@@ -312,7 +317,9 @@ internal fun InlineQueue(
                     item(key = "header-user-queue") {
                         QueueHeading(
                             title = stringResource(Res.string.next_in_queue),
-                            modifier = Modifier.padding(top = 16.dp, bottom = 6.dp).then(queueMotion()),
+                            modifier = Modifier
+                                .padding(top = if (showNowPlaying) 16.dp else 12.dp, bottom = 6.dp)
+                                .then(queueMotion()),
                         ) {
                             QueueClearButton(MaterialTheme.typography.labelLarge, controlsLocked, onClear)
                         }
@@ -327,7 +334,9 @@ internal fun InlineQueue(
                             } else {
                                 stringResource(Res.string.queue)
                             },
-                            modifier = Modifier.padding(top = 16.dp, bottom = 6.dp).then(queueMotion()),
+                            modifier = Modifier
+                                .padding(top = if (showNowPlaying || tracks.user.isNotEmpty()) 16.dp else 12.dp, bottom = 6.dp)
+                                .then(queueMotion()),
                         )
                     }
                     queueSection(tracks.context, QueueSection.CONTEXT, drag, controlsLocked, onJumpTo, onRemove)

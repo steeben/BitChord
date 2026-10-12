@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
-import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -151,7 +150,9 @@ import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.data.settings.OrderedToggle
 import com.music.bitchord.data.settings.speedDialId
+import com.music.bitchord.ui.screens.ReorderDialog
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
 import com.music.bitchord.ui.components.AccountProfileSelector
@@ -702,6 +703,25 @@ private fun BitChordApp(
     val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val speedDialPins by CustomizationSettings.speedDialPins.collectAsStateWithLifecycle()
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
+    var editingSpeedDial by remember { mutableStateOf(false) }
+    if (editingSpeedDial) {
+        // Edited as a draft and saved on the way out, so switching a pin off
+        // doesn't pull its row out from under the list mid-edit.
+        var draft by remember { mutableStateOf(speedDialPins.map { OrderedToggle(it, true) }) }
+        ReorderDialog(
+            title = stringResource(R.string.speed_dial_pins),
+            note = stringResource(
+                if (draft.isEmpty()) R.string.speed_dial_pins_empty else R.string.speed_dial_pins_note,
+            ),
+            items = draft,
+            label = { it.title },
+            onChange = { draft = it },
+            onDismiss = {
+                CustomizationSettings.setSpeedDialPins(draft.filter { it.enabled }.map { it.item })
+                editingSpeedDial = false
+            },
+        )
+    }
     // New sections become settable in Settings the first time the feed shows them.
     LaunchedEffect(homeState) {
         (homeState as? UiState.Success)?.data?.let { shelves ->
@@ -3045,6 +3065,7 @@ private fun BitChordApp(
                         TAB_HOME -> HomeScreen(
                             state = arrangedHomeState,
                             speedDialPinned = speedDialPinnedIds,
+                            onSpeedDialHeaderLongPress = { editingSpeedDial = true },
                             listState = homeListState,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
@@ -4013,21 +4034,14 @@ private fun BitChordApp(
                 // Composed ahead of the player, so the player's own handlers —
                 // the lyrics and the queue putting themselves away first — are
                 // newer and are asked before this one.
-                // Predictive: while the back swipe is held the player shrinks
-                // towards the swiping edge, and only a completed swipe closes it.
-                val backProgress = remember { androidx.compose.animation.core.Animatable(0f) }
-                var backFromLeft by remember { mutableStateOf(true) }
-                val backScope = rememberCoroutineScope()
+                // Predictive: the back swipe pulls the player down the way a
+                // drag does, and letting go finishes the same slide home.
                 PredictiveBackHandler(enabled = !reducePlayerMotion) { events ->
                     try {
-                        events.collect { event ->
-                            backFromLeft = event.swipeEdge == BackEventCompat.EDGE_LEFT
-                            backProgress.snapTo(event.progress)
-                        }
+                        events.collect { event -> playerSheetMotion.backProgress(event.progress) }
                         playerSheetMotion.close()
-                        backScope.launch { backProgress.animateTo(0f, tween(350)) }
                     } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
-                        backScope.launch { backProgress.animateTo(0f, tween(200)) }
+                        playerSheetMotion.backCancelled()
                         throw cancelled
                     }
                 }
@@ -4041,17 +4055,6 @@ private fun BitChordApp(
                 }
                 Box(
                     Modifier
-                        .graphicsLayer {
-                            val p = backProgress.value
-                            if (p > 0f) {
-                                val scale = 1f - PREDICTIVE_BACK_SHRINK * p
-                                scaleX = scale
-                                scaleY = scale
-                                translationX = (if (backFromLeft) 1f else -1f) * p * 24.dp.toPx()
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp * p)
-                                clip = true
-                            }
-                        }
                         // Where the app is holding the player, if it is — see
                         // [PlayerSheetMotion.contentOffsetPx]. Placement only.
                         .offset { IntOffset(0, playerSheetMotion.contentOffsetPx()) }
@@ -5545,9 +5548,6 @@ private const val TAB_EXPLORE = 1
 private const val TAB_LIBRARY = 2
 private const val TAB_SEARCH = 3
 private const val TAB_PLAYLISTS = 4
-
-/** How much the player shrinks at the far end of a predictive back swipe. */
-private const val PREDICTIVE_BACK_SHRINK = 0.1f
 
 /**
  * What a tab's key is prefixed with in the content switcher above.
