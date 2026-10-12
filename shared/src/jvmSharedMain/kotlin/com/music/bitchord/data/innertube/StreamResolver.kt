@@ -868,7 +868,12 @@ object StreamResolver {
     private fun probe(url: String): Probe {
         val length = url.toHttpUrlOrNull()?.queryParameter("clen")?.toLongOrNull()
         val start = if (length != null && length > AUTH_BOUNDARY_BYTES + PROBE_READ_BYTES) AUTH_BOUNDARY_BYTES else 0L
-        val end = minOf(start + PlayerClient.rangeBytesFor(url), length ?: Long.MAX_VALUE) - 1
+        // rangeBytesFor() answers Long.MAX_VALUE for hosts it doesn't recognise (e.g.
+        // *.c.youtube.com), and adding to that wraps negative, giving a nonsense
+        // "bytes=1048576--9223372036853727234" that the server answers with 416.
+        // Cap the window at the probe size instead, so the sum can't overflow.
+        val window = minOf(PlayerClient.rangeBytesFor(url), PROBE_READ_BYTES)
+        val end = minOf(start + window, length ?: Long.MAX_VALUE) - 1
         val builder = okhttp3.Request.Builder().url(url)
             .header("Range", "bytes=$start-$end")
         val sentHeaders = mediaHeadersFor(url)
