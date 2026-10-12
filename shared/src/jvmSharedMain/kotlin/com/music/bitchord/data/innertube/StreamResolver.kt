@@ -360,6 +360,8 @@ object StreamResolver {
     fun onSessionChanged() {
         InnerTubeXResolver.onSessionChanged()
         unplayable.clear()
+        // Another account's private library is a different set of tracks.
+        UploadedTracks.clear()
     }
 
     private const val UNPLAYABLE_TTL_MS = 10 * 60 * 1000L
@@ -425,7 +427,7 @@ object StreamResolver {
     private suspend fun resolveUncached(videoId: String): Stream {
         val resolveStart = MonotonicClock.nowMs()
         val stream = try {
-            timed("$videoId InnerTubeX") { innerTubeXStream(videoId) }
+            timed("$videoId InnerTubeX") { innerTubeXStreamAllowingUploads(videoId) }
                 ?: run {
                     TrackLog.w(TAG, "InnerTubeX found no usable stream for $videoId; falling back to extraction")
                     timed("$videoId newPipeStream") { newPipeStream(videoId, ::pickForQuality) }
@@ -489,11 +491,12 @@ object StreamResolver {
         videoId: String,
         maxKbps: Int = maxKbps(),
         requireM4a: Boolean = false,
+        uploaded: Boolean = false,
     ): Stream? {
         val skip = mutableSetOf<String>()
         repeat(INNERTUBEX_ATTEMPTS) {
             val found = try {
-                InnerTubeXResolver.extract(videoId, maxKbps, skip, requireM4a)
+                InnerTubeXResolver.extract(videoId, maxKbps, skip, requireM4a, uploaded)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -509,6 +512,35 @@ object StreamResolver {
             skip += found.profileId
         }
         return null
+    }
+
+    /**
+     * [innerTubeXStream], asked as an upload when the track is one.
+     *
+     * A track the parser recognised as the user's own upload (see
+     * [UploadedTracks]) is asked as one straight away. Any other track that
+     * InnerTubeX cannot find a stream for is, while signed in, asked once more
+     * as an upload before the caller gives up on it: a private upload is
+     * refused to every anonymous client, so to an ordinary ask it looks exactly
+     * like a track that does not exist. A hit is remembered, so the second play
+     * and every one after it go straight to the right ask.
+     *
+     * Signed out there is no private library to be in, and the retry is skipped.
+     */
+    private suspend fun innerTubeXStreamAllowingUploads(
+        videoId: String,
+        maxKbps: Int = maxKbps(),
+        requireM4a: Boolean = false,
+    ): Stream? {
+        val known = UploadedTracks.contains(videoId)
+        innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = known)?.let { return it }
+        if (known || Innertube.cookie.isNullOrBlank()) return null
+
+        TrackLog.d(TAG, "retrying $videoId as an upload")
+        return innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = true)?.also {
+            TrackLog.d(TAG, "$videoId resolved as an upload")
+            UploadedTracks.mark(videoId)
+        }
     }
 
     /** The headers a media fetch for [url] must carry to match whoever minted it. */
@@ -634,7 +666,7 @@ object StreamResolver {
             // has no ceiling of its own. Within the setting's ceiling it is the
             // answer; above it (best Opus over Standard's 128kbps) extraction
             // below can pick the lower rung, and this is kept as the fallback.
-            val found = innerTubeXStream(videoId, maxKbps, requireM4a)
+            val found = innerTubeXStreamAllowingUploads(videoId, maxKbps, requireM4a)
                 ?.takeIf { if (requireM4a) it.downloadExtension == "m4a" else it.downloadExtension == "webm" }
             if (found != null) {
                 offered = true
