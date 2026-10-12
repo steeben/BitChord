@@ -31,6 +31,9 @@ import kotlin.math.abs
  */
 private const val SLIDE_STIFFNESS = 195f
 
+/** How much of its travel the player follows a predictive back swipe down. */
+private const val BACK_PEEK_FRACTION = 0.3f
+
 /** Close enough to stop, in pixels — rather than a spring's whole long tail. */
 private const val SLIDE_SETTLED_PX = 0.5f
 
@@ -232,6 +235,28 @@ class PlayerSheetMotion(
         settle = scope.launch {
             slide(from = from, to = travel(), velocity = velocity.coerceAtLeast(0f))
             dismissQuietly()
+        }
+    }
+
+    /**
+     * A predictive back swipe in progress, [progress] 0..1: the player follows
+     * it part of the way down, as a drag on it would. A completed swipe then
+     * goes through [close], which carries on from wherever this left it.
+     */
+    fun backProgress(progress: Float) {
+        if (!shown() || closing) return
+        settle?.cancel()
+        held = travel() * BACK_PEEK_FRACTION * progress.coerceIn(0f, 1f)
+    }
+
+    /** The back swipe was abandoned: back up to fully open. */
+    fun backCancelled() {
+        if (!holding || closing) return
+        val from = held
+        settle?.cancel()
+        settle = scope.launch {
+            slide(from = from, to = 0f)
+            held = Float.NaN
         }
     }
 

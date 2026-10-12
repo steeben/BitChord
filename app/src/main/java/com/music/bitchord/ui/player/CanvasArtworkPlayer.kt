@@ -18,6 +18,7 @@ import android.view.TextureView
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -327,7 +328,8 @@ internal fun AndroidCanvasArtworkPlayer(
 
     val alpha by animateFloatAsState(
         targetValue = if (rendered) 1f else 0f,
-        animationSpec = tween(durationMillis = 320),
+        // Long enough to read as a crossfade from the still artwork.
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
         label = "canvasAlpha",
     )
 

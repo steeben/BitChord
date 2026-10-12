@@ -155,6 +155,9 @@ fun BrowseActionsSheet(
      */
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
+    /** Adds the release to the Home speed dial, or takes it off. Null hides the row. */
+    onToggleSpeedDial: (() -> Unit)? = null,
+    inSpeedDial: Boolean = false,
     onRename: ((String) -> Unit)? = null,
     /**
      * Opens the reorder sheet for one of the account's own playlists — set
@@ -279,6 +282,13 @@ fun BrowseActionsSheet(
                 ActionRow(
                     BitChordIcons.Pin,
                     stringResource(if (isPinned) R.string.unpin else R.string.pin),
+                    onClick = it,
+                )
+            }
+            onToggleSpeedDial?.let {
+                ActionRow(
+                    BitChordIcons.Pin,
+                    stringResource(if (inSpeedDial) R.string.remove_from_speed_dial else R.string.add_to_speed_dial),
                     onClick = it,
                 )
             }

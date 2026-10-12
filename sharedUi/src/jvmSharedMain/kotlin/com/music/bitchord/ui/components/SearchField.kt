@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
@@ -52,6 +53,8 @@ fun SearchField(
     focusRequester: FocusRequester = remember { FocusRequester() },
     /** What the empty field says it is for — the one part that changes per screen. */
     placeholder: String = stringResource(Res.string.search_hint),
+    /** The field's fill; the theme's grey unless the page asks for something else. */
+    containerColor: Color = frostedOr(MaterialTheme.colorScheme.surfaceVariant),
     modifier: Modifier = Modifier,
 ) {
     val focusManager = LocalFocusManager.current
@@ -67,7 +70,7 @@ fun SearchField(
             .fillMaxWidth()
             // Fixed height prevents the row from growing when text is entered
             .height(46.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+            .background(containerColor, RoundedCornerShape(11.dp))
             // Asymmetric: the magnifier is a button now and wants a real touch
             // target, so it's given the room by pulling the field's own start
             // padding in rather than by pushing the glyph and the text along.

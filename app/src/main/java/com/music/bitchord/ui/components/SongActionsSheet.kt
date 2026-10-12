@@ -176,6 +176,9 @@ fun SongActionsSheet(
      * except the player, where "this track" means something.
      */
     onCopyLog: (() -> Unit)? = null,
+    /** Adds the song to the Home speed dial, or takes it off. Null hides the row. */
+    onToggleSpeedDial: (() -> Unit)? = null,
+    inSpeedDial: Boolean = false,
     /** Opens the timing control offered only by the main player's menu. */
     onLyricsOffset: (() -> Unit)? = null,
     /**
@@ -314,6 +317,16 @@ fun SongActionsSheet(
             accent = palette.accent,
             onClick = onAddToQueue,
         )
+        onToggleSpeedDial?.let {
+            ActionRow(
+                icon = BitChordIcons.Pin,
+                label = stringResource(
+                    if (inSpeedDial) R.string.remove_from_speed_dial else R.string.add_to_speed_dial,
+                ),
+                accent = palette.accent,
+                onClick = it,
+            )
+        }
         when (val id = song.albumId) {
             null -> if (resolvingLinks) {
                 LoadingActionRow(Icons.Rounded.Album, stringResource(R.string.open_album), palette)

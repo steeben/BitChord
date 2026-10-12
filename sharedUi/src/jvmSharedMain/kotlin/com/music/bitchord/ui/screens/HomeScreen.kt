@@ -84,6 +84,7 @@ import com.music.bitchord.ui.components.SignInBanner
 import com.music.bitchord.ui.components.feedMoreSkeleton
 import com.music.bitchord.ui.components.feedSkeleton
 import com.music.bitchord.ui.components.recentlyPlayedSkeleton
+import com.music.bitchord.ui.components.speedDialSkeleton
 import com.music.bitchord.ui.components.heroCardWidth
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.components.trackColumnWidth
@@ -138,6 +139,16 @@ fun HomeScreen(
     leadHero: Boolean = true,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    /** Ids (video or browse) pinned to the speed dial, marked on its tiles. */
+    speedDialPinned: Set<String> = emptySet(),
+    /** Holding the speed dial's heading, to rearrange its pins. */
+    onSpeedDialHeaderLongPress: (() -> Unit)? = null,
+    /**
+     * The saved section layout, for the loading placeholders: whether the speed
+     * dial leads Home, and whether Recents is shown at all.
+     */
+    skeletonSpeedDialFirst: Boolean = false,
+    skeletonShowRecents: Boolean = true,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -171,33 +182,46 @@ fun HomeScreen(
             }
             when (state) {
                 is UiState.Loading -> {
-                    if (recentlyPlayedLoading) {
+                    if (skeletonSpeedDialFirst) speedDialSkeleton()
+                    if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                         // Recents owns the leading layout while its request is
                         // pending, so the feed behind it starts with ordinary
                         // shelf placeholders rather than another hero card.
                         feedSkeleton(firstIsHero = false)
                     } else {
-                        feedSkeleton(firstIsHero = leadHero)
+                        feedSkeleton(firstIsHero = leadHero && !skeletonSpeedDialFirst)
                     }
                 }
                 is UiState.Error -> item {
                     MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
                 }
                 is UiState.Success -> {
-                    if (recentlyPlayedLoading) {
+                    // The speed dial is built partly from Recently played, so
+                    // until that arrives its placeholder holds the top spot,
+                    // rather than swapping to the Recents one and back.
+                    val holdSpeedDial = recentlyPlayedLoading && skeletonSpeedDialFirst
+                    if (holdSpeedDial) {
+                        speedDialSkeleton()
+                    } else if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                     }
                     // The loading skeleton already owns the hero slot. Until
                     // Recently Played lands, every real shelf must retain its
                     // compact-card layout instead of briefly becoming a hero.
                     itemsIndexedShelves(
-                        shelves = state.data,
+                        shelves = if (holdSpeedDial) {
+                            state.data.filterNot { it.title == SPEED_DIAL_SHELF_TITLE }
+                        } else {
+                            state.data
+                        },
                         onItemClick = onItemClick,
                         onItemLongPress = onItemLongPress,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
                         firstIsHero = leadHero && !recentlyPlayedLoading,
+                        speedDialPinned = speedDialPinned,
+                        onSpeedDialHeaderLongPress = onSpeedDialHeaderLongPress,
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
                             AppUi.host.setHomeRecentsViewType(
@@ -246,13 +270,25 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     currentSong: Song?,
     isPlaying: Boolean,
     firstIsHero: Boolean = true,
+    speedDialPinned: Set<String> = emptySet(),
+    onSpeedDialHeaderLongPress: (() -> Unit)? = null,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
 ) {
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            if (index == 0 && shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
+            if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
+                SpeedDialShelf(
+                    shelf = shelf,
+                    pinnedIds = speedDialPinned,
+                    onItemClick = openItem,
+                    onItemLongPress = onItemLongPress,
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                    onHeaderLongPress = onSpeedDialHeaderLongPress,
+                )
+            } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,

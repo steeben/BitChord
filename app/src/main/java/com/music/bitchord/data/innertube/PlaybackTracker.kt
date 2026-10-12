@@ -111,6 +111,7 @@ object PlaybackTracker {
      * a pause/resume does not register a second play.
      */
     fun onPlaying(videoId: String) {
+        com.music.bitchord.data.settings.LastPlayed.record(videoId)
         if (!VIDEO_ID.matches(videoId)) return
         if (Innertube.cookie == null) return
         // A downloaded track plays perfectly well with the radio off — the

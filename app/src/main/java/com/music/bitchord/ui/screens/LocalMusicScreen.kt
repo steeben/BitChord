@@ -83,6 +83,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -103,6 +104,7 @@ import com.music.bitchord.data.settings.LocalMusicSort
 import com.music.bitchord.download.DownloadedCollection
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PlayingAccent
+import com.music.bitchord.ui.components.frostedSurfaceColor
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.hangIntoGutter
 import com.music.bitchord.ui.components.NUMBERED_ROW_DIVIDER_INSET
@@ -176,10 +178,12 @@ fun LocalMusicScreen(
     onDeleteDownloads: ((List<Song>) -> Unit)? = null,
     /** Copies the selected Downloads rows to the WebDAV server; null hides the action. */
     onUploadToWebDav: ((List<Song>) -> Unit)? = null,
+    /** The tab to open on: 0 songs, 1 artists, 2 albums. */
+    initialTab: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     // Which top-level tab is selected.
-    var selectedTab by rememberSaveable { mutableIntStateOf(LOCAL_TAB_SONGS) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab) }
 
     // Narrows whichever tab is showing — songs by title/artist/album, artists
     // and albums by name. Not saved across process death: a filter left on a
@@ -190,11 +194,10 @@ fun LocalMusicScreen(
     } else {
         AppSettings.localMusicSort.collectAsStateWithLifecycle()
     }
-    val viewType by if (isDownloads) {
-        AppSettings.downloadedMusicViewType.collectAsStateWithLifecycle()
-    } else {
-        AppSettings.localMusicViewType.collectAsStateWithLifecycle()
-    }
+    // Each tab keeps its own list/grid choice; a drill-down list follows Songs.
+    val tabViews by com.music.bitchord.data.settings.CustomizationSettings.libraryTabViews
+        .collectAsStateWithLifecycle()
+    val viewType = tabViews.getOrElse(selectedTab) { LibraryViewType.LIST }
     val sortedSongs = remember(songs, sortOrder) { songs.sortedForLibrary(sortOrder) }
     var selectedDownloadIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     // Kept separately from the tracks selected for deletion: different albums
@@ -297,8 +300,7 @@ fun LocalMusicScreen(
             viewType = viewType,
             onViewTypeToggle = {
                 val next = if (viewType == LibraryViewType.GRID) LibraryViewType.LIST else LibraryViewType.GRID
-                if (isDownloads) AppSettings.setDownloadedMusicViewType(next)
-                else AppSettings.setLocalMusicViewType(next)
+                com.music.bitchord.data.settings.CustomizationSettings.setLibraryTabView(selectedTab, next)
             },
             modifier = Modifier.padding(
                 // The same clearance every other page under the frosted bar
@@ -315,7 +317,7 @@ fun LocalMusicScreen(
         // ── Tab row ──────────────────────────────────────────────────────────
         TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = frostedSurfaceColor(MaterialTheme.colorScheme.background),
             contentColor = MaterialTheme.colorScheme.primary,
             indicator = { tabPositions ->
                 TabRowDefaults.SecondaryIndicator(
@@ -388,7 +390,7 @@ fun LocalMusicScreen(
                         label = drillDownLabel ?: "",
                         artworkUrl = drillDownArt,
                         songs = drillDownSongs,
-                        viewType = viewType,
+                        viewType = tabViews.getOrElse(LOCAL_TAB_SONGS) { LibraryViewType.LIST },
                         selectedIds = selectedDownloadIds,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
@@ -564,6 +566,10 @@ private fun SongsTab(
             }
             itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
                 SongRow(
+                    // Transparent so the page's own background shows through;
+                    // the playing row gets a soft glow instead.
+                    rowBackground = Color.Transparent,
+                    modifier = Modifier.playingGlow(song.isSameTrackAs(currentSong)),
                     song = song,
                     selected = song.videoId in selectedIds,
                     isCurrent = song.isSameTrackAs(currentSong),
@@ -1439,6 +1445,10 @@ private fun DrillDownSongList(
             }
             itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
                 SongRow(
+                    // Transparent so the page's own background shows through;
+                    // the playing row gets a soft glow instead.
+                    rowBackground = Color.Transparent,
+                    modifier = Modifier.playingGlow(song.isSameTrackAs(currentSong)),
                     song = song,
                     selected = song.videoId in selectedIds,
                     isCurrent = song.isSameTrackAs(currentSong),
@@ -1486,6 +1496,10 @@ private fun List<Song>.sortedForLibrary(order: LocalMusicSort): List<Song> = whe
         compareByDescending<Song> { it.localDateModifiedSeconds ?: Long.MIN_VALUE }
             .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title },
     )
+    LocalMusicSort.LAST_PLAYED -> sortedWith(
+        compareByDescending<Song> { com.music.bitchord.data.settings.LastPlayed.at(it.videoId) }
+            .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title },
+    )
 }
 
 /**
@@ -1511,7 +1525,7 @@ private fun LocalSearchField(
         modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1628,6 +1642,7 @@ private fun LocalMusicSort.localizedLabel(): String = when (this) {
     LocalMusicSort.TITLE_DESC -> stringResource(R.string.sort_title_descending)
     LocalMusicSort.DATE_ADDED -> stringResource(R.string.sort_date_added)
     LocalMusicSort.DATE_MODIFIED -> stringResource(R.string.sort_date_modified)
+    LocalMusicSort.LAST_PLAYED -> stringResource(R.string.sort_last_played)
 }
 
 /** The Downloads-only replacement for the usual search and sort controls. */
@@ -1646,7 +1661,7 @@ private fun DownloadSelectionBar(
         modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1749,5 +1764,27 @@ private fun SectionHeader(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+
+/** A soft wash of the accent behind the playing row, fading in and out. */
+@Composable
+private fun Modifier.playingGlow(current: Boolean): Modifier {
+    val strength by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (current) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(450),
+        label = "playingGlow",
+    )
+    return this.drawBehind {
+        if (strength > 0f) {
+            drawRect(
+                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    0f to PlayingAccent.copy(alpha = 0.22f * strength),
+                    0.7f to PlayingAccent.copy(alpha = 0.06f * strength),
+                    1f to Color.Transparent,
+                ),
+            )
+        }
     }
 }

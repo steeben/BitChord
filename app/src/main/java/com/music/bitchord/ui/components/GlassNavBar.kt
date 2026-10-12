@@ -50,8 +50,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.music.bitchord.R
+import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.data.settings.MiniPlayerShape
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
@@ -107,6 +110,14 @@ fun GlassNavBar(
     // this shape, and a fresh RoundedCornerShape each pass means a fresh factory
     // lambda, which the tab bar sees as a changed argument and recomposes on.
     val pillShape = remember { RoundedCornerShape(percent = 50) }
+    val shapeChoice by CustomizationSettings.miniPlayerShape.collectAsStateWithLifecycle()
+    val accessoryShape = remember(shapeChoice) {
+        when (shapeChoice) {
+            MiniPlayerShape.CIRCULAR -> RoundedCornerShape(percent = 50)
+            // Concentric with the expanded row's artwork (8dp corner, 8dp padding).
+            MiniPlayerShape.SQUARED -> RoundedCornerShape(16.dp)
+        }
+    }
     val contentColor = glassContentColor()
     val selectedColor = contentColor
     val unselectedColor = contentColor.copy(alpha = 0.65f)
@@ -127,6 +138,7 @@ fun GlassNavBar(
     // A factory, not a value — see the note in FloatingTabBar's header. Each of
     // the three surfaces gets its own glass modifier and so its own shape cache.
     val glassSurface: @Composable () -> Modifier = { Modifier.liquidGlass(shape = pillShape) }
+    val accessoryGlass: @Composable () -> Modifier = { Modifier.liquidGlass(shape = accessoryShape) }
 
     FloatingTabBar(
         selectedTabKey = selectedIndex,
@@ -153,7 +165,7 @@ fun GlassNavBar(
                     onBlockedControl = onBlockedControl,
                     dock = dock,
                     pull = pull,
-                    modifier = accessoryModifier.then(glassSurface()),
+                    modifier = accessoryModifier.then(accessoryGlass()),
                 )
             }
         },
@@ -173,7 +185,7 @@ fun GlassNavBar(
                     onBlockedControl = onBlockedControl,
                     dock = dock,
                     pull = pull,
-                    modifier = accessoryModifier.fillMaxWidth().then(glassSurface()),
+                    modifier = accessoryModifier.fillMaxWidth().then(accessoryGlass()),
                 )
             }
         },
@@ -189,6 +201,7 @@ fun GlassNavBar(
         // Modifier.shadow on top of that is a second offscreen layer and a
         // second shadow render for each of them — three at rest, six mid-fold,
         // paying twice for a shadow you can only see once.
+        shapes = FloatingTabBarDefaults.shapes(accessoryShape = accessoryShape),
         elevations = FloatingTabBarDefaults.elevations(
             inlineElevation = 0.dp,
             expandedElevation = 0.dp,

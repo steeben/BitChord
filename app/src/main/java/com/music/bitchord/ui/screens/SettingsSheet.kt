@@ -39,6 +39,13 @@ import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Brightness4
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CropSquare
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.BubbleChart
+import androidx.compose.material.icons.rounded.UnfoldMore
+import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -81,6 +88,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -138,6 +147,11 @@ import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.ui.components.frostedSurfaceColor
+import com.music.bitchord.data.settings.MiniPlayerShape
+import com.music.bitchord.data.settings.DefaultLibrary
+import com.music.bitchord.data.settings.LibraryStartPage
 import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
@@ -225,6 +239,15 @@ fun SettingsScreen(
     val exportDownloads by AppSettings.exportDownloads.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
+    val miniPlayerShape by CustomizationSettings.miniPlayerShape.collectAsStateWithLifecycle()
+    val startPage by CustomizationSettings.startPage.collectAsStateWithLifecycle()
+    val navTabs by CustomizationSettings.navTabs.collectAsStateWithLifecycle()
+    val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
+    val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
+    val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
+    val ambientBackground by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
+    val ambientFollowsArtwork by CustomizationSettings.ambientFollowsArtwork.collectAsStateWithLifecycle()
+    val defaultLibraryPage by CustomizationSettings.defaultLibraryPage.collectAsStateWithLifecycle()
     val hideSongStatus by AppSettings.hideSongStatus.collectAsStateWithLifecycle()
     val swipeToPlayNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
@@ -386,6 +409,7 @@ fun SettingsScreen(
             onQueryChange = { searchQuery = it },
             onSubmit = {},
             placeholder = stringResource(R.string.settings_search_hint),
+            containerColor = frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant),
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 4.dp),
         )
 
@@ -816,6 +840,46 @@ fun SettingsScreen(
                     onClick = { AppSettings.setLiquidGlass(!liquidGlass) },
                 )
             }
+            val ambientTitle = stringResource(R.string.ambient_background)
+            row(ambientTitle, "background", "colour", "color", "blobs", "gradient") {
+                SettingsRow(
+                    icon = Icons.Rounded.BubbleChart,
+                    title = ambientTitle,
+                    subtitle = stringResource(R.string.ambient_background_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = ambientBackground,
+                            onCheckedChange = CustomizationSettings::setAmbientBackground,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setAmbientBackground(!ambientBackground) },
+                )
+            }
+            if (ambientBackground) {
+                val ambientArtTitle = stringResource(R.string.ambient_follows_artwork)
+                row(ambientArtTitle, "background", "album art", "artwork", "colour", "color") {
+                    SettingsRow(
+                        icon = Icons.Rounded.Palette,
+                        title = ambientArtTitle,
+                        subtitle = stringResource(R.string.ambient_follows_artwork_subtitle),
+                        trailing = {
+                            Switch(
+                                checked = ambientFollowsArtwork,
+                                onCheckedChange = CustomizationSettings::setAmbientFollowsArtwork,
+                                colors = SwitchDefaults.colors(
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            )
+                        },
+                        onClick = { CustomizationSettings.setAmbientFollowsArtwork(!ambientFollowsArtwork) },
+                    )
+                }
+            }
             // Left out where the player won't honour it: a window too wide for
             // the player to fill and too narrow to stand a page beside it keeps
             // the sleeve either way. A docked pane is a phone's width, so it does
@@ -991,6 +1055,169 @@ fun SettingsScreen(
                         onClick = onTranslationLanguage,
                     )
                 }
+            }
+        }
+
+        SearchableSettingsGroup(search, header = stringResource(R.string.layout_settings)) {
+            val miniShapeTitle = stringResource(R.string.mini_player_shape)
+            row(miniShapeTitle, "mini player", "rounded", "square", "pill") {
+                SettingsRow(icon = Icons.Rounded.CropSquare, title = miniShapeTitle)
+                SegmentedControl(
+                    options = listOf(
+                        stringResource(R.string.mini_player_shape_circular),
+                        stringResource(R.string.mini_player_shape_squared),
+                    ),
+                    selectedIndex = MiniPlayerShape.entries.indexOf(miniPlayerShape),
+                    onSelect = { CustomizationSettings.setMiniPlayerShape(MiniPlayerShape.entries[it]) },
+                    modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
+                )
+            }
+            val startScreenTitle = stringResource(R.string.start_screen)
+            row(startScreenTitle, "default", "open", "launch", "tab") {
+                var open by remember { mutableStateOf(false) }
+                Box {
+                    SettingsRow(
+                        icon = Icons.Rounded.Home,
+                        title = startScreenTitle,
+                        subtitle = stringResource(R.string.start_screen_subtitle),
+                        value = startPage.label(),
+                        onClick = { open = true },
+                    )
+                    DropdownMenu(
+                        expanded = open,
+                        onDismissRequest = { open = false },
+                    ) {
+                        CustomizationSettings.visibleNavPages(navTabs).forEach { page ->
+                            DropdownMenuItem(
+                                text = { Text(page.label()) },
+                                trailingIcon = if (page == startPage) {
+                                    { Icon(Icons.Rounded.Check, contentDescription = null) }
+                                } else {
+                                    null
+                                },
+                                onClick = {
+                                    CustomizationSettings.setStartPage(page)
+                                    open = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            val navTabsTitle = stringResource(R.string.nav_bar_tabs)
+            row(navTabsTitle, "navigation", "bar", "tabs", "explore", "playlists", "reorder") {
+                var editing by remember { mutableStateOf(false) }
+                SettingsRow(
+                    icon = Icons.Rounded.Dashboard,
+                    title = navTabsTitle,
+                    subtitle = stringResource(R.string.nav_bar_tabs_subtitle),
+                    trailing = { Chevron() },
+                    onClick = { editing = true },
+                )
+                if (editing) {
+                    ReorderDialog(
+                        title = navTabsTitle,
+                        note = stringResource(R.string.nav_bar_tabs_note),
+                        items = navTabs,
+                        label = { it.label() },
+                        onChange = CustomizationSettings::setNavTabs,
+                        onDismiss = { editing = false },
+                        // At least one tab beside Search stays on.
+                        canDisable = { list, _ -> list.count { it.enabled } > 1 },
+                    )
+                }
+            }
+            val homeSectionsTitle = stringResource(R.string.home_sections)
+            row(homeSectionsTitle, "home", "shelves", "quick picks", "speed dial", "reorder", "hide") {
+                var editing by remember { mutableStateOf(false) }
+                SettingsRow(
+                    icon = Icons.Rounded.ViewAgenda,
+                    title = homeSectionsTitle,
+                    subtitle = stringResource(R.string.home_sections_subtitle),
+                    trailing = { Chevron() },
+                    onClick = { editing = true },
+                )
+                if (editing) {
+                    ReorderDialog(
+                        title = homeSectionsTitle,
+                        note = stringResource(R.string.home_sections_note),
+                        items = homeSections,
+                        label = { it },
+                        onChange = CustomizationSettings::setHomeSections,
+                        onDismiss = { editing = false },
+                    )
+                }
+            }
+            val defaultLibraryTitle = stringResource(R.string.default_library)
+            row(defaultLibraryTitle, "library", "downloads", "local music", "youtube music", "spotify") {
+                var open by remember { mutableStateOf(false) }
+                val links = libraryLinks(signedIn)
+                Box {
+                    SettingsRow(
+                        icon = Icons.Rounded.LibraryMusic,
+                        title = defaultLibraryTitle,
+                        subtitle = stringResource(R.string.default_library_subtitle),
+                        value = defaultLibrary?.title ?: stringResource(R.string.default_library_none),
+                        onClick = { open = true },
+                    )
+                    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.default_library_none)) },
+                            trailingIcon = if (defaultLibrary == null) {
+                                { Icon(Icons.Rounded.Check, contentDescription = null) }
+                            } else {
+                                null
+                            },
+                            onClick = {
+                                CustomizationSettings.setDefaultLibrary(null)
+                                open = false
+                            },
+                        )
+                        links.forEach { link ->
+                            val id = link.item.browseId ?: return@forEach
+                            DropdownMenuItem(
+                                text = { Text(link.item.title) },
+                                trailingIcon = if (defaultLibrary?.browseId == id) {
+                                    { Icon(Icons.Rounded.Check, contentDescription = null) }
+                                } else {
+                                    null
+                                },
+                                onClick = {
+                                    CustomizationSettings.setDefaultLibrary(DefaultLibrary(id, link.item.title))
+                                    open = false
+                                },
+                            )
+                        }
+                    }
+                }
+                val current = defaultLibrary
+                if (current != null && current.browseId.startsWith("local:")) {
+                    SegmentedControl(
+                        options = LibraryStartPage.entries.map { it.label() },
+                        selectedIndex = defaultLibraryPage.ordinal,
+                        onSelect = { CustomizationSettings.setDefaultLibraryPage(LibraryStartPage.entries[it]) },
+                        modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
+                    )
+                }
+            }
+            val keepExpandedTitle = stringResource(R.string.keep_nav_bar_expanded)
+            row(keepExpandedTitle, "navigation", "bar", "minimize", "shrink", "collapse", "scroll") {
+                SettingsRow(
+                    icon = Icons.Rounded.UnfoldMore,
+                    title = keepExpandedTitle,
+                    subtitle = stringResource(R.string.keep_nav_bar_expanded_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = keepNavBarExpanded,
+                            onCheckedChange = CustomizationSettings::setKeepNavBarExpanded,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setKeepNavBarExpanded(!keepNavBarExpanded) },
+                )
             }
         }
 
@@ -1422,6 +1649,41 @@ fun SettingsScreen(
                 .fillMaxWidth()
                 .padding(top = 24.dp, bottom = 8.dp),
         )
+        // This build's own colophon: where it comes from and where its updates are.
+        val forkNotice = stringResource(R.string.fork_notice)
+        val forkReleases = stringResource(R.string.fork_releases)
+        val forkObtainX = stringResource(R.string.fork_obtainx)
+        Text(
+            text = buildAnnotatedString {
+                val linkStyles = TextLinkStyles(
+                    style = SpanStyle(
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                )
+                append(forkNotice)
+                append("\n")
+                withLink(LinkAnnotation.Url(FORK_RELEASES_URL, linkStyles)) {
+                    append(forkReleases)
+                }
+                append("\n\n")
+                append(forkObtainX)
+                append("\n")
+                withLink(LinkAnnotation.Url(OBTAINX_GITHUB_URL, linkStyles)) {
+                    append("GitHub")
+                }
+                append("  ")
+                withLink(LinkAnnotation.Url(OBTAINX_FDROID_URL, linkStyles)) {
+                    append("F-Droid")
+                }
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
+        )
         }
     }
 
@@ -1804,7 +2066,7 @@ internal fun AccountCard(
                     Modifier
                         .padding(horizontal = GROUP_INSET)
                         .clip(GroupShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant))
                 },
             )
             .then(
@@ -2235,7 +2497,7 @@ internal fun SettingsGroup(
             .fillMaxWidth()
             .padding(horizontal = GROUP_INSET)
             .clip(GroupShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)),
     ) {
         content()
     }
@@ -2587,3 +2849,8 @@ internal fun SegmentedControl(
         }
     }
 }
+
+/** This fork's releases, for updates. */
+private const val FORK_RELEASES_URL = "https://github.com/steeben/BitChord/releases"
+private const val OBTAINX_GITHUB_URL = "https://github.com/bikram-agarwal/ObtainX"
+private const val OBTAINX_FDROID_URL = "https://f-droid.org/packages/dev.bikram.obtainx/"

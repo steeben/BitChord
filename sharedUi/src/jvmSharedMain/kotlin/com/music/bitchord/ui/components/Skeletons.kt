@@ -271,6 +271,30 @@ fun LazyListScope.feedSkeleton(shelves: Int = 3, firstIsHero: Boolean = true) {
     }
 }
 
+/** The speed dial's 3x3 grid of tiles while Home loads. */
+fun LazyListScope.speedDialSkeleton() {
+    item(key = "skeleton:speed-dial") {
+        Column(Modifier.padding(bottom = 26.dp)) {
+            SectionHeaderSkeleton(index = 0)
+            Column(
+                modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                repeat(3) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        repeat(3) {
+                            ShimmerBox(
+                                modifier = Modifier.weight(1f).aspectRatio(1f),
+                                shape = RoundedCornerShape(10.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Appended to the feed while a further page of shelves is on its way. */
 fun LazyListScope.feedMoreSkeleton() {
     item(key = "skeleton:more") { ShelfSkeleton() }

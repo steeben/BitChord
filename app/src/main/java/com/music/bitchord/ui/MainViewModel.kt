@@ -61,6 +61,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.BufferOverflow
@@ -86,6 +87,8 @@ import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.StreamChoice
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
+import com.music.bitchord.ui.screens.YT_MUSIC_LIBRARY_BROWSE_ID
+import com.music.bitchord.data.settings.CustomizationSettings
 import com.music.bitchord.ui.screens.matchesSearch
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -943,6 +946,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onResult: (added: Int, alreadyThere: Int, failed: Int) -> Unit = { _, _, _ -> },
     ) {
         if (!requireSignIn() || playlists.isEmpty()) return
+        // Their pages in memory no longer match the account.
+        detailLoadedAt.clear()
         viewModelScope.launch {
             val outcomes = playlists.map { addOne(it, song) }
             onResult(
@@ -1608,6 +1613,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // one at the tail.
         _homePendingShelves.value = 1 + YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.size
         viewModelScope.launch {
+            // The last feed this listener saw, shown at once while the fresh
+            // one is fetched and swapped in behind it.
+            val cached = withContext(Dispatchers.IO) {
+                com.music.bitchord.data.HomeDiskCache.read(getApplication(), identity)
+            }
+            if (cached != null && isCurrentHomeLoad(identity, generation) && _home.value !is UiState.Success) {
+                _home.value = UiState.Success(cached)
+                _homeRecentlyPlayedLoading.value = false
+                _homePendingShelves.value = 0
+                refreshHome(identity)
+                YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
+                    launch {
+                        YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
+                            if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+                        }
+                    }
+                }
+                return@launch
+            }
             launch {
                 try {
                     YtMusicRepository.home()
@@ -2432,6 +2456,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val resolved = browseTypeOf(browseId, type)
+        // Opened recently: shown straight from memory, without asking again.
+        if (cachedDetailFresh(browseId)) {
+            detailPageCache[browseId]?.let { cached ->
+                _detailStack.value += cached
+                return
+            }
+        }
+        if (isCacheableDetail(browseId)) detailLoadedAt[browseId] = System.currentTimeMillis()
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,
@@ -2507,6 +2539,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     else UiState.Success(songs)
                 }
                 browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
+                browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> ytLibraryState()
                 browseId == "local:all" -> {
                     val context = getApplication<Application>()
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
@@ -2706,6 +2739,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     else UiState.Success(songs)
                 }
                 browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
+                browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> ytLibraryState()
                 browseId == "local:all" -> {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
                         UiState.Error(text(R.string.storage_required_read))
@@ -2879,6 +2913,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     AudioCache.cachedSongs().map { it.song }
                         .ifEmpty { error(text(R.string.cached_songs_empty)) }
                 }
+                browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> ytLibraryCache?.let { Result.success(it) }
+                    ?: YtMusicRepository.wholeLibrarySongs().onSuccess { ytLibraryCache = it }
                 browseId == "local:all" -> runCatching {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
                         error(text(R.string.storage_required_read))
@@ -3154,6 +3190,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun clearListenerState(restoreCached: Boolean = false) {
+        ytLibraryCache = null
         _account.value = null
         likedSyncJob?.cancel()
         LikeState.clear()
@@ -3237,4 +3274,104 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun text(id: Int): String = getApplication<Application>().getString(id)
+
+
+    /**
+     * The YouTube Music library folder's songs, held for the life of the app so
+     * reopening it is instant. A held copy is shown straight away and quietly
+     * refreshed behind it.
+     */
+    @Volatile
+    private var ytLibraryCache: List<Song>? = null
+
+    private suspend fun ytLibraryState(): UiState<List<Song>> {
+        ytLibraryCache?.let { cached ->
+            viewModelScope.launch { refreshYtLibraryPage() }
+            return UiState.Success(cached)
+        }
+        return YtMusicRepository.wholeLibrarySongs().fold(
+            onSuccess = { songs ->
+                ytLibraryCache = songs
+                UiState.Success(songs)
+            },
+            onFailure = { UiState.Error(it.friendly()) },
+        )
+    }
+
+    private suspend fun refreshYtLibraryPage() {
+        YtMusicRepository.wholeLibrarySongs().onSuccess { songs ->
+            ytLibraryCache = songs
+            _detailStack.value = _detailStack.value.map {
+                if (it.browseId == YT_MUSIC_LIBRARY_BROWSE_ID) it.copy(songs = UiState.Success(songs)) else it
+            }
+        }
+    }
+
+    /** Fetches the YouTube Music library ahead of time when it is the default library. */
+    fun prefetchDefaultLibrary() {
+        if (!_signedIn.value || ytLibraryCache != null) return
+        if (CustomizationSettings.defaultLibrary.value?.browseId != YT_MUSIC_LIBRARY_BROWSE_ID) return
+        viewModelScope.launch {
+            YtMusicRepository.wholeLibrarySongs().onSuccess { ytLibraryCache = it }
+        }
+    }
+
+
+    // ── Page memory ─────────────────────────────────────────────────────
+    //
+    // Album and playlist pages, as last seen, kept for a while so reopening one
+    // (a speed dial pin, say) is instant. Updated from the page stack as it
+    // changes, so likes, removals and the rest of a long list being filled in
+    // are all in the copy.
+
+    private val detailPageCache = object : LinkedHashMap<String, DetailPage>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DetailPage>?): Boolean =
+            size > DETAIL_CACHE_SIZE
+    }
+    private val detailLoadedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private fun isCacheableDetail(browseId: String): Boolean =
+        !browseId.startsWith("local:") && !browseId.startsWith(SPOTIFY_PAGE_PREFIX) &&
+            !browseId.startsWith("app:") &&
+            com.music.bitchord.data.spotify.LocalPlaylistStore.getPlaylist(browseId) == null
+
+    private fun cachedDetailFresh(browseId: String): Boolean {
+        val at = detailLoadedAt[browseId] ?: return false
+        return System.currentTimeMillis() - at < DETAIL_CACHE_TTL_MS && detailPageCache.containsKey(browseId)
+    }
+
+    init {
+        viewModelScope.launch {
+            _detailStack.collect { pages ->
+                pages.forEach { page ->
+                    if (page.songs is UiState.Success && isCacheableDetail(page.browseId)) {
+                        synchronized(detailPageCache) { detailPageCache[page.browseId] = page }
+                    }
+                }
+            }
+        }
+    }
+
+    // Keeps the disk copy of Home current: written once a load has settled,
+    // so the next launch opens on it. See [HomeDiskCache].
+    init {
+        viewModelScope.launch {
+            combine(_home, _homePendingShelves, _homeRecentlyPlayedLoading) { home, pending, recents ->
+                Triple(home, pending, recents)
+            }.collectLatest { (home, pending, recents) ->
+                if (home !is UiState.Success || pending != 0 || recents) return@collectLatest
+                delay(HOME_CACHE_WRITE_DELAY_MS)
+                val listener = listenerKey()
+                withContext(Dispatchers.IO) {
+                    com.music.bitchord.data.HomeDiskCache.write(getApplication(), listener, home.data)
+                }
+            }
+        }
+    }
+
 }
+
+private const val HOME_CACHE_WRITE_DELAY_MS = 2_000L
+
+private const val DETAIL_CACHE_SIZE = 40
+private const val DETAIL_CACHE_TTL_MS = 30 * 60 * 1000L

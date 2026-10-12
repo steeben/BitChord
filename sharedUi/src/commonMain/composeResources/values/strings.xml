@@ -98,6 +98,7 @@
     <string name="more">More</string>
     <string name="next_from">Next from: %1$s</string>
     <string name="next_in_queue">Next in queue</string>
+    <string name="previously_played">Previously played</string>
     <string name="no_lyrics_for_track">No lyrics for this track</string>
     <string name="no_lyrics_found">No lyrics found</string>
     <string name="now_playing">Now playing</string>

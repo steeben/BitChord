@@ -41,6 +41,8 @@ fun SpotifyCanvasAuthScreen(
     val currentToken by AppSettings.spotifySpdcToken.collectAsStateWithLifecycle()
     val autoHidePlayer by AppSettings.spotifyCanvasAutoHide.collectAsStateWithLifecycle()
     val prioritizeSpotify by AppSettings.prioritizeSpotifyCanvas.collectAsStateWithLifecycle()
+    val compactControls by com.music.bitchord.data.settings.CustomizationSettings.compactCanvasControls
+        .collectAsStateWithLifecycle()
     var tokenInput by remember(currentToken) { mutableStateOf(currentToken) }
 
     Scaffold(
@@ -76,6 +78,13 @@ fun SpotifyCanvasAuthScreen(
                 subtitle = stringResource(R.string.spotify_canvas_auto_hide_subtitle),
                 checked = autoHidePlayer,
                 onCheckedChange = AppSettings::setSpotifyCanvasAutoHide,
+            )
+
+            SpotifyCanvasSettingToggle(
+                title = stringResource(R.string.spotify_canvas_compact_controls),
+                subtitle = stringResource(R.string.spotify_canvas_compact_controls_subtitle),
+                checked = compactControls,
+                onCheckedChange = com.music.bitchord.data.settings.CustomizationSettings::setCompactCanvasControls,
             )
 
             SpotifyCanvasSettingToggle(

@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -123,6 +125,7 @@ import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -228,6 +231,46 @@ private val ART_TITLE_GAP = 20.dp
  * Only the toggle, which travels end to end, ever spends all of it.
  */
 private const val QUEUE_TRAVEL_MS = 420
+
+/** How long a Canvas can drop its picture before the player stops presenting it. */
+private const val CANVAS_DROP_GRACE_MS = 1_200L
+
+/** How much smaller the transport and the action row get under an open queue. */
+private const val COMPACT_TRANSPORT_SHRINK = 0.3f
+/** How far a swipe down over the controls has to go to put the lyrics away. */
+private val PANEL_CLOSE_DRAG = 56.dp
+
+/** How far a swipe down over the controls travels to carry the queue all the way out. */
+private val QUEUE_CLOSE_TRAVEL = 320.dp
+
+private const val COMPACT_ACTIONS_SHRINK = 0.12f
+
+/** Lays this out scaled by [scale], taking only the scaled height, shrunk from its top centre. */
+private fun Modifier.shrinkBy(scale: () -> Float): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val s = scale().coerceIn(0f, 1f)
+    layout(placeable.width, (placeable.height * s).roundToInt()) {
+        placeable.placeWithLayer(0, 0) {
+            scaleX = s
+            scaleY = s
+            transformOrigin = TransformOrigin(0.5f, 0f)
+        }
+    }
+}
+
+/** Folds this away to no height as [fraction] runs from 0 to 1, fading as it goes. */
+private fun Modifier.collapseBy(slide: Boolean = false, fraction: () -> Float): Modifier = clipToBounds()
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val f = fraction().coerceIn(0f, 1f)
+        layout(placeable.width, (placeable.height * (1f - f)).roundToInt()) {
+            placeable.placeWithLayer(0, 0) {
+                alpha = 1f - f
+                // Sliding: the content drops out of its slot rather than fading in place.
+                if (slide) translationY = placeable.height * f
+            }
+        }
+    }
 /**
  * How far up the sleeve has to have been dragged for a release to carry on
  * opening the queue rather than falling back, as a share of the sleeve's travel.
@@ -791,6 +834,7 @@ fun NowPlayingScreen(
     // CanvasRepository, which is also where the "is this actually the right
     // track" check lives.
     val spotifyCanvasAutoHide by PlayerSettings.spotifyCanvasAutoHide.collectAsStateWithLifecycle()
+    val compactCanvasControls by PlayerSettings.compactCanvasControls.collectAsStateWithLifecycle()
     val mixing by PlayerSettings.smartMixInProgress.collectAsStateWithLifecycle()
     val canvas = rememberCanvasArtwork(song)
     var canvasAspect by remember(canvas) { mutableFloatStateOf(0f) }
@@ -861,6 +905,7 @@ fun NowPlayingScreen(
         mutableStateOf(restoredPlayerScreen == LastPlayerScreen.LYRICS)
     }
     val queueSlide = remember { mutableFloatStateOf(0f) }
+    val queueRecenter = remember { QueueRecenter() }
     // Expensive, song-scoped preparation is deliberately staggered. The small
     // backdrop decode runs after the track hand-off has settled; lyrics and
     // queue are then composed offscreen on separate beats rather than all three
@@ -1065,6 +1110,24 @@ fun NowPlayingScreen(
         ) { value, _ -> queueSlide.floatValue = value }
     }
 
+    // 0 = full-size controls, 1 = the smaller controls under an open queue. It
+    // follows the finger while the queue is being dragged and eases otherwise,
+    // including on the way to lyrics, where the controls are full size again.
+    // Read only in layout and draw lambdas.
+    val queueCompact = remember {
+        Animatable(if (restoredPlayerScreen == LastPlayerScreen.MAIN) 0f else 1f)
+    }
+    LaunchedEffect(queueOpen, lyricsOpen, queueDragging, queueReleased) {
+        if (queueDragging && !lyricsOpen) {
+            snapshotFlow { queueSlide.floatValue }.collect { queueCompact.snapTo(it) }
+        } else {
+            queueCompact.animateTo(
+                targetValue = if (queueOpen || lyricsOpen) 1f else 0f,
+                animationSpec = tween(QUEUE_TRAVEL_MS, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
     // Horizontal fling anywhere on the player skips tracks; the artwork
     // follows the finger so the gesture has something to hold on to.
     val swipeThreshold = with(density) { 72.dp.toPx() }
@@ -1258,7 +1321,33 @@ fun NowPlayingScreen(
     val heroClip = canvas?.takeIf { heroMode && !collapsePastHalf }
     val spotifyCanvasFullscreen = spotifyCanvasOnPhone &&
         heroClip?.source == CanvasSource.SPOTIFY
-    val spotifyCanvasPresentation = spotifyCanvasFullscreen && canvasRendered
+    // The clip's decoder can report a missed frame for a moment and then carry
+    // on. Followed straight away, that flipped the whole Canvas layout off and
+    // back on, which looked like a flicker; a short grace period rides it out.
+    var canvasPresented by remember(canvas?.url) { mutableStateOf(false) }
+    LaunchedEffect(canvasRendered) {
+        if (canvasRendered) {
+            canvasPresented = true
+        } else {
+            delay(CANVAS_DROP_GRACE_MS)
+            canvasPresented = false
+        }
+    }
+    val spotifyCanvasPresentation = spotifyCanvasFullscreen && canvasPresented
+    // With "keep controls visible" on, a Canvas that would have hidden the
+    // controls shrinks them to the foot of the screen instead: the song, its
+    // live lyric and the transport stay, and everything else slides away.
+    val canvasCompactMode = compactCanvasControls && spotifyCanvasPresentation &&
+        !spotifyCanvasControlsOpen && !lyricsOpen && !queueOpen
+    val canvasCompact = animateFloatAsState(
+        targetValue = if (canvasCompactMode) 1f else 0f,
+        animationSpec = tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS, easing = FastOutSlowInEasing),
+        label = "canvasCompact",
+    )
+    val canvasCompactAtRest by remember { derivedStateOf { canvasCompact.value == 0f } }
+    // How compact the control deck is: under the queue and lyrics, or over a
+    // Canvas in the mode above. Read only in layout and draw lambdas.
+    val deckCompact: () -> Float = { maxOf(queueCompact.value, canvasCompact.value) }
     val canvasFirstPortrait = !spotifyCanvasFullscreen &&
         heroClip != null && canvasAspect > 0f && canvasAspect < 1f
     // The clip's player, which outlives [heroClip] by the second half of a
@@ -1338,7 +1427,7 @@ fun NowPlayingScreen(
         label = "heroCanvas",
     )
     val spotifyChromeAlpha by animateFloatAsState(
-        targetValue = if (!spotifyCanvasPresentation || spotifyCanvasControlsOpen) 1f else 0f,
+        targetValue = if (!spotifyCanvasPresentation || spotifyCanvasControlsOpen || canvasCompactMode) 1f else 0f,
         animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "spotifyCanvasChrome",
     )
@@ -1401,6 +1490,9 @@ fun NowPlayingScreen(
     // either.
     var dismissBandTop by remember { mutableFloatStateOf(0f) }
     var dismissBandBottom by remember { mutableFloatStateOf(0f) }
+    // Where the control deck starts on screen, for the swipe down over it that
+    // puts the queue or the lyrics away.
+    var deckTop by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     // The suppressing Column's own coordinates, to put a pointer's local
     // position into the same space as the two edges above.
     var dismissBandSpace by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -1474,7 +1566,10 @@ fun NowPlayingScreen(
     // Lyrics, output and queue, with the output name under them — the row both
     // layouts end on, and the only thing in the landscape player's left column
     // besides the sleeve.
-    val playerActions: @Composable () -> Unit = {
+    // Its own column, so the caption stays under the row wherever it is placed.
+    // [captionCollapse] folds the caption away (0 = shown, 1 = gone).
+    val playerActions: @Composable (captionCollapse: () -> Float) -> Unit = { captionCollapse ->
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
         PlayerActionRow(
             lyricsOpen = lyricsOpen,
             queueOpen = queueOpen,
@@ -1490,18 +1585,22 @@ fun NowPlayingScreen(
             onListenTogether = onListenTogether,
             onOpenListenTogetherMembers = openListenTogetherMembers,
         )
-        // Keep the current output caption visible in every state.
-        Spacer(Modifier.height(18.dp))
-        Box(
-            modifier = Modifier.fillMaxWidth().height(20.dp),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            OutputCaption(
-                accountName = accountName,
-                onOpenOutput = openAudioOutput,
-                onOpenMembers = openListenTogetherMembers,
-            )
+        // Keep the current output caption visible in every state but the
+        // compact controls under the queue and lyrics.
+        Column(Modifier.collapseBy { captionCollapse() }) {
+            Spacer(Modifier.height(18.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().height(20.dp),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                OutputCaption(
+                    accountName = accountName,
+                    onOpenOutput = openAudioOutput,
+                    onOpenMembers = openListenTogetherMembers,
+                )
+            }
         }
+      }
     }
 
     // The drawers and dialogs the player raises over itself. Mounted by
@@ -1643,6 +1742,14 @@ fun NowPlayingScreen(
     // the trip, as for the collapse into the lyrics or the queue; a paused
     // clip keeps its last frame, so nothing blinks.
     val dockMoving by remember { derivedStateOf { docking() } }
+    // The strip at the top — handle, "Playing from" and the scrim behind them —
+    // sits under the artwork while it flies in, and would otherwise appear all
+    // at once the moment it lands. Faded in once the player has arrived.
+    val topChromeIn = animateFloatAsState(
+        targetValue = if (dockMoving) 0f else 1f,
+        animationSpec = tween(durationMillis = if (dockMoving) 0 else 260, easing = FastOutSlowInEasing),
+        label = "topChromeIn",
+    )
     // The rest of the player gets out of the way a little ahead of the artwork,
     // so the cover lands on the bar rather than on a ghost of the player.
     val dockFade: () -> Float = { ((dockT() - DOCK_FADE_LEAD) / (1f - DOCK_FADE_LEAD)).coerceIn(0f, 1f) }
@@ -1852,7 +1959,7 @@ fun NowPlayingScreen(
                         )
                     }
                 },
-                actions = playerActions,
+                actions = { playerActions { 0f } },
                 mainPane = { compact ->
                     LandscapeMainPane(
                         compact = compact,
@@ -2202,11 +2309,12 @@ fun NowPlayingScreen(
         // above the video. When the deck slides away this layer leaves with
         // it as well.
         AnimatedVisibility(
-            visible = spotifyCanvasPresentation && spotifyCanvasControlsOpen,
+            visible = spotifyCanvasPresentation && (spotifyCanvasControlsOpen || canvasCompactMode),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.56f),
+                // Shorter behind the compact controls, so more of the clip shows.
+                .fillMaxHeight(0.56f - 0.24f * canvasCompact.value),
             enter = fadeIn(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)) + playerDeckSlideIn(),
             exit = fadeOut(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)) + playerDeckSlideOut(),
         ) {
@@ -2274,7 +2382,11 @@ fun NowPlayingScreen(
         // under it: the deck's blur samples the video layer itself, so a dim
         // beneath it never reached the glass and the deck stayed bright.
         val spotifyCanvasDim = animateFloatAsState(
-            targetValue = if (spotifyCanvasPresentation && spotifyCanvasControlsOpen) 0.5f else 0f,
+            targetValue = when {
+                spotifyCanvasPresentation && spotifyCanvasControlsOpen -> 0.5f
+                canvasCompactMode -> 0.15f
+                else -> 0f
+            },
             animationSpec = tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS),
             label = "spotifyCanvasDim",
         )
@@ -2324,6 +2436,7 @@ fun NowPlayingScreen(
                             drawRect(
                                 brush = topScrimBrush,
                                 size = Size(size.width, size.height + above),
+                                alpha = topChromeIn.value,
                             )
                         }
                     },
@@ -2348,7 +2461,7 @@ fun NowPlayingScreen(
                         }
                         .width(38.dp)
                         .height(5.dp)
-                        .graphicsLayer { alpha = spotifyChromeAlpha }
+                        .graphicsLayer { alpha = spotifyChromeAlpha * topChromeIn.value }
                         .shadow(2.dp, RoundedCornerShape(3.dp), clip = false)
                         .clip(RoundedCornerShape(3.dp))
                         .background(Color.White.copy(alpha = 0.70f)),
@@ -2366,7 +2479,7 @@ fun NowPlayingScreen(
                             contentPadding = PaddingValues(start = PLAYER_GUTTER, end = PLAYER_GUTTER, bottom = 1.dp),
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .graphicsLayer { alpha = (1f - p()) * spotifyChromeAlpha },
+                                .graphicsLayer { alpha = (1f - p()) * spotifyChromeAlpha * topChromeIn.value },
                         )
                     }
                 }
@@ -2455,15 +2568,75 @@ fun NowPlayingScreen(
                             // about to hand it back to the list under the
                             // finger. Holding it here would strand that list
                             // mid-handback, and the list would never scroll.
-                            if (down.isConsumed) return@awaitEachGesture
-                            // What detectVerticalDragGestures does, minus the
-                            // callbacks: cross the slop, then hold the gesture
-                            // to the end so nothing downstream of the first
-                            // event reaches the sheet either.
-                            val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, _ ->
-                                change.consume()
+                            // A button takes its press too, and a swipe that
+                            // starts on one should still move the panels, so
+                            // only a press over the panel's own list is left
+                            // alone. A tap is still the button's: nothing here
+                            // moves until the finger crosses the drag slop.
+                            if (down.isConsumed && panelUp && y < deckTop) return@awaitEachGesture
+                            // With the queue or lyrics up, a swipe down over the
+                            // controls puts the panel away again.
+                            val deckShown = (queueOpen && queueControlsOpen) ||
+                                (lyricsOpen && lyricsControlsOpen)
+                            if (panelUp && deckShown && y >= deckTop) {
+                                val closingQueue = queueOpen
+                                dragPanelClosed(
+                                    down = down,
+                                    travel = if (closingQueue) QUEUE_CLOSE_TRAVEL.toPx() else 0f,
+                                    slide = if (closingQueue) queueSlide else null,
+                                    threshold = PANEL_CLOSE_DRAG.toPx(),
+                                    onHold = { if (closingQueue) queueDragging = it },
+                                    onSettle = { open ->
+                                        if (!open) {
+                                            haptics.play(Haptic.Tap)
+                                            if (closingQueue) queueOpen = false else closeLyrics()
+                                        }
+                                        if (closingQueue) queueReleased++
+                                    },
+                                )
+                                return@awaitEachGesture
                             }
-                            if (drag != null) verticalDrag(drag.id) { it.consume() }
+                            // On the main player, everywhere behaves as the
+                            // artwork does: up pulls the queue in, and down is
+                            // left for the sheet, so the player comes down from
+                            // the controls as well.
+                            if (!panelUp) {
+                                dragQueueIn(
+                                    down = down,
+                                    travel = dismissBandBottom - dismissBandTop - HEADER_HEIGHT.toPx(),
+                                    slide = queueSlide,
+                                    onHold = { queueDragging = it },
+                                    onSettle = { open ->
+                                        if (open != queueOpen) {
+                                            haptics.play(if (open) Haptic.Expand else Haptic.Tap)
+                                            if (open) queueControlsOpen = true
+                                            queueOpen = open
+                                        }
+                                        queueReleased++
+                                    },
+                                )
+                                return@awaitEachGesture
+                            }
+                            // With a panel up, any other vertical drag is held to
+                            // the end so nothing downstream of it reaches the sheet.
+                            dragQueueInElseHold(
+                                down = down,
+                                travel = if (panelUp) {
+                                    0f
+                                } else {
+                                    dismissBandBottom - dismissBandTop - HEADER_HEIGHT.toPx()
+                                },
+                                slide = queueSlide,
+                                onHold = { queueDragging = it },
+                                onSettle = { open ->
+                                    if (open != queueOpen) {
+                                        haptics.play(if (open) Haptic.Expand else Haptic.Tap)
+                                        if (open) queueControlsOpen = true
+                                        queueOpen = open
+                                    }
+                                    queueReleased++
+                                },
+                            )
                         }
                     }
                     .padding(horizontal = PLAYER_GUTTER),
@@ -2568,7 +2741,9 @@ fun NowPlayingScreen(
                 // The panels asked about first, so a collapse on its way in
                 // — whose sleeve leaves rest on its first frame — isn't
                 // listened for here at all.
-                if (!lyricsOpen && !queueOpen && !queueDragging && collapseAtRest && controlDeckIsMeasured) {
+                if (!lyricsOpen && !queueOpen && !queueDragging && collapseAtRest && controlDeckIsMeasured &&
+                    !canvasCompactMode && canvasCompactAtRest
+                ) {
                     val target = with(density) {
                         val half = slack
                             .coerceAtMost(CONTROL_GAP_SPREAD_MAX * 2)
@@ -2624,12 +2799,19 @@ fun NowPlayingScreen(
                 } else {
                     null
                 }
-                fun currentTitleTop(): Dp = spotifyTitleRange?.let { collapsedTitleTop ->
-                    // Read in the placement lambda below. This invalidates only
-                    // placement, not composition or measurement, and keeps the
-                    // credits on the deck's exact reveal frame.
-                    lerp(collapsedTitleTop, regularTitleTop(), playerDeckReveal.value)
-                } ?: regularTitleTop()
+                fun currentTitleTop(): Dp = (
+                    spotifyTitleRange?.let { collapsedTitleTop ->
+                        // Read in the placement lambda below. This invalidates only
+                        // placement, not composition or measurement, and keeps the
+                        // credits on the deck's exact reveal frame.
+                        lerp(collapsedTitleTop, regularTitleTop(), playerDeckReveal.value)
+                    } ?: regularTitleTop()
+                    ).let { top ->
+                    // Compact Canvas controls: the credits sit straight on top
+                    // of the shrunken deck.
+                    val compactTop = (maxHeight - HEADER_HEIGHT).coerceAtLeast(0.dp)
+                    lerp(top, compactTop, canvasCompact.value)
+                }
                 fun titleStart(): Dp = lerp(0.dp, THUMB_SIZE + 12.dp, p())
 
                 // How far down the *screen* the sleeve's bottom edge sits, which
@@ -2835,7 +3017,16 @@ fun NowPlayingScreen(
                             // is no clip mounted to hand it to. The clip is gone
                             // by the collapse's half, so the sleeve is whole
                             // again by the time it unmounts.
-                            alpha = if (heroClip != null) 1f - canvasCover.floatValue else 1f
+                            // Held nearly opaque until the clip under it has
+                            // all but finished fading in: both fading at once
+                            // let the dark backdrop show through mid-way, which
+                            // read as a flicker between the art and the clip.
+                            alpha = if (heroClip != null) {
+                                val cover = canvasCover.floatValue
+                                1f - cover * cover * cover * cover
+                            } else {
+                                1f
+                            }
                         }
                         .graphicsLayer {
                             val shown = sleeveShown()
@@ -3062,6 +3253,10 @@ fun NowPlayingScreen(
                         .then(
                             if (queueOpen || lyricsOpen) {
                                 Modifier.clickable {
+                                    // Over the queue, a first tap takes the list
+                                    // back to where it opened; tapped there, it
+                                    // puts the queue away as before.
+                                    if (queueOpen && queueRecenter.action?.invoke() == true) return@clickable
                                     queueOpen = false
                                     closeLyrics()
                                 }
@@ -3241,6 +3436,16 @@ fun NowPlayingScreen(
                             }
                         }
                     }
+                    // Out of the way under the compact Canvas controls, back
+                    // with the full ones.
+                    AnimatedVisibility(
+                        visible = !canvasCompactMode,
+                        enter = fadeIn(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)) +
+                            expandHorizontally(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)),
+                        exit = fadeOut(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)) +
+                            shrinkHorizontally(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)),
+                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
                     // Beside the credits rather than down in the toggle row:
                     // liking is about *this song*, and the row below is about
@@ -3266,6 +3471,8 @@ fun NowPlayingScreen(
                         contentDescription = stringResource(Res.string.more),
                         onClick = onOpenMenu,
                     )
+                    }
+                    }
                 }
 
                 // [lyricsOpen] asked first: a close has already hidden the
@@ -3427,6 +3634,9 @@ fun NowPlayingScreen(
                             collapsePlayerOnScroll = true,
                             onRevealPlayer = { queueControlsOpen = true },
                             onHidePlayer = { queueControlsOpen = false },
+                            // The header above the list is the playing track.
+                            showNowPlaying = false,
+                            recenter = queueRecenter,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -3446,7 +3656,7 @@ fun NowPlayingScreen(
                 visible = !lyricPicker.picking &&
                     (!lyricsOpen || lyricsControlsOpen) &&
                     (!queueOpen || queueControlsOpen) &&
-                    (!spotifyCanvasPresentation || spotifyCanvasControlsOpen || mixing),
+                    (!spotifyCanvasPresentation || spotifyCanvasControlsOpen || mixing || canvasCompactMode),
                 reveal = playerDeckReveal,
                 // Back to the main player from lyrics or the queue with the
                 // deck stood down: the sleeve is about to come back out, so
@@ -3457,8 +3667,12 @@ fun NowPlayingScreen(
             ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.onSizeChanged { size ->
-                    if (spotifyCanvasPresentation) {
+                modifier = Modifier
+                    .onGloballyPositioned { deckTop = it.boundsInRoot().top }
+                    .onSizeChanged { size ->
+                    // Only the full deck's height: the compact one is not
+                    // where the credits go when the deck leaves.
+                    if (spotifyCanvasPresentation && !canvasCompactMode && canvasCompactAtRest) {
                         val measuredHeight = with(density) { size.height.toDp() }
                         if (measuredHeight != spotifyCanvasDeckHeight) {
                             spotifyCanvasDeckHeight = measuredHeight
@@ -3522,6 +3736,8 @@ fun NowPlayingScreen(
                 )
             }
             val transitionWindow by PlayerSettings.smartTransitionWindow.collectAsStateWithLifecycle()
+            // Folded away with the compact Canvas controls.
+            Box(Modifier.collapseBy { canvasCompact.value }) {
             PlayerScrubber(
                 shown = shown,
                 durationMs = durationMs,
@@ -3545,46 +3761,55 @@ fun NowPlayingScreen(
                         .padding(horizontal = 8.dp),
                 )
             }
+            }
 
             // The transport rides midway between the two blocks it separates:
             // the scrubber above it, and the volume bar and toggle row below,
             // which sit close enough together to read as one. Both of its own
             // gaps take half the spread, so on a tall screen it holds the
             // centre rather than drifting up under the seek bar.
-            Spacer(Modifier.height(8.dp + controlSpread / 2))
+            // With the queue open the controls shrink and their gaps close up,
+            // and the volume bar folds away, so the queue gets the room.
+            Spacer(Modifier.height(8.dp + controlSpread / 2).collapseBy { deckCompact() })
 
-            TransportRow(
-                isPlaying = isPlaying,
-                isLoading = isLoading || audioVersionSwitching,
-                previousEnabled = !controlsLocked &&
-                    (hasPrevious || pastRestartPoint),
-                nextEnabled = !controlsLocked && hasNext,
-                onPrevious = onPrevious,
-                onPlayPause = onPlayPause,
-                onNext = onNext,
-            )
-
-            // Keep the volume slot's full footprint when its contents are
-            // hidden. Removing the slot itself shortened the controls by 50dp
-            // and moved every control below it. A display preference should not
-            // change the half-player's geometry.
-            Spacer(Modifier.height(12.dp + controlSpread / 2))
-
-            if (!hideVolumeBar) {
-                VolumeRow(
-                    value = { volume.level.value },
-                    onValueChange = onVolumeChange,
-                    onValueChangeFinished = onVolumeChangeFinished,
+            Box(Modifier.shrinkBy { 1f - COMPACT_TRANSPORT_SHRINK * deckCompact() }) {
+                TransportRow(
+                    isPlaying = isPlaying,
+                    isLoading = isLoading || audioVersionSwitching,
+                    previousEnabled = !controlsLocked &&
+                        (hasPrevious || pastRestartPoint),
+                    nextEnabled = !controlsLocked && hasNext,
+                    onPrevious = onPrevious,
+                    onPlayPause = onPlayPause,
+                    onNext = onNext,
                 )
-            } else {
-                Spacer(Modifier.height(VOLUME_ROW_HEIGHT))
+            }
+
+            Spacer(Modifier.height(12.dp + controlSpread / 2).collapseBy { deckCompact() })
+
+            // Hidden in Settings, the volume bar takes no room at all: the
+            // artwork and the gaps above take up the height instead.
+            if (!hideVolumeBar) {
+                Box(Modifier.collapseBy { deckCompact() }) {
+                    VolumeRow(
+                        value = { volume.level.value },
+                        onValueChange = onVolumeChange,
+                        onValueChangeFinished = onVolumeChangeFinished,
+                    )
+                }
             }
 
             // The volume slider already has 13dp below its drawn track.
             // Balance that invisible inset with the caption gap below the icons.
             Spacer(Modifier.height(6.dp))
 
-            playerActions()
+            Box(
+                Modifier
+                    .collapseBy(slide = true) { canvasCompact.value }
+                    .shrinkBy { 1f - COMPACT_ACTIONS_SHRINK * deckCompact() },
+            ) {
+                playerActions(deckCompact)
+            }
             Spacer(Modifier.height(18.dp))
             }
             }
@@ -3639,7 +3864,75 @@ private suspend fun AwaitPointerEventScope.dragQueueIn(
         }
     }
     if (drag == null || pulled <= 0f) return
+    followQueueDrag(drag, pulled, travel, slide, onHold, onSettle)
+}
 
+/**
+ * [dragQueueIn] for the rest of the player, where a downward drag doesn't close
+ * the sheet: every vertical drag is consumed, and only an upward one moves the
+ * queue. A [travel] under a pixel (a panel already up) just holds the drag.
+ */
+private suspend fun AwaitPointerEventScope.dragQueueInElseHold(
+    down: PointerInputChange,
+    travel: Float,
+    slide: MutableFloatState,
+    onHold: (Boolean) -> Unit,
+    onSettle: (Boolean) -> Unit,
+) {
+    var pulled = 0f
+    val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
+        change.consume()
+        if (overSlop < 0f) pulled = -overSlop
+    } ?: return
+    if (pulled <= 0f || travel < 1f) {
+        verticalDrag(drag.id) { it.consume() }
+        return
+    }
+    followQueueDrag(drag, pulled, travel, slide, onHold, onSettle)
+}
+
+/**
+ * A swipe down over the controls while a panel is up. With [slide] (the queue)
+ * the queue follows the finger back out, exactly as it came in; without it (the
+ * lyrics) a drag of [threshold] or more is enough. Upward drags are just held.
+ */
+private suspend fun AwaitPointerEventScope.dragPanelClosed(
+    down: PointerInputChange,
+    travel: Float,
+    slide: MutableFloatState?,
+    threshold: Float,
+    onHold: (Boolean) -> Unit,
+    onSettle: (Boolean) -> Unit,
+) {
+    var pushed = 0f
+    val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
+        change.consume()
+        if (overSlop > 0f) pushed = overSlop
+    } ?: return
+    if (pushed <= 0f) {
+        verticalDrag(drag.id) { it.consume() }
+        return
+    }
+    if (slide != null && travel >= 1f) {
+        followQueueDrag(drag, travel - pushed, travel, slide, onHold, onSettle)
+        return
+    }
+    verticalDrag(drag.id) { change ->
+        pushed += change.positionChange().y
+        change.consume()
+    }
+    onSettle(pushed < threshold)
+}
+
+private suspend fun AwaitPointerEventScope.followQueueDrag(
+    drag: PointerInputChange,
+    initialPull: Float,
+    travel: Float,
+    slide: MutableFloatState,
+    onHold: (Boolean) -> Unit,
+    onSettle: (Boolean) -> Unit,
+) {
+    var pulled = initialPull
     onHold(true)
     val velocity = VelocityTracker()
     velocity.addPointerInputChange(drag)

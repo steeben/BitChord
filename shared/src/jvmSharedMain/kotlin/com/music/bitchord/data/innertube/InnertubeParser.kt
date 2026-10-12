@@ -615,6 +615,11 @@ object InnertubeParser {
                 .o("watchEndpoint").s("videoId")
             ?: return null
 
+        // An upload plays only for its owner, through authenticated clients —
+        // see [UploadedTracks]. Noted here, where the row's menu and endpoint
+        // that say so are still in hand.
+        if (renderer.isPrivateUpload()) UploadedTracks.mark(videoId)
+
         val columns = renderer.a("flexColumns").orEmpty()
         val title = columns.getOrNull(0)
             .o("musicResponsiveListItemFlexColumnRenderer").o("text").runs()
@@ -1486,6 +1491,26 @@ private fun JsonElement?.findString(key: String): String? = when (this) {
     is JsonArray -> firstNotNullOfOrNull { it.findString(key) }
     else -> null
 }
+
+/** Whether [key] appears as an object key anywhere in the subtree. */
+private fun JsonElement?.hasKey(key: String): Boolean = when (this) {
+    is JsonObject -> containsKey(key) || values.any { it.hasKey(key) }
+    is JsonArray -> any { it.hasKey(key) }
+    else -> false
+}
+
+/**
+ * Whether a track row says it is one of the signed-in user's own uploads.
+ *
+ * Two markers, either of which is enough. An upload's menu offers deleting it,
+ * which is a `musicDeletePrivatelyOwnedEntityCommand` — nothing else carries
+ * one. And its play endpoint names its `musicVideoType` as a privately owned
+ * track, which also holds on pages that show uploads without a delete menu,
+ * such as a playlist the user added them to.
+ */
+private fun JsonObject.isPrivateUpload(): Boolean =
+    hasKey("musicDeletePrivatelyOwnedEntityCommand") ||
+        findString("musicVideoType")?.contains("PRIVATELY_OWNED", ignoreCase = true) == true
 
 private fun JsonElement?.runs(): String =
     this.a("runs")?.joinToString("") { it.s("text").orEmpty() }.orEmpty()

@@ -723,6 +723,20 @@ object YtMusicRepository {
      *
      * Takes as long as the list is long — see [songsPaged].
      */
+    /**
+     * Every song in the account's YouTube Music library: the songs added to it
+     * and the account's own uploads, as one list. Requires a signed-in session.
+     */
+    suspend fun wholeLibrarySongs(): Result<List<Song>> = call("whole-library") {
+        coroutineScope {
+            val added = async { runCatching { songsPaged(LIBRARY_SONGS) }.getOrDefault(emptyList()) }
+            val uploads = async { runCatching { songsPaged(LIBRARY_UPLOADS) }.getOrDefault(emptyList()) }
+            (added.await() + uploads.await())
+                .distinctBy { it.videoId }
+                .ifEmpty { error("No songs in your library yet") }
+        }
+    }
+
     suspend fun allSongs(browseId: String): Result<List<Song>> = call("all:$browseId") {
         songsPaged(browseId).ifEmpty { error("No tracks here") }
     }
@@ -800,6 +814,9 @@ object YtMusicRepository {
 
     /** Songs explicitly added to the library — distinct from Liked Music. */
     private const val LIBRARY_SONGS = "FEmusic_liked_videos"
+
+    /** The account's own uploaded songs. */
+    private const val LIBRARY_UPLOADS = "FEmusic_library_privately_owned_tracks"
 
     /** Saved and own playlists; also what the "add to playlist" picker lists. */
     private const val LIBRARY_PLAYLISTS = "FEmusic_liked_playlists"
