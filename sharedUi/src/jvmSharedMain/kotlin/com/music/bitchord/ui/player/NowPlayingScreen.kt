@@ -231,7 +231,13 @@ private val ART_TITLE_GAP = 20.dp
 private const val QUEUE_TRAVEL_MS = 420
 
 /** How much smaller the transport and the action row get under an open queue. */
-private const val COMPACT_TRANSPORT_SHRINK = 0.22f
+private const val COMPACT_TRANSPORT_SHRINK = 0.3f
+/** How far a swipe down over the controls has to go to put the lyrics away. */
+private val PANEL_CLOSE_DRAG = 56.dp
+
+/** How far a swipe down over the controls travels to carry the queue all the way out. */
+private val QUEUE_CLOSE_TRAVEL = 320.dp
+
 private const val COMPACT_ACTIONS_SHRINK = 0.12f
 
 /** Lays this out scaled by [scale], taking only the scaled height, shrunk from its top centre. */
@@ -1098,14 +1104,14 @@ fun NowPlayingScreen(
     // including on the way to lyrics, where the controls are full size again.
     // Read only in layout and draw lambdas.
     val queueCompact = remember {
-        Animatable(if (restoredPlayerScreen == LastPlayerScreen.QUEUE) 1f else 0f)
+        Animatable(if (restoredPlayerScreen == LastPlayerScreen.MAIN) 0f else 1f)
     }
     LaunchedEffect(queueOpen, lyricsOpen, queueDragging, queueReleased) {
         if (queueDragging && !lyricsOpen) {
             snapshotFlow { queueSlide.floatValue }.collect { queueCompact.snapTo(it) }
         } else {
             queueCompact.animateTo(
-                targetValue = if (queueOpen && !lyricsOpen) 1f else 0f,
+                targetValue = if (queueOpen || lyricsOpen) 1f else 0f,
                 animationSpec = tween(QUEUE_TRAVEL_MS, easing = FastOutSlowInEasing),
             )
         }
@@ -1448,6 +1454,9 @@ fun NowPlayingScreen(
     // either.
     var dismissBandTop by remember { mutableFloatStateOf(0f) }
     var dismissBandBottom by remember { mutableFloatStateOf(0f) }
+    // Where the control deck starts on screen, for the swipe down over it that
+    // puts the queue or the lyrics away.
+    var deckTop by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     // The suppressing Column's own coordinates, to put a pointer's local
     // position into the same space as the two edges above.
     var dismissBandSpace by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -1521,7 +1530,10 @@ fun NowPlayingScreen(
     // Lyrics, output and queue, with the output name under them — the row both
     // layouts end on, and the only thing in the landscape player's left column
     // besides the sleeve.
-    val playerActions: @Composable () -> Unit = {
+    // Its own column, so the caption stays under the row wherever it is placed.
+    // [captionCollapse] folds the caption away (0 = shown, 1 = gone).
+    val playerActions: @Composable (captionCollapse: () -> Float) -> Unit = { captionCollapse ->
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
         PlayerActionRow(
             lyricsOpen = lyricsOpen,
             queueOpen = queueOpen,
@@ -1537,18 +1549,22 @@ fun NowPlayingScreen(
             onListenTogether = onListenTogether,
             onOpenListenTogetherMembers = openListenTogetherMembers,
         )
-        // Keep the current output caption visible in every state.
-        Spacer(Modifier.height(18.dp))
-        Box(
-            modifier = Modifier.fillMaxWidth().height(20.dp),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            OutputCaption(
-                accountName = accountName,
-                onOpenOutput = openAudioOutput,
-                onOpenMembers = openListenTogetherMembers,
-            )
+        // Keep the current output caption visible in every state but the
+        // compact controls under the queue and lyrics.
+        Column(Modifier.collapseBy(captionCollapse)) {
+            Spacer(Modifier.height(18.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().height(20.dp),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                OutputCaption(
+                    accountName = accountName,
+                    onOpenOutput = openAudioOutput,
+                    onOpenMembers = openListenTogetherMembers,
+                )
+            }
         }
+      }
     }
 
     // The drawers and dialogs the player raises over itself. Mounted by
@@ -1899,7 +1915,7 @@ fun NowPlayingScreen(
                         )
                     }
                 },
-                actions = playerActions,
+                actions = { playerActions { 0f } },
                 mainPane = { compact ->
                     LandscapeMainPane(
                         compact = compact,
@@ -2503,6 +2519,28 @@ fun NowPlayingScreen(
                             // finger. Holding it here would strand that list
                             // mid-handback, and the list would never scroll.
                             if (down.isConsumed) return@awaitEachGesture
+                            // With the queue or lyrics up, a swipe down over the
+                            // controls puts the panel away again.
+                            val deckShown = (queueOpen && queueControlsOpen) ||
+                                (lyricsOpen && lyricsControlsOpen)
+                            if (panelUp && deckShown && y >= deckTop) {
+                                val closingQueue = queueOpen
+                                dragPanelClosed(
+                                    down = down,
+                                    travel = if (closingQueue) QUEUE_CLOSE_TRAVEL.toPx() else 0f,
+                                    slide = if (closingQueue) queueSlide else null,
+                                    threshold = PANEL_CLOSE_DRAG.toPx(),
+                                    onHold = { if (closingQueue) queueDragging = it },
+                                    onSettle = { open ->
+                                        if (!open) {
+                                            haptics.play(Haptic.Tap)
+                                            if (closingQueue) queueOpen = false else closeLyrics()
+                                        }
+                                        if (closingQueue) queueReleased++
+                                    },
+                                )
+                                return@awaitEachGesture
+                            }
                             // Anywhere else on the player, an upward swipe pulls
                             // the queue in just as one on the artwork does. Any
                             // other vertical drag is held to the end so nothing
@@ -3518,7 +3556,9 @@ fun NowPlayingScreen(
             ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.onSizeChanged { size ->
+                modifier = Modifier
+                    .onGloballyPositioned { deckTop = it.boundsInRoot().top }
+                    .onSizeChanged { size ->
                     if (spotifyCanvasPresentation) {
                         val measuredHeight = with(density) { size.height.toDp() }
                         if (measuredHeight != spotifyCanvasDeckHeight) {
@@ -3614,7 +3654,7 @@ fun NowPlayingScreen(
             // centre rather than drifting up under the seek bar.
             // With the queue open the controls shrink and their gaps close up,
             // and the volume bar folds away, so the queue gets the room.
-            Spacer(Modifier.height(8.dp + controlSpread / 2).collapseBy { deckCompact() * 0.75f })
+            Spacer(Modifier.height(8.dp + controlSpread / 2).collapseBy(deckCompact))
 
             Box(Modifier.shrinkBy { 1f - COMPACT_TRANSPORT_SHRINK * deckCompact() }) {
                 TransportRow(
@@ -3629,7 +3669,7 @@ fun NowPlayingScreen(
                 )
             }
 
-            Spacer(Modifier.height(12.dp + controlSpread / 2).collapseBy { deckCompact() * 0.75f })
+            Spacer(Modifier.height(12.dp + controlSpread / 2).collapseBy(deckCompact))
 
             // Hidden in Settings, the volume bar takes no room at all: the
             // artwork and the gaps above take up the height instead.
@@ -3648,7 +3688,7 @@ fun NowPlayingScreen(
             Spacer(Modifier.height(6.dp))
 
             Box(Modifier.shrinkBy { 1f - COMPACT_ACTIONS_SHRINK * deckCompact() }) {
-                playerActions()
+                playerActions(deckCompact)
             }
             Spacer(Modifier.height(18.dp))
             }
@@ -3729,6 +3769,39 @@ private suspend fun AwaitPointerEventScope.dragQueueInElseHold(
         return
     }
     followQueueDrag(drag, pulled, travel, slide, onHold, onSettle)
+}
+
+/**
+ * A swipe down over the controls while a panel is up. With [slide] (the queue)
+ * the queue follows the finger back out, exactly as it came in; without it (the
+ * lyrics) a drag of [threshold] or more is enough. Upward drags are just held.
+ */
+private suspend fun AwaitPointerEventScope.dragPanelClosed(
+    down: PointerInputChange,
+    travel: Float,
+    slide: MutableFloatState?,
+    threshold: Float,
+    onHold: (Boolean) -> Unit,
+    onSettle: (Boolean) -> Unit,
+) {
+    var pushed = 0f
+    val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
+        change.consume()
+        if (overSlop > 0f) pushed = overSlop
+    } ?: return
+    if (pushed <= 0f) {
+        verticalDrag(drag.id) { it.consume() }
+        return
+    }
+    if (slide != null && travel >= 1f) {
+        followQueueDrag(drag, travel - pushed, travel, slide, onHold, onSettle)
+        return
+    }
+    verticalDrag(drag.id) { change ->
+        pushed += change.positionChange().y
+        change.consume()
+    }
+    onSettle(pushed < threshold)
 }
 
 private suspend fun AwaitPointerEventScope.followQueueDrag(

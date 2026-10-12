@@ -10,7 +10,9 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
+import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -4011,7 +4013,24 @@ private fun BitChordApp(
                 // Composed ahead of the player, so the player's own handlers —
                 // the lyrics and the queue putting themselves away first — are
                 // newer and are asked before this one.
-                BackHandler(enabled = !reducePlayerMotion) { playerSheetMotion.close() }
+                // Predictive: while the back swipe is held the player shrinks
+                // towards the swiping edge, and only a completed swipe closes it.
+                val backProgress = remember { androidx.compose.animation.core.Animatable(0f) }
+                var backFromLeft by remember { mutableStateOf(true) }
+                val backScope = rememberCoroutineScope()
+                PredictiveBackHandler(enabled = !reducePlayerMotion) { events ->
+                    try {
+                        events.collect { event ->
+                            backFromLeft = event.swipeEdge == BackEventCompat.EDGE_LEFT
+                            backProgress.snapTo(event.progress)
+                        }
+                        playerSheetMotion.close()
+                        backScope.launch { backProgress.animateTo(0f, tween(350)) }
+                    } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                        backScope.launch { backProgress.animateTo(0f, tween(200)) }
+                        throw cancelled
+                    }
+                }
                 // Keeps a sheet still "settling" after a lyrics or queue
                 // scroll from taking the next touch meant for that list.
                 // See [PlayerSheetMotion.attachWindow].
@@ -4022,6 +4041,17 @@ private fun BitChordApp(
                 }
                 Box(
                     Modifier
+                        .graphicsLayer {
+                            val p = backProgress.value
+                            if (p > 0f) {
+                                val scale = 1f - PREDICTIVE_BACK_SHRINK * p
+                                scaleX = scale
+                                scaleY = scale
+                                translationX = (if (backFromLeft) 1f else -1f) * p * 24.dp.toPx()
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp * p)
+                                clip = true
+                            }
+                        }
                         // Where the app is holding the player, if it is — see
                         // [PlayerSheetMotion.contentOffsetPx]. Placement only.
                         .offset { IntOffset(0, playerSheetMotion.contentOffsetPx()) }
@@ -5515,6 +5545,9 @@ private const val TAB_EXPLORE = 1
 private const val TAB_LIBRARY = 2
 private const val TAB_SEARCH = 3
 private const val TAB_PLAYLISTS = 4
+
+/** How much the player shrinks at the far end of a predictive back swipe. */
+private const val PREDICTIVE_BACK_SHRINK = 0.1f
 
 /**
  * What a tab's key is prefixed with in the content switcher above.
