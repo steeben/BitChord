@@ -492,9 +492,10 @@ object StreamResolver {
         maxKbps: Int = maxKbps(),
         requireM4a: Boolean = false,
         uploaded: Boolean = false,
+        escalateToUpload: Boolean = true,
     ): Stream? {
         val skip = mutableSetOf<String>()
-        repeat(INNERTUBEX_ATTEMPTS) {
+        repeat(INNERTUBEX_ATTEMPTS) { attempt ->
             val found = try {
                 InnerTubeXResolver.extract(videoId, maxKbps, skip, requireM4a, uploaded)
             } catch (e: CancellationException) {
@@ -510,8 +511,49 @@ object StreamResolver {
             }
             TrackLog.w(TAG, "InnerTubeX ${found.profileId} minted an unusable URL for $videoId: $verdict")
             skip += found.profileId
+
+            // While signed in, the very first stream an ordinary ask is handed
+            // being refused outright is what a private upload looks like: the
+            // media request goes out without the login cookies only an upload
+            // is given, and the CDN says no. Walking the rest of the catalogue
+            // first costs several seconds of clients that cannot help, so the
+            // ask is made as an upload now, while the answer is fresh.
+            if (escalateToUpload && attempt == 0 && !uploaded &&
+                verdict == Probe.REFUSED && !Innertube.cookie.isNullOrBlank()
+            ) {
+                askAsUpload(videoId, maxKbps, requireM4a)?.let { return it }
+            }
         }
         return null
+    }
+
+    /**
+     * One ask for [videoId] as the signed-in user's own upload, probed like any
+     * other. A hit is remembered in [UploadedTracks]; a miss costs one extraction
+     * and the caller carries on with what it was doing.
+     */
+    private suspend fun askAsUpload(videoId: String, maxKbps: Int, requireM4a: Boolean): Stream? {
+        TrackLog.d(TAG, "first stream for $videoId was refused; asking as an upload")
+        val found = try {
+            InnerTubeXResolver.extract(videoId, maxKbps, emptySet(), requireM4a, uploaded = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.w(TAG, "asking for $videoId as an upload failed: ${e.javaClass.simpleName}: ${e.message}")
+            return null
+        }
+        if (found == null) {
+            TrackLog.w(TAG, "no stream for $videoId when asked as an upload")
+            return null
+        }
+        val verdict = timed("$videoId InnerTubeX ${found.profileId} upload probe") { probe(found.url) }
+        if (verdict != Probe.OK) {
+            TrackLog.w(TAG, "InnerTubeX ${found.profileId} as an upload for $videoId: $verdict")
+            return null
+        }
+        TrackLog.d(TAG, "resolved $videoId as an upload via InnerTubeX ${found.profileId} @ ${found.kbps}kbps")
+        UploadedTracks.mark(videoId)
+        return Stream(found.url, found.kbps, found.mimeType, found.loudnessDb)
     }
 
     /**
@@ -533,9 +575,19 @@ object StreamResolver {
         requireM4a: Boolean = false,
     ): Stream? {
         val known = UploadedTracks.contains(videoId)
-        innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = known)?.let { return it }
-        if (known || Innertube.cookie.isNullOrBlank()) return null
+        if (known) {
+            innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = true)?.let { return it }
+            // Marked as an upload but not served as one: ask the ordinary way
+            // before giving up, in case the mark was wrong. The escalation is
+            // switched off, since the upload ask is the one that just failed.
+            TrackLog.w(TAG, "$videoId is marked as an upload but did not resolve as one; trying an ordinary ask")
+            return innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = false, escalateToUpload = false)
+        }
+        innerTubeXStream(videoId, maxKbps, requireM4a)?.let { return it }
+        if (Innertube.cookie.isNullOrBlank()) return null
 
+        // Reached when the ordinary ask failed some way other than a refused
+        // first stream — see the escalation in [innerTubeXStream].
         TrackLog.d(TAG, "retrying $videoId as an upload")
         return innerTubeXStream(videoId, maxKbps, requireM4a, uploaded = true)?.also {
             TrackLog.d(TAG, "$videoId resolved as an upload")
