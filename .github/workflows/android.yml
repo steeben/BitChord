@@ -7,6 +7,9 @@ on:
 
 jobs:
   build-prod-release:
+    # Needs the upstream project's signing secrets; skipped in forks. Releases
+    # of the fork are built by release.yml.
+    if: github.repository == 'kushagrasinghx/BitChord'
     runs-on: ubuntu-latest
 
     steps:
