@@ -32,6 +32,23 @@ jobs:
 
       - run: chmod +x gradlew
 
+      # Android only updates an app in place when the new APK is signed with the
+      # same key as the installed one. A fresh CI runner invents a new debug key
+      # every run, so each build would have to be uninstalled first, which wipes
+      # the app's data, sign-in included. Setting the DEBUG_KEYSTORE_BASE64
+      # repository secret makes every build use one key and install over the last.
+      - name: Use the shared debug signing key
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            mkdir -p ~/.android
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+            echo "Using the shared debug signing key."
+          else
+            echo "::warning::DEBUG_KEYSTORE_BASE64 is not set, so this build has a throwaway signing key and must be installed over an uninstall."
+          fi
+
       # Last.fm keys are optional; scrobbling is simply inactive without them.
       - name: Build
         run: ./gradlew assembleDevDebug
