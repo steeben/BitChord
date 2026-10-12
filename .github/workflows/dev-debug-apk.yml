@@ -1,0 +1,63 @@
+name: Dev Debug APK
+
+# Builds an installable debug APK for testing changes from a fork or branch.
+# No signing secrets needed: debug builds are signed with the debug key, and the
+# `dev` flavor installs as "BitChord Dev" beside the normal app.
+#
+# Run it by hand from the Actions tab (pick the branch), or it runs on every push
+# to a fix/** or feat/** branch. The APK is attached to the run as an artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/**', 'feat/**']
+
+concurrency:
+  group: dev-debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Build dev debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: chmod +x gradlew
+
+      # Last.fm keys are optional; scrobbling is simply inactive without them.
+      - name: Build
+        run: ./gradlew assembleDevDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitchord-dev-debug-${{ github.sha }}
+          path: app/build/outputs/apk/dev/debug/*.apk
+          if-no-files-found: error
+
+  tests:
+    name: Shared unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: chmod +x gradlew
+
+      - name: Tests
+        run: ./gradlew :shared:jvmTest
