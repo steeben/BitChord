@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -229,6 +231,9 @@ private val ART_TITLE_GAP = 20.dp
  * Only the toggle, which travels end to end, ever spends all of it.
  */
 private const val QUEUE_TRAVEL_MS = 420
+
+/** How long a Canvas can drop its picture before the player stops presenting it. */
+private const val CANVAS_DROP_GRACE_MS = 1_200L
 
 /** How much smaller the transport and the action row get under an open queue. */
 private const val COMPACT_TRANSPORT_SHRINK = 0.3f
@@ -900,6 +905,7 @@ fun NowPlayingScreen(
         mutableStateOf(restoredPlayerScreen == LastPlayerScreen.LYRICS)
     }
     val queueSlide = remember { mutableFloatStateOf(0f) }
+    val queueRecenter = remember { QueueRecenter() }
     // Expensive, song-scoped preparation is deliberately staggered. The small
     // backdrop decode runs after the track hand-off has settled; lyrics and
     // queue are then composed offscreen on separate beats rather than all three
@@ -1315,7 +1321,19 @@ fun NowPlayingScreen(
     val heroClip = canvas?.takeIf { heroMode && !collapsePastHalf }
     val spotifyCanvasFullscreen = spotifyCanvasOnPhone &&
         heroClip?.source == CanvasSource.SPOTIFY
-    val spotifyCanvasPresentation = spotifyCanvasFullscreen && canvasRendered
+    // The clip's decoder can report a missed frame for a moment and then carry
+    // on. Followed straight away, that flipped the whole Canvas layout off and
+    // back on, which looked like a flicker; a short grace period rides it out.
+    var canvasPresented by remember(canvas?.url) { mutableStateOf(false) }
+    LaunchedEffect(canvasRendered) {
+        if (canvasRendered) {
+            canvasPresented = true
+        } else {
+            delay(CANVAS_DROP_GRACE_MS)
+            canvasPresented = false
+        }
+    }
+    val spotifyCanvasPresentation = spotifyCanvasFullscreen && canvasPresented
     // With "keep controls visible" on, a Canvas that would have hidden the
     // controls shrinks them to the foot of the screen instead: the song, its
     // live lyric and the transport stay, and everything else slides away.
@@ -1724,6 +1742,14 @@ fun NowPlayingScreen(
     // the trip, as for the collapse into the lyrics or the queue; a paused
     // clip keeps its last frame, so nothing blinks.
     val dockMoving by remember { derivedStateOf { docking() } }
+    // The strip at the top — handle, "Playing from" and the scrim behind them —
+    // sits under the artwork while it flies in, and would otherwise appear all
+    // at once the moment it lands. Faded in once the player has arrived.
+    val topChromeIn = animateFloatAsState(
+        targetValue = if (dockMoving) 0f else 1f,
+        animationSpec = tween(durationMillis = if (dockMoving) 0 else 260, easing = FastOutSlowInEasing),
+        label = "topChromeIn",
+    )
     // The rest of the player gets out of the way a little ahead of the artwork,
     // so the cover lands on the bar rather than on a ghost of the player.
     val dockFade: () -> Float = { ((dockT() - DOCK_FADE_LEAD) / (1f - DOCK_FADE_LEAD)).coerceIn(0f, 1f) }
@@ -2410,6 +2436,7 @@ fun NowPlayingScreen(
                             drawRect(
                                 brush = topScrimBrush,
                                 size = Size(size.width, size.height + above),
+                                alpha = topChromeIn.value,
                             )
                         }
                     },
@@ -2434,7 +2461,7 @@ fun NowPlayingScreen(
                         }
                         .width(38.dp)
                         .height(5.dp)
-                        .graphicsLayer { alpha = spotifyChromeAlpha }
+                        .graphicsLayer { alpha = spotifyChromeAlpha * topChromeIn.value }
                         .shadow(2.dp, RoundedCornerShape(3.dp), clip = false)
                         .clip(RoundedCornerShape(3.dp))
                         .background(Color.White.copy(alpha = 0.70f)),
@@ -2452,7 +2479,7 @@ fun NowPlayingScreen(
                             contentPadding = PaddingValues(start = PLAYER_GUTTER, end = PLAYER_GUTTER, bottom = 1.dp),
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .graphicsLayer { alpha = (1f - p()) * spotifyChromeAlpha },
+                                .graphicsLayer { alpha = (1f - p()) * spotifyChromeAlpha * topChromeIn.value },
                         )
                     }
                 }
@@ -2971,7 +2998,16 @@ fun NowPlayingScreen(
                             // is no clip mounted to hand it to. The clip is gone
                             // by the collapse's half, so the sleeve is whole
                             // again by the time it unmounts.
-                            alpha = if (heroClip != null) 1f - canvasCover.floatValue else 1f
+                            // Held nearly opaque until the clip under it has
+                            // all but finished fading in: both fading at once
+                            // let the dark backdrop show through mid-way, which
+                            // read as a flicker between the art and the clip.
+                            alpha = if (heroClip != null) {
+                                val cover = canvasCover.floatValue
+                                1f - cover * cover * cover * cover
+                            } else {
+                                1f
+                            }
                         }
                         .graphicsLayer {
                             val shown = sleeveShown()
@@ -3198,6 +3234,10 @@ fun NowPlayingScreen(
                         .then(
                             if (queueOpen || lyricsOpen) {
                                 Modifier.clickable {
+                                    // Over the queue, a first tap takes the list
+                                    // back to where it opened; tapped there, it
+                                    // puts the queue away as before.
+                                    if (queueOpen && queueRecenter.action?.invoke() == true) return@clickable
                                     queueOpen = false
                                     closeLyrics()
                                 }
@@ -3377,6 +3417,16 @@ fun NowPlayingScreen(
                             }
                         }
                     }
+                    // Out of the way under the compact Canvas controls, back
+                    // with the full ones.
+                    AnimatedVisibility(
+                        visible = !canvasCompactMode,
+                        enter = fadeIn(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)) +
+                            expandHorizontally(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)),
+                        exit = fadeOut(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)) +
+                            shrinkHorizontally(tween(SPOTIFY_CANVAS_CONTROLS_ANIMATION_MS)),
+                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
                     // Beside the credits rather than down in the toggle row:
                     // liking is about *this song*, and the row below is about
@@ -3402,6 +3452,8 @@ fun NowPlayingScreen(
                         contentDescription = stringResource(Res.string.more),
                         onClick = onOpenMenu,
                     )
+                    }
+                    }
                 }
 
                 // [lyricsOpen] asked first: a close has already hidden the
@@ -3565,6 +3617,7 @@ fun NowPlayingScreen(
                             onHidePlayer = { queueControlsOpen = false },
                             // The header above the list is the playing track.
                             showNowPlaying = false,
+                            recenter = queueRecenter,
                             modifier = Modifier.weight(1f),
                         )
                     }

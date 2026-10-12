@@ -176,10 +176,12 @@ fun LocalMusicScreen(
     onDeleteDownloads: ((List<Song>) -> Unit)? = null,
     /** Copies the selected Downloads rows to the WebDAV server; null hides the action. */
     onUploadToWebDav: ((List<Song>) -> Unit)? = null,
+    /** The tab to open on: 0 songs, 1 artists, 2 albums. */
+    initialTab: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     // Which top-level tab is selected.
-    var selectedTab by rememberSaveable { mutableIntStateOf(LOCAL_TAB_SONGS) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab) }
 
     // Narrows whichever tab is showing — songs by title/artist/album, artists
     // and albums by name. Not saved across process death: a filter left on a

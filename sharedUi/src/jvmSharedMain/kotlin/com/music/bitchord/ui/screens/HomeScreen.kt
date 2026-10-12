@@ -84,6 +84,7 @@ import com.music.bitchord.ui.components.SignInBanner
 import com.music.bitchord.ui.components.feedMoreSkeleton
 import com.music.bitchord.ui.components.feedSkeleton
 import com.music.bitchord.ui.components.recentlyPlayedSkeleton
+import com.music.bitchord.ui.components.speedDialSkeleton
 import com.music.bitchord.ui.components.heroCardWidth
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.components.trackColumnWidth
@@ -142,6 +143,12 @@ fun HomeScreen(
     speedDialPinned: Set<String> = emptySet(),
     /** Holding the speed dial's heading, to rearrange its pins. */
     onSpeedDialHeaderLongPress: (() -> Unit)? = null,
+    /**
+     * The saved section layout, for the loading placeholders: whether the speed
+     * dial leads Home, and whether Recents is shown at all.
+     */
+    skeletonSpeedDialFirst: Boolean = false,
+    skeletonShowRecents: Boolean = true,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -175,21 +182,22 @@ fun HomeScreen(
             }
             when (state) {
                 is UiState.Loading -> {
-                    if (recentlyPlayedLoading) {
+                    if (skeletonSpeedDialFirst) speedDialSkeleton()
+                    if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                         // Recents owns the leading layout while its request is
                         // pending, so the feed behind it starts with ordinary
                         // shelf placeholders rather than another hero card.
                         feedSkeleton(firstIsHero = false)
                     } else {
-                        feedSkeleton(firstIsHero = leadHero)
+                        feedSkeleton(firstIsHero = leadHero && !skeletonSpeedDialFirst)
                     }
                 }
                 is UiState.Error -> item {
                     MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
                 }
                 is UiState.Success -> {
-                    if (recentlyPlayedLoading) {
+                    if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                     }
                     // The loading skeleton already owns the hero slot. Until

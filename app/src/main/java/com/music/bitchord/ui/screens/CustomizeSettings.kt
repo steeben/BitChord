@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.music.bitchord.R
+import com.music.bitchord.data.settings.LibraryStartPage
 import com.music.bitchord.data.settings.NavPage
 import com.music.bitchord.data.settings.OrderedToggle
 
@@ -193,3 +194,78 @@ internal fun <T : Any> ReorderableToggleList(
 }
 
 private val REORDER_ROW_HEIGHT = 56.dp
+
+@Composable
+internal fun LibraryStartPage.label(): String = stringResource(
+    when (this) {
+        LibraryStartPage.SONGS -> R.string.songs
+        LibraryStartPage.ARTISTS -> R.string.artists
+        LibraryStartPage.ALBUMS -> R.string.albums
+    },
+)
+
+/**
+ * A library folder's options, from holding it on the Library page: whether the
+ * Library tab opens straight into it, and on which of its tabs.
+ */
+@Composable
+internal fun LibraryOptionsDialog(
+    title: String,
+    isDefault: Boolean,
+    /** Whether the folder has Songs / Artists / Albums tabs to choose between. */
+    hasPages: Boolean,
+    page: LibraryStartPage,
+    onDefaultChange: (Boolean) -> Unit,
+    onPageChange: (LibraryStartPage) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) }
+        },
+        title = { Text(title) },
+        text = {
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = stringResource(R.string.make_default_library),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = isDefault,
+                        onCheckedChange = onDefaultChange,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.make_default_library_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                if (isDefault && hasPages) {
+                    Text(
+                        text = stringResource(R.string.default_library_page),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
+                    )
+                    SegmentedControl(
+                        options = LibraryStartPage.entries.map { it.label() },
+                        selectedIndex = page.ordinal,
+                        onSelect = { onPageChange(LibraryStartPage.entries[it]) },
+                    )
+                }
+            }
+        },
+    )
+}

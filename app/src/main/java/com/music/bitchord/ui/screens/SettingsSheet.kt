@@ -42,6 +42,8 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.BubbleChart
 import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -147,6 +149,8 @@ import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
 import com.music.bitchord.data.settings.MiniPlayerShape
+import com.music.bitchord.data.settings.DefaultLibrary
+import com.music.bitchord.data.settings.LibraryStartPage
 import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
@@ -239,6 +243,10 @@ fun SettingsScreen(
     val navTabs by CustomizationSettings.navTabs.collectAsStateWithLifecycle()
     val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
     val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
+    val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
+    val ambientBackground by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
+    val ambientFollowsArtwork by CustomizationSettings.ambientFollowsArtwork.collectAsStateWithLifecycle()
+    val defaultLibraryPage by CustomizationSettings.defaultLibraryPage.collectAsStateWithLifecycle()
     val hideSongStatus by AppSettings.hideSongStatus.collectAsStateWithLifecycle()
     val swipeToPlayNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
@@ -1095,6 +1103,98 @@ fun SettingsScreen(
                         label = { it },
                         onChange = CustomizationSettings::setHomeSections,
                         onDismiss = { editing = false },
+                    )
+                }
+            }
+            val defaultLibraryTitle = stringResource(R.string.default_library)
+            row(defaultLibraryTitle, "library", "downloads", "local music", "youtube music", "spotify") {
+                var open by remember { mutableStateOf(false) }
+                val links = libraryLinks(signedIn)
+                Box {
+                    SettingsRow(
+                        icon = Icons.Rounded.LibraryMusic,
+                        title = defaultLibraryTitle,
+                        subtitle = stringResource(R.string.default_library_subtitle),
+                        value = defaultLibrary?.title ?: stringResource(R.string.default_library_none),
+                        onClick = { open = true },
+                    )
+                    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.default_library_none)) },
+                            trailingIcon = if (defaultLibrary == null) {
+                                { Icon(Icons.Rounded.Check, contentDescription = null) }
+                            } else {
+                                null
+                            },
+                            onClick = {
+                                CustomizationSettings.setDefaultLibrary(null)
+                                open = false
+                            },
+                        )
+                        links.forEach { link ->
+                            val id = link.item.browseId ?: return@forEach
+                            DropdownMenuItem(
+                                text = { Text(link.item.title) },
+                                trailingIcon = if (defaultLibrary?.browseId == id) {
+                                    { Icon(Icons.Rounded.Check, contentDescription = null) }
+                                } else {
+                                    null
+                                },
+                                onClick = {
+                                    CustomizationSettings.setDefaultLibrary(DefaultLibrary(id, link.item.title))
+                                    open = false
+                                },
+                            )
+                        }
+                    }
+                }
+                val current = defaultLibrary
+                if (current != null && current.browseId.startsWith("local:")) {
+                    SegmentedControl(
+                        options = LibraryStartPage.entries.map { it.label() },
+                        selectedIndex = defaultLibraryPage.ordinal,
+                        onSelect = { CustomizationSettings.setDefaultLibraryPage(LibraryStartPage.entries[it]) },
+                        modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
+                    )
+                }
+            }
+            val ambientTitle = stringResource(R.string.ambient_background)
+            row(ambientTitle, "background", "colour", "color", "blobs", "gradient") {
+                SettingsRow(
+                    icon = Icons.Rounded.BubbleChart,
+                    title = ambientTitle,
+                    subtitle = stringResource(R.string.ambient_background_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = ambientBackground,
+                            onCheckedChange = CustomizationSettings::setAmbientBackground,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setAmbientBackground(!ambientBackground) },
+                )
+            }
+            if (ambientBackground) {
+                val ambientArtTitle = stringResource(R.string.ambient_follows_artwork)
+                row(ambientArtTitle, "background", "album art", "artwork", "colour", "color") {
+                    SettingsRow(
+                        icon = Icons.Rounded.Palette,
+                        title = ambientArtTitle,
+                        subtitle = stringResource(R.string.ambient_follows_artwork_subtitle),
+                        trailing = {
+                            Switch(
+                                checked = ambientFollowsArtwork,
+                                onCheckedChange = CustomizationSettings::setAmbientFollowsArtwork,
+                                colors = SwitchDefaults.colors(
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            )
+                        },
+                        onClick = { CustomizationSettings.setAmbientFollowsArtwork(!ambientFollowsArtwork) },
                     )
                 }
             }

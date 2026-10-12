@@ -38,6 +38,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -153,6 +156,8 @@ private enum class QueueSection { USER, CONTEXT, AUTOPLAY }
 
 /** The queue as [InlineQueue] lists it: what's playing, then each section in running order. */
 private class QueueTracks(
+    /** Already played, oldest first: above the playing track, out of view until scrolled up to. */
+    val history: List<QueueTrack>,
     val nowPlaying: QueueTrack?,
     val user: List<QueueTrack>,
     val context: List<QueueTrack>,
@@ -165,7 +170,7 @@ private class QueueTracks(
     }
 
     companion object {
-        val EMPTY = QueueTracks(null, emptyList(), emptyList(), emptyList())
+        val EMPTY = QueueTracks(emptyList(), null, emptyList(), emptyList(), emptyList())
     }
 }
 
@@ -184,6 +189,7 @@ private fun splitQueue(queue: List<Song>, currentIndex: Int): QueueTracks {
         val song = queue[index]
         return QueueTrack(index, song, prefix + "_" + (song.queueEntryId ?: "${song.videoId}#${occurrence[index]}"))
     }
+    val history = (0 until currentIndex).map { track(it, "played") }
     val user = ArrayList<QueueTrack>()
     val context = ArrayList<QueueTrack>()
     val autoplay = ArrayList<QueueTrack>()
@@ -194,7 +200,15 @@ private fun splitQueue(queue: List<Song>, currentIndex: Int): QueueTracks {
             QueueTier.AUTOPLAY -> autoplay += track(index, "autoplay")
         }
     }
-    return QueueTracks(track(currentIndex, "np"), user, context, autoplay)
+    return QueueTracks(history, track(currentIndex, "np"), user, context, autoplay)
+}
+
+/**
+ * How the player asks the queue to scroll back to where it opened. Set by
+ * [InlineQueue]; [action] answers whether there was anywhere to scroll.
+ */
+internal class QueueRecenter {
+    var action: (() -> Boolean)? = null
 }
 
 /** Placement-only item motion; see [QUEUE_ROW_MOTION]. */
@@ -227,6 +241,8 @@ internal fun InlineQueue(
      * own header right above the list already shows it.
      */
     showNowPlaying: Boolean = true,
+    /** Lets the player scroll the list back to where it opened. */
+    recenter: QueueRecenter? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -248,16 +264,31 @@ internal fun InlineQueue(
         ?: nowPlaying?.song?.playbackSource?.takeIf { it.isNotBlank() }
         ?: nowPlaying?.song?.albumName?.takeIf { it.isNotBlank() }
 
-    // Back to the top on a track change — snapped the first time, animated
+    // Where the list opens: just past what has already played, which sits
+    // above it for scrolling back up to.
+    val anchor = if (tracks.history.isEmpty()) 0 else tracks.history.size + 1
+    val currentAnchor by rememberUpdatedState(anchor)
+    val recenterScope = rememberCoroutineScope()
+    DisposableEffect(recenter, listState) {
+        recenter?.action = {
+            val away = listState.firstVisibleItemIndex != currentAnchor ||
+                listState.firstVisibleItemScrollOffset != 0
+            if (away) recenterScope.launch { listState.animateScrollToItem(currentAnchor) }
+            away
+        }
+        onDispose { recenter?.action = null }
+    }
+
+    // Back to that point on a track change — snapped the first time, animated
     // after — but never mid-drag, which would pull the list from under the finger.
     var hasScrolledOnce by remember { mutableStateOf(false) }
     LaunchedEffect(currentIndex) {
-        val scrolledAway = listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0
-        if (drag.held == null && nowPlaying != null && scrolledAway) {
+        val scrolledAway = listState.firstVisibleItemIndex != anchor || listState.firstVisibleItemScrollOffset != 0
+        if (drag.held == null && nowPlaying != null && (scrolledAway || !hasScrolledOnce)) {
             if (hasScrolledOnce) {
-                listState.animateScrollToItem(0)
+                listState.animateScrollToItem(anchor)
             } else {
-                listState.scrollToItem(0)
+                listState.scrollToItem(anchor)
                 hasScrolledOnce = true
             }
         }
@@ -295,6 +326,25 @@ internal fun InlineQueue(
                     .then(if (collapsePlayerOnScroll) Modifier.nestedScroll(controlsOnScroll) else Modifier),
                 contentPadding = PaddingValues(horizontal = PLAYER_GUTTER),
             ) {
+                if (tracks.history.isNotEmpty()) {
+                    item(key = "header-history") {
+                        QueueHeading(
+                            title = stringResource(Res.string.previously_played),
+                            modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
+                        )
+                    }
+                    items(tracks.history, key = { it.key }) { track ->
+                        InlineQueueRow(
+                            song = track.song,
+                            isCurrent = false,
+                            onClick = { onJumpTo(track.timelineIndex) },
+                            onRemove = { onRemove(track.timelineIndex) },
+                            locked = controlsLocked,
+                            // Dimmed: already played.
+                            modifier = queueMotion().alpha(0.6f),
+                        )
+                    }
+                }
                 if (nowPlaying != null && showNowPlaying) {
                     item(key = "header-now-playing") {
                         QueueHeading(

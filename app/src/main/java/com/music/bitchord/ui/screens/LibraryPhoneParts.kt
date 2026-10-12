@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,7 +38,7 @@ import com.music.bitchord.ui.replay.ReplayStoryPage
  * libraries it can reach.
  */
 @Composable
-fun libraryLinks(): List<LibraryLink> {
+fun libraryLinks(signedIn: Boolean): List<LibraryLink> {
     val webdavConfigured by AppSettings.webdavUrl.collectAsStateWithLifecycle()
     val smbHost by AppSettings.smbHost.collectAsStateWithLifecycle()
     val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
@@ -54,6 +55,14 @@ fun libraryLinks(): List<LibraryLink> {
         icon = icon,
     )
     return listOfNotNull(
+        // Everything in the account's YouTube Music library, songs and uploads,
+        // in the same tabbed view as the device folders below.
+        link(
+            Icons.Rounded.LibraryMusic,
+            stringResource(R.string.youtube_music),
+            stringResource(R.string.youtube_music_library_subtitle),
+            YT_MUSIC_LIBRARY_BROWSE_ID,
+        ).takeIf { signedIn },
         link(
             Icons.Rounded.Download,
             stringResource(R.string.downloads),
@@ -123,6 +132,9 @@ fun libraryDeviceItems(downloadedReleases: List<SavedCollection>): List<ShelfIte
         )
     }
 }
+
+/** The YouTube Music library folder: every song in the account's library, uploads included. */
+const val YT_MUSIC_LIBRARY_BROWSE_ID = "local:ytmusic"
 
 /** The Library row that opens the connected Spotify account; handled by the app, not a browse page. */
 const val SPOTIFY_BROWSE_ID = "app:spotify"

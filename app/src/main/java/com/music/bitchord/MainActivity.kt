@@ -151,6 +151,8 @@ import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
 import com.music.bitchord.data.settings.OrderedToggle
+import com.music.bitchord.data.settings.DefaultLibrary
+import com.music.bitchord.ui.screens.LibraryOptionsDialog
 import com.music.bitchord.data.settings.speedDialId
 import com.music.bitchord.ui.screens.ReorderDialog
 import com.music.bitchord.data.settings.LibrarySort
@@ -166,6 +168,12 @@ import com.music.bitchord.ui.screens.HistoryScreen
 import com.music.bitchord.ui.screens.LibraryReplayEntry
 import com.music.bitchord.ui.screens.libraryDeviceItems
 import com.music.bitchord.ui.screens.SPOTIFY_BROWSE_ID
+import com.music.bitchord.ui.screens.YT_MUSIC_LIBRARY_BROWSE_ID
+import com.music.bitchord.ui.components.AmbientAppColor
+import com.music.bitchord.ui.components.AmbientSpotifyColor
+import com.music.bitchord.ui.components.AmbientYouTubeColor
+import com.music.bitchord.ui.components.ambientBlobs
+import com.music.bitchord.ui.components.rememberAmbientBlobs
 import com.music.bitchord.ui.screens.libraryLinks
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.ListenTogetherScreen
@@ -704,6 +712,28 @@ private fun BitChordApp(
     val speedDialPins by CustomizationSettings.speedDialPins.collectAsStateWithLifecycle()
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
     var editingSpeedDial by remember { mutableStateOf(false) }
+    val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
+    val defaultLibraryPage by CustomizationSettings.defaultLibraryPage.collectAsStateWithLifecycle()
+    // The library folder whose options are up, from a long press on the Library page.
+    var libraryOptionsFor by remember { mutableStateOf<ShelfItem?>(null) }
+    libraryOptionsFor?.let { item ->
+        val id = item.browseId
+        if (id != null) {
+            LibraryOptionsDialog(
+                title = item.title,
+                isDefault = defaultLibrary?.browseId == id,
+                hasPages = id.isDeviceFolder(),
+                page = defaultLibraryPage,
+                onDefaultChange = { on ->
+                    CustomizationSettings.setDefaultLibrary(if (on) DefaultLibrary(id, item.title) else null)
+                },
+                onPageChange = CustomizationSettings::setDefaultLibraryPage,
+                onDismiss = { libraryOptionsFor = null },
+            )
+        } else {
+            libraryOptionsFor = null
+        }
+    }
     if (editingSpeedDial) {
         // Edited as a draft and saved on the way out, so switching a pin off
         // doesn't pull its row out from under the list mid-edit.
@@ -2507,6 +2537,29 @@ private fun BitChordApp(
         )
     }
 
+    // The colour blobs behind the pages: the app's red, Spotify's green in the
+    // Spotify library, YouTube's red in the YouTube Music one, or the playing
+    // song's artwork colour when Settings asks for that.
+    val ambientOn by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
+    val ambientFollowsArtwork by CustomizationSettings.ambientFollowsArtwork.collectAsStateWithLifecycle()
+    val ambientArtColor = if (ambientOn && ambientFollowsArtwork) {
+        com.music.bitchord.ui.theme.rememberArtworkPalette(player.song?.thumbnailUrl).accent
+    } else {
+        null
+    }
+    val ambientColor = when {
+        showSpotify -> AmbientSpotifyColor
+        detail?.browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> AmbientYouTubeColor
+        ambientArtColor != null && player.song != null -> ambientArtColor
+        else -> AmbientAppColor
+    }
+    val reduceAnimationSetting by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val ambientBlobs = if (ambientOn) {
+        rememberAmbientBlobs(ambientColor, animate = !reduceAnimationSetting)
+    } else {
+        null
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -2677,7 +2730,10 @@ private fun BitChordApp(
                             } else {
                                 Modifier
                             },
-                        ),
+                        )
+                        // Inside the recorded layers above, so the glass and the
+                        // blurred bars pick the colour up as well.
+                        .ambientBlobs(ambientBlobs),
                     label = "content",
                 ) { key ->
                     // Every branch below reads `key` rather than the state that
@@ -2899,6 +2955,11 @@ private fun BitChordApp(
                         }
                         LocalMusicScreen(
                             songs = localSongs,
+                            initialTab = if (page.browseId == defaultLibrary?.browseId) {
+                                defaultLibraryPage.ordinal
+                            } else {
+                                0
+                            },
                             collections = downloadCollections,
                             isDownloads = page.browseId == "local:downloads",
                             currentSong = player.song,
@@ -2932,7 +2993,14 @@ private fun BitChordApp(
                                 )
                             },
                             emptyMessage = (localState as? com.music.bitchord.data.model.UiState.Error)
-                                ?.message,
+                                ?.message
+                                ?: if (localState is com.music.bitchord.data.model.UiState.Loading &&
+                                    page.browseId == YT_MUSIC_LIBRARY_BROWSE_ID
+                                ) {
+                                    stringResource(R.string.loading_your_library)
+                                } else {
+                                    null
+                                },
                             // An album or artist here is a grouping of rows rather than
                             // a page, so the menu is handed the rows themselves — there
                             // is no id anything could be fetched with.
@@ -3066,6 +3134,9 @@ private fun BitChordApp(
                             state = arrangedHomeState,
                             speedDialPinned = speedDialPinnedIds,
                             onSpeedDialHeaderLongPress = { editingSpeedDial = true },
+                            skeletonSpeedDialFirst = homeSections.firstOrNull { it.enabled }?.item ==
+                                CustomizationSettings.SPEED_DIAL_TITLE,
+                            skeletonShowRecents = homeSections.none { it.item == "Recents" && !it.enabled },
                             listState = homeListState,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
@@ -3366,7 +3437,8 @@ private fun BitChordApp(
                             onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
                             pullState = libraryPull,
                             contentPadding = listPadding,
-                            links = libraryLinks(),
+                            links = libraryLinks(signedIn),
+                            onLinkLongPress = { libraryOptionsFor = it },
                             deviceItems = libraryDeviceItems(downloadedReleases) + localPlaylistItems,
                         )
                     }
@@ -3859,6 +3931,22 @@ private fun BitChordApp(
                     showHistory = false
                     libraryShowAll = null
                     selectedTab = index
+                    // A default library set from a folder's long-press menu (or
+                    // Settings) opens straight away, over the Library page that
+                    // back returns to.
+                    if (index == TAB_LIBRARY) {
+                        CustomizationSettings.defaultLibrary.value?.let { library ->
+                            onLibraryItemClick(
+                                ShelfItem(
+                                    title = library.title,
+                                    subtitle = "",
+                                    thumbnailUrl = null,
+                                    videoId = null,
+                                    browseId = library.browseId,
+                                ),
+                            )
+                        }
+                    }
 
                     // Every search tab tap resets the field, focuses it, and opens
                     // the keyboard through SearchScreen's focus request.

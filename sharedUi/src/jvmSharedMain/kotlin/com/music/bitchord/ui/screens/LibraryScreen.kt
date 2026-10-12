@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.clickable
+import com.music.bitchord.ui.components.longPressMenuClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -116,6 +117,8 @@ fun LibraryScreen(
     deviceItems: List<ShelfItem>,
     /** The big "Library" heading; the desktop's pages carry none. */
     showTitle: Boolean = true,
+    /** Holding one of [links], for its options. */
+    onLinkLongPress: ((ShelfItem) -> Unit)? = null,
 ) {
     val pinnedPlaylists by AppUi.host.pinnedPlaylists.collectAsStateWithLifecycle()
     val onDevice = stringResource(Res.string.on_device)
@@ -142,7 +145,9 @@ fun LibraryScreen(
             }
             item(key = "replay") { replay() }
             if (links.isNotEmpty()) {
-                item(key = "links") { LibraryLinkList(links = links, onClick = onShelfItemClick) }
+                item(key = "links") {
+                    LibraryLinkList(links = links, onClick = onShelfItemClick, onLongClick = onLinkLongPress)
+                }
             }
             if (deviceItems.isNotEmpty()) {
                 item(key = "shelf:$onDevice") {
@@ -239,7 +244,11 @@ data class LibraryLink(val item: ShelfItem, val icon: ImageVector, val logo: Dra
  * look alike because none of them has artwork.
  */
 @Composable
-private fun LibraryLinkList(links: List<LibraryLink>, onClick: (ShelfItem) -> Unit) {
+private fun LibraryLinkList(
+    links: List<LibraryLink>,
+    onClick: (ShelfItem) -> Unit,
+    onLongClick: ((ShelfItem) -> Unit)? = null,
+) {
     Column(Modifier.padding(top = 4.dp, bottom = 22.dp)) {
         links.forEachIndexed { index, link ->
             Row(
@@ -247,7 +256,10 @@ private fun LibraryLinkList(links: List<LibraryLink>, onClick: (ShelfItem) -> Un
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 54.dp)
-                    .clickable { onClick(link.item) }
+                    .longPressMenuClickable(
+                        onClick = { onClick(link.item) },
+                        onLongClick = onLongClick?.let { { it(link.item) } },
+                    )
                     .padding(horizontal = PAGE_GUTTER),
             ) {
                 if (link.logo != null) {

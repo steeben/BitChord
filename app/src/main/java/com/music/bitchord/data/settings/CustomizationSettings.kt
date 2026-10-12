@@ -27,6 +27,12 @@ enum class NavPage(val id: Int) {
 
 enum class MiniPlayerShape { CIRCULAR, SQUARED }
 
+/** Which tab a library folder opens on. Matches the folder page's tab order. */
+enum class LibraryStartPage { SONGS, ARTISTS, ALBUMS }
+
+/** A library folder the Library tab opens straight into. */
+data class DefaultLibrary(val browseId: String, val title: String)
+
 /** One entry in an ordered list where each entry can also be switched off. */
 data class OrderedToggle<T>(val item: T, val enabled: Boolean)
 
@@ -51,6 +57,16 @@ object CustomizationSettings {
      * instead of hiding them: title, live lyrics and transport stay.
      */
     val compactCanvasControls = MutableStateFlow(false)
+
+    /** Slow colour blobs behind the app's pages. */
+    val ambientBackground = MutableStateFlow(true)
+
+    /** Whether those blobs take the playing song's artwork colour. */
+    val ambientFollowsArtwork = MutableStateFlow(false)
+
+    /** The library folder the Library tab opens into, or null for the Library page itself. */
+    val defaultLibrary = MutableStateFlow<DefaultLibrary?>(null)
+    val defaultLibraryPage = MutableStateFlow(LibraryStartPage.SONGS)
 
     /**
      * Home page sections by title, in the order to show them, each shown or
@@ -77,6 +93,13 @@ object CustomizationSettings {
         miniPlayerShape.value = MiniPlayerShape.entries
             .firstOrNull { it.name == p.getString(KEY_MINI_PLAYER_SHAPE, null) } ?: MiniPlayerShape.CIRCULAR
         compactCanvasControls.value = p.getBoolean(KEY_COMPACT_CANVAS_CONTROLS, false)
+        ambientBackground.value = p.getBoolean(KEY_AMBIENT_BACKGROUND, true)
+        ambientFollowsArtwork.value = p.getBoolean(KEY_AMBIENT_FOLLOWS_ARTWORK, false)
+        defaultLibrary.value = p.getString(KEY_DEFAULT_LIBRARY_ID, null)?.takeIf { it.isNotBlank() }?.let {
+            DefaultLibrary(it, p.getString(KEY_DEFAULT_LIBRARY_TITLE, null).orEmpty())
+        }
+        defaultLibraryPage.value = LibraryStartPage.entries
+            .firstOrNull { it.name == p.getString(KEY_DEFAULT_LIBRARY_PAGE, null) } ?: LibraryStartPage.SONGS
         homeSections.value = readHomeSections(p.getString(KEY_HOME_SECTIONS, null))
         speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
     }
@@ -226,6 +249,29 @@ object CustomizationSettings {
         prefs?.edit()?.putBoolean(KEY_KEEP_NAV_EXPANDED, value)?.apply()
     }
 
+    fun setDefaultLibrary(value: DefaultLibrary?) {
+        defaultLibrary.value = value
+        prefs?.edit()
+            ?.putString(KEY_DEFAULT_LIBRARY_ID, value?.browseId.orEmpty())
+            ?.putString(KEY_DEFAULT_LIBRARY_TITLE, value?.title.orEmpty())
+            ?.apply()
+    }
+
+    fun setDefaultLibraryPage(value: LibraryStartPage) {
+        defaultLibraryPage.value = value
+        prefs?.edit()?.putString(KEY_DEFAULT_LIBRARY_PAGE, value.name)?.apply()
+    }
+
+    fun setAmbientBackground(value: Boolean) {
+        ambientBackground.value = value
+        prefs?.edit()?.putBoolean(KEY_AMBIENT_BACKGROUND, value)?.apply()
+    }
+
+    fun setAmbientFollowsArtwork(value: Boolean) {
+        ambientFollowsArtwork.value = value
+        prefs?.edit()?.putBoolean(KEY_AMBIENT_FOLLOWS_ARTWORK, value)?.apply()
+    }
+
     fun setCompactCanvasControls(value: Boolean) {
         compactCanvasControls.value = value
         prefs?.edit()?.putBoolean(KEY_COMPACT_CANVAS_CONTROLS, value)?.apply()
@@ -276,6 +322,11 @@ object CustomizationSettings {
     private const val KEY_NAV_TABS = "custom_nav_tabs"
     private const val KEY_HOME_SECTIONS = "custom_home_sections"
     private const val KEY_COMPACT_CANVAS_CONTROLS = "custom_compact_canvas_controls"
+    private const val KEY_AMBIENT_BACKGROUND = "custom_ambient_background"
+    private const val KEY_AMBIENT_FOLLOWS_ARTWORK = "custom_ambient_follows_artwork"
+    private const val KEY_DEFAULT_LIBRARY_ID = "custom_default_library_id"
+    private const val KEY_DEFAULT_LIBRARY_TITLE = "custom_default_library_title"
+    private const val KEY_DEFAULT_LIBRARY_PAGE = "custom_default_library_page"
     private const val KEY_SPEED_DIAL_PINS = "custom_speed_dial_pins"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"

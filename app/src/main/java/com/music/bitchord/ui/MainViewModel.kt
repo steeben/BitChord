@@ -86,6 +86,7 @@ import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.StreamChoice
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
+import com.music.bitchord.ui.screens.YT_MUSIC_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.matchesSearch
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -2507,6 +2508,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     else UiState.Success(songs)
                 }
                 browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
+                browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> YtMusicRepository.wholeLibrarySongs().fold(
+                    onSuccess = { UiState.Success(it) },
+                    onFailure = { UiState.Error(it.friendly()) },
+                )
                 browseId == "local:all" -> {
                     val context = getApplication<Application>()
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
@@ -2706,6 +2711,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     else UiState.Success(songs)
                 }
                 browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
+                browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> YtMusicRepository.wholeLibrarySongs().fold(
+                    onSuccess = { UiState.Success(it) },
+                    onFailure = { UiState.Error(it.friendly()) },
+                )
                 browseId == "local:all" -> {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
                         UiState.Error(text(R.string.storage_required_read))
@@ -2879,6 +2888,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     AudioCache.cachedSongs().map { it.song }
                         .ifEmpty { error(text(R.string.cached_songs_empty)) }
                 }
+                browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> YtMusicRepository.wholeLibrarySongs()
                 browseId == "local:all" -> runCatching {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
                         error(text(R.string.storage_required_read))
