@@ -123,6 +123,7 @@ import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -228,6 +229,33 @@ private val ART_TITLE_GAP = 20.dp
  * Only the toggle, which travels end to end, ever spends all of it.
  */
 private const val QUEUE_TRAVEL_MS = 420
+
+/** How much smaller the transport and the action row get under an open queue. */
+private const val COMPACT_TRANSPORT_SHRINK = 0.22f
+private const val COMPACT_ACTIONS_SHRINK = 0.12f
+
+/** Lays this out scaled by [scale], taking only the scaled height, shrunk from its top centre. */
+private fun Modifier.shrinkBy(scale: () -> Float): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val s = scale().coerceIn(0f, 1f)
+    layout(placeable.width, (placeable.height * s).roundToInt()) {
+        placeable.placeWithLayer(0, 0) {
+            scaleX = s
+            scaleY = s
+            transformOrigin = TransformOrigin(0.5f, 0f)
+        }
+    }
+}
+
+/** Folds this away to no height as [fraction] runs from 0 to 1, fading as it goes. */
+private fun Modifier.collapseBy(fraction: () -> Float): Modifier = clipToBounds()
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val f = fraction().coerceIn(0f, 1f)
+        layout(placeable.width, (placeable.height * (1f - f)).roundToInt()) {
+            placeable.placeWithLayer(0, 0) { alpha = 1f - f }
+        }
+    }
 /**
  * How far up the sleeve has to have been dragged for a release to carry on
  * opening the queue rather than falling back, as a share of the sleeve's travel.
@@ -1064,6 +1092,25 @@ fun NowPlayingScreen(
             ),
         ) { value, _ -> queueSlide.floatValue = value }
     }
+
+    // 0 = full-size controls, 1 = the smaller controls under an open queue. It
+    // follows the finger while the queue is being dragged and eases otherwise,
+    // including on the way to lyrics, where the controls are full size again.
+    // Read only in layout and draw lambdas.
+    val queueCompact = remember {
+        Animatable(if (restoredPlayerScreen == LastPlayerScreen.QUEUE) 1f else 0f)
+    }
+    LaunchedEffect(queueOpen, lyricsOpen, queueDragging, queueReleased) {
+        if (queueDragging && !lyricsOpen) {
+            snapshotFlow { queueSlide.floatValue }.collect { queueCompact.snapTo(it) }
+        } else {
+            queueCompact.animateTo(
+                targetValue = if (queueOpen && !lyricsOpen) 1f else 0f,
+                animationSpec = tween(QUEUE_TRAVEL_MS, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+    val compact: () -> Float = { queueCompact.value }
 
     // Horizontal fling anywhere on the player skips tracks; the artwork
     // follows the finger so the gesture has something to hold on to.
@@ -2456,14 +2503,28 @@ fun NowPlayingScreen(
                             // finger. Holding it here would strand that list
                             // mid-handback, and the list would never scroll.
                             if (down.isConsumed) return@awaitEachGesture
-                            // What detectVerticalDragGestures does, minus the
-                            // callbacks: cross the slop, then hold the gesture
-                            // to the end so nothing downstream of the first
-                            // event reaches the sheet either.
-                            val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, _ ->
-                                change.consume()
-                            }
-                            if (drag != null) verticalDrag(drag.id) { it.consume() }
+                            // Anywhere else on the player, an upward swipe pulls
+                            // the queue in just as one on the artwork does. Any
+                            // other vertical drag is held to the end so nothing
+                            // downstream of it reaches the sheet.
+                            dragQueueInElseHold(
+                                down = down,
+                                travel = if (panelUp) {
+                                    0f
+                                } else {
+                                    dismissBandBottom - dismissBandTop - HEADER_HEIGHT.toPx()
+                                },
+                                slide = queueSlide,
+                                onHold = { queueDragging = it },
+                                onSettle = { open ->
+                                    if (open != queueOpen) {
+                                        haptics.play(if (open) Haptic.Expand else Haptic.Tap)
+                                        if (open) queueControlsOpen = true
+                                        queueOpen = open
+                                    }
+                                    queueReleased++
+                                },
+                            )
                         }
                     }
                     .padding(horizontal = PLAYER_GUTTER),
@@ -3551,40 +3612,44 @@ fun NowPlayingScreen(
             // which sit close enough together to read as one. Both of its own
             // gaps take half the spread, so on a tall screen it holds the
             // centre rather than drifting up under the seek bar.
-            Spacer(Modifier.height(8.dp + controlSpread / 2))
+            // With the queue open the controls shrink and their gaps close up,
+            // and the volume bar folds away, so the queue gets the room.
+            Spacer(Modifier.height(8.dp + controlSpread / 2).collapseBy { compact() * 0.75f })
 
-            TransportRow(
-                isPlaying = isPlaying,
-                isLoading = isLoading || audioVersionSwitching,
-                previousEnabled = !controlsLocked &&
-                    (hasPrevious || pastRestartPoint),
-                nextEnabled = !controlsLocked && hasNext,
-                onPrevious = onPrevious,
-                onPlayPause = onPlayPause,
-                onNext = onNext,
-            )
-
-            // Keep the volume slot's full footprint when its contents are
-            // hidden. Removing the slot itself shortened the controls by 50dp
-            // and moved every control below it. A display preference should not
-            // change the half-player's geometry.
-            Spacer(Modifier.height(12.dp + controlSpread / 2))
-
-            if (!hideVolumeBar) {
-                VolumeRow(
-                    value = { volume.level.value },
-                    onValueChange = onVolumeChange,
-                    onValueChangeFinished = onVolumeChangeFinished,
+            Box(Modifier.shrinkBy { 1f - COMPACT_TRANSPORT_SHRINK * compact() }) {
+                TransportRow(
+                    isPlaying = isPlaying,
+                    isLoading = isLoading || audioVersionSwitching,
+                    previousEnabled = !controlsLocked &&
+                        (hasPrevious || pastRestartPoint),
+                    nextEnabled = !controlsLocked && hasNext,
+                    onPrevious = onPrevious,
+                    onPlayPause = onPlayPause,
+                    onNext = onNext,
                 )
-            } else {
-                Spacer(Modifier.height(VOLUME_ROW_HEIGHT))
+            }
+
+            Spacer(Modifier.height(12.dp + controlSpread / 2).collapseBy { compact() * 0.75f })
+
+            // Hidden in Settings, the volume bar takes no room at all: the
+            // artwork and the gaps above take up the height instead.
+            if (!hideVolumeBar) {
+                Box(Modifier.collapseBy(compact)) {
+                    VolumeRow(
+                        value = { volume.level.value },
+                        onValueChange = onVolumeChange,
+                        onValueChangeFinished = onVolumeChangeFinished,
+                    )
+                }
             }
 
             // The volume slider already has 13dp below its drawn track.
             // Balance that invisible inset with the caption gap below the icons.
             Spacer(Modifier.height(6.dp))
 
-            playerActions()
+            Box(Modifier.shrinkBy { 1f - COMPACT_ACTIONS_SHRINK * compact() }) {
+                playerActions()
+            }
             Spacer(Modifier.height(18.dp))
             }
             }
@@ -3639,7 +3704,42 @@ private suspend fun AwaitPointerEventScope.dragQueueIn(
         }
     }
     if (drag == null || pulled <= 0f) return
+    followQueueDrag(drag, pulled, travel, slide, onHold, onSettle)
+}
 
+/**
+ * [dragQueueIn] for the rest of the player, where a downward drag doesn't close
+ * the sheet: every vertical drag is consumed, and only an upward one moves the
+ * queue. A [travel] under a pixel (a panel already up) just holds the drag.
+ */
+private suspend fun AwaitPointerEventScope.dragQueueInElseHold(
+    down: PointerInputChange,
+    travel: Float,
+    slide: MutableFloatState,
+    onHold: (Boolean) -> Unit,
+    onSettle: (Boolean) -> Unit,
+) {
+    var pulled = 0f
+    val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
+        change.consume()
+        if (overSlop < 0f) pulled = -overSlop
+    } ?: return
+    if (pulled <= 0f || travel < 1f) {
+        verticalDrag(drag.id) { it.consume() }
+        return
+    }
+    followQueueDrag(drag, pulled, travel, slide, onHold, onSettle)
+}
+
+private suspend fun AwaitPointerEventScope.followQueueDrag(
+    drag: PointerInputChange,
+    initialPull: Float,
+    travel: Float,
+    slide: MutableFloatState,
+    onHold: (Boolean) -> Unit,
+    onSettle: (Boolean) -> Unit,
+) {
+    var pulled = initialPull
     onHold(true)
     val velocity = VelocityTracker()
     velocity.addPointerInputChange(drag)
