@@ -34,8 +34,31 @@ jobs:
       - name: Tests
         run: ./gradlew testDevDebugUnitTest -I .github/gradle/skip-known-failures.init.gradle
 
+      # The same key every build is signed with, so each APK installs over the
+      # last one and keeps the app's data and sign-in. Without it the runner
+      # invents a new key every run and Android refuses the update.
+      - name: Use the shared debug signing key
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "$DEBUG_KEYSTORE_BASE64" | tr -d '\n\r ' | base64 -d > "$RUNNER_TEMP/shared-debug.keystore"
+            echo "SHARED_KEYSTORE=$RUNNER_TEMP/shared-debug.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::DEBUG_KEYSTORE_BASE64 is not set, so this APK has a throwaway key."
+          fi
+
       - name: Build the dev APK
-        run: ./gradlew assembleDevDebug
+        run: |
+          if [ -n "$SHARED_KEYSTORE" ]; then
+            ./gradlew assembleDevDebug \
+              -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
+              -Pandroid.injected.signing.store.password=android \
+              -Pandroid.injected.signing.key.alias=androiddebugkey \
+              -Pandroid.injected.signing.key.password=android
+          else
+            ./gradlew assembleDevDebug
+          fi
 
       - name: Upload the dev APK
         uses: actions/upload-artifact@v4

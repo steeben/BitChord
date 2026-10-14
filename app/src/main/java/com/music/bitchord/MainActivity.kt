@@ -104,6 +104,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.BlurEffect
+import kotlinx.coroutines.NonCancellable
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -2594,6 +2598,8 @@ private fun BitChordApp(
         null
     }
 
+    // How far the back swipe has taken a pushed page toward closing, 0 to 1.
+    val detailBackProgress = remember { Animatable(0f) }
     Box(
         Modifier
             .fillMaxSize()
@@ -2616,10 +2622,23 @@ private fun BitChordApp(
                 showReplay = false
             }
         }
-        BackHandler(
+        // Predictive: while the back swipe is held the page blurs and fades,
+        // and letting go closes it; cancelling brings it back into focus.
+        PredictiveBackHandler(
             enabled = detail != null && !showSettings && !showAccountScrobbling && !showSources && !showListenTogether &&
                 !showEqualizer && !showReplay,
-        ) { viewModel.closeDetail() }
+        ) { events ->
+            try {
+                events.collect { event -> detailBackProgress.snapTo(event.progress) }
+                viewModel.closeDetail()
+                detailBackProgress.animateTo(0f, tween(220))
+            } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                kotlinx.coroutines.withContext(NonCancellable) {
+                    detailBackProgress.animateTo(0f, tween(180))
+                }
+                throw cancelled
+            }
+        }
         BackHandler(enabled = selectedMoodGenre != null && detail == null && !showSettings && !showReplay) {
             viewModel.closeMoodGenre()
         }
@@ -2767,7 +2786,17 @@ private fun BitChordApp(
                         )
                         // Inside the recorded layers above, so the glass and the
                         // blurred bars pick the colour up as well.
-                        .ambientBlobs(ambientBlobs),
+                        .ambientBlobs(ambientBlobs)
+                        // Innermost, so it softens the pages and leaves the
+                        // colour blobs behind them alone.
+                        .graphicsLayer {
+                            val p = detailBackProgress.value
+                            if (p > 0f) {
+                                alpha = 1f - 0.65f * p
+                                val radius = 28.dp.toPx() * p
+                                renderEffect = BlurEffect(radius, radius, TileMode.Decal)
+                            }
+                        },
                     label = "content",
                 ) { key ->
                     // Every branch below reads `key` rather than the state that
@@ -3952,6 +3981,7 @@ private fun BitChordApp(
                     modifier = Modifier.align(Alignment.TopStart),
                 ) {
                     HomeStickyLogo(
+                        listState = homeListState,
                         topPadding = topBarContentPadding(),
                         refreshing = MainViewModel.Feed.HOME in refreshing,
                         pullFraction = { homePull.distanceFraction },

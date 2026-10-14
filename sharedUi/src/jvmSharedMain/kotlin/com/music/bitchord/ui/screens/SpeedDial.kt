@@ -110,18 +110,6 @@ internal fun speedDialMetrics(contentWidth: Dp, rows: Int, maxShelfHeight: Dp?):
     return SpeedDialMetrics(side, side, inset)
 }
 
-/**
- * Space to leave above the grid, below the top bar: [DIAL_TOP_LEAD], or less
- * when the shelf has less room than that to spare.
- */
-internal fun speedDialLead(metrics: SpeedDialMetrics, rows: Int, maxShelfHeight: Dp?): Dp {
-    if (maxShelfHeight == null) return 0.dp
-    val used = SPEED_DIAL_HEADER_HEIGHT + metrics.tileHeight * rows + TILE_GAP * (rows - 1) + SPEED_DIAL_DOTS_HEIGHT
-    return (maxShelfHeight - used).coerceIn(0.dp, DIAL_TOP_LEAD)
-}
-
-private val DIAL_TOP_LEAD = 42.dp
-
 private fun ShelfItem.dialId(): String = videoId ?: browseId ?: title
 
 /**
@@ -184,7 +172,6 @@ internal fun SpeedDialShelf(
         Spacer(Modifier.height(SPEED_DIAL_HEADER_HEIGHT))
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val metrics = speedDialMetrics(maxWidth - PAGE_GUTTER * 2, rows, maxShelfHeight)
-            val lead = speedDialLead(metrics, rows, maxShelfHeight)
             val tileW = metrics.tileWidth
             val tileH = metrics.tileHeight
             val gridHeight = tileH * rows + TILE_GAP * (rows - 1)
@@ -214,7 +201,6 @@ internal fun SpeedDialShelf(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = lead)
                     .pointerInput(rows, tileWPx, tileHPx, insetPx) {
                         awaitEachGesture {
                             // Watched from the first pass, ahead of the tiles and the

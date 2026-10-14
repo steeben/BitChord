@@ -286,10 +286,7 @@ fun LazyListScope.speedDialSkeleton(rows: Int = 4, maxShelfHeight: Dp? = null) {
                     maxShelfHeight,
                 )
                 Column(
-                    modifier = Modifier.padding(
-                        start = PAGE_GUTTER + metrics.inset,
-                        top = com.music.bitchord.ui.screens.speedDialLead(metrics, rows, maxShelfHeight),
-                    ),
+                    modifier = Modifier.padding(start = PAGE_GUTTER + metrics.inset),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     repeat(rows) {
