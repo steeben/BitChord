@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -148,58 +149,37 @@ fun SquareLogo(
 private const val LOOP_LENGTH = 10f
 private const val LOOP_CELLS = 10f
 
-/** The mark's height at rest, in the list's first row. */
-val HOME_LOGO_LARGE = 60.dp
+/** The mark's height, in the top bar beside the account button. */
+val HOME_LOGO_HEIGHT = 44.dp
 
-/** And pinned, once the list has been scrolled. */
-val HOME_LOGO_SMALL = 34.dp
-
-/** Space the list reserves at its top for the mark, so the first section clears it. */
-val HOME_LOGO_RESERVE = 72.dp
+/** Space the list reserves at its top; the mark itself lives in the top bar now. */
+val HOME_LOGO_RESERVE = 6.dp
 
 /**
- * The mark on Home: in the list's first row at rest, shrinking as the list
- * scrolls and then staying at the top left, level with the account button.
+ * The mark on Home, fixed in the top left, level with the account button on the
+ * right, with [trailing] (the title) beside it.
  *
  * Meant to be drawn above the top bar, which is why it is not part of the list:
  * the fade the bar lays over scrolled content would otherwise wash it out.
- * [topPadding] is the list's own top content padding, from which the mark's
- * two resting places are measured.
+ * [topPadding] is the list's own top content padding, from which the bar's
+ * centre is measured (the bar's content is 52dp high with TopBarContentGap, 12dp,
+ * below it).
  */
 @Composable
 fun HomeStickyLogo(
-    listState: LazyListState,
     topPadding: Dp,
     refreshing: Boolean,
     pullFraction: () -> Float,
     modifier: Modifier = Modifier,
-    /** Drawn beside the mark and shrinking with it, e.g. the app's name. */
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
-    // Where the mark sits at rest, and where it ends up pinned: centred on the
-    // top bar, whose content is 52dp high with TopBarContentGap (12dp) below it.
-    val restTop = topPadding - 20.dp
-    val pinnedTop = topPadding - 12.dp - 26.dp - HOME_LOGO_SMALL / 2
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
+            .offset(y = topPadding - 12.dp - 26.dp - HOME_LOGO_HEIGHT / 2)
             // Clear of the account button on the right.
             .padding(start = PAGE_GUTTER, end = 84.dp)
-            .height(HOME_LOGO_LARGE)
-            .graphicsLayer {
-                val travel = (restTop - pinnedTop).toPx()
-                val scrolled = if (listState.firstVisibleItemIndex == 0) {
-                    listState.firstVisibleItemScrollOffset.toFloat()
-                } else {
-                    travel
-                }
-                val t = (scrolled / travel).coerceIn(0f, 1f)
-                val scale = 1f + (HOME_LOGO_SMALL / HOME_LOGO_LARGE - 1f) * t
-                transformOrigin = TransformOrigin(0f, 0f)
-                scaleX = scale
-                scaleY = scale
-                translationY = restTop.toPx() - scrolled.coerceAtMost(travel)
-            },
+            .height(HOME_LOGO_HEIGHT),
     ) {
         SquareLogo(
             refreshing = refreshing,

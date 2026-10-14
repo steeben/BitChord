@@ -3952,7 +3952,6 @@ private fun BitChordApp(
                     modifier = Modifier.align(Alignment.TopStart),
                 ) {
                     HomeStickyLogo(
-                        listState = homeListState,
                         topPadding = topBarContentPadding(),
                         refreshing = MainViewModel.Feed.HOME in refreshing,
                         pullFraction = { homePull.distanceFraction },
@@ -3962,7 +3961,7 @@ private fun BitChordApp(
                                 color = MaterialTheme.colorScheme.onBackground,
                                 fontFamily = Metropolis,
                                 fontWeight = FontWeight.W800,
-                                fontSize = 26.sp,
+                                fontSize = 28.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
