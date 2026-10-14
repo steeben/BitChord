@@ -377,11 +377,15 @@ private fun ArtworkPageActions(
             // Keep the right edge fixed while a new action opens room to its
             // left. The surface itself therefore grows instead of jumping to
             // its new width in a single frame.
+            // Anchored at the end, so the profile photo stays exactly where it
+            // is while an action to its left comes and goes: the surface grows
+            // and shrinks around it instead of the photo being carried along.
             .animateContentSize(
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMediumLow,
                 ),
+                alignment = Alignment.CenterEnd,
             )
             // One 48dp profile target with no inset is a true 48x48 circle.
             // Once another action exists, restore the navbar's PILL_INSET at

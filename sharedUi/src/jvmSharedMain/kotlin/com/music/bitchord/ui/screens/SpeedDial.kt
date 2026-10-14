@@ -80,7 +80,7 @@ private const val SPEED_DIAL_COLUMNS = 3
 private val TILE_GAP = 8.dp
 
 /** A little air above the grid; the shelf has no heading of its own any more. */
-internal val SPEED_DIAL_HEADER_HEIGHT = 4.dp
+internal val SPEED_DIAL_HEADER_HEIGHT = 16.dp
 
 /** The page dots' row. Reserved even with a single page, for the same reason. */
 private val SPEED_DIAL_DOTS_HEIGHT = 16.dp
