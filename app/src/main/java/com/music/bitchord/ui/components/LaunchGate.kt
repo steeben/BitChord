@@ -17,12 +17,12 @@ object LaunchGate {
     @Volatile
     var createdAt: Long = 0L
 
-    /** How long the splash animation takes; see `drawable/splash_logo`. */
-    const val ANIMATION_MS = 1_600L
+    /** How long the splash animation takes, its fade-out included; see `drawable/splash_logo`. */
+    const val ANIMATION_MS = 1_500L
 
     /** The longest the first frame is held back, whatever happens. */
     const val MAX_HOLD_MS = 6_000L
 
     /** How long the splash takes to fade into the app once it lets go. */
-    const val EXIT_FADE_MS = 220L
+    const val EXIT_FADE_MS = 160L
 }

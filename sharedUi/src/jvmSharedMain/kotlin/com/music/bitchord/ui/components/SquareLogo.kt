@@ -3,6 +3,9 @@ package com.music.bitchord.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
@@ -47,34 +50,47 @@ private val LOGO_LIT = arrayOf(
 private const val DIM_ALPHA = 0.2f
 
 /**
- * Where each square sits on the loop the spinner runs round: the ten squares
- * on the edge of the grid in order, then the two in the middle placed
- * opposite one another. Indexed by `row * 3 + column`.
+ * Where each edge square sits on the loop the spinner runs round, clockwise
+ * from the top left: A1, B1, C1, C2, C3, C4, B4, A4, A3, A2. The two in the
+ * middle (B2, B3) aren't on it (-1). Indexed by `row * 3 + column`.
  */
 private val LOOP_POSITION = floatArrayOf(
     0f, 1f, 2f,
-    9f, 3f, 3f,
-    8f, 8f, 4f,
+    9f, -1f, 3f,
+    8f, -1f, 4f,
     7f, 6f, 5f,
-).also {
-    // The middle column's two inner squares share the loop with the edge.
-    it[4] = 3.0f // row 1, column 1
-    it[7] = 8.0f // row 2, column 1
-}
+)
+
+private const val LOOP_LENGTH = 10f
+
+/** Where the spinner comes to rest when a refresh ends: A3. */
+private const val STOP_AT = 8f
+
+/**
+ * The order the squares light in as the logo builds itself back up, the same
+ * as the launch splash's: A3, A4, B4, B3, B2, B1, C1. Each is `row * 3 + column`.
+ */
+private val BUILD_ORDER = intArrayOf(6, 9, 10, 7, 4, 1, 2)
 
 /** One lap of the spinner. */
 private const val SPIN_SECONDS = 1.1f
 
-/** How the lit squares trail behind the head of the spinner, in squares. */
-private const val TRAIL_LENGTH = 2.4f
+/** How far, in squares, the light trails behind the spinner's head: short, a single square's tail. */
+private const val TRAIL_LENGTH = 0.8f
+
+/** How long the logo takes to build itself back up after a refresh. */
+private const val BUILD_MS = 7 * 110
+
+private enum class LogoMode { Rest, Spin, Build }
 
 /**
  * The app's mark, drawn as squares so it can come apart and go back together.
  *
- * At rest it is the logo: the lit squares solid, the others faint. Pulled down
- * it dims and lights square by square along the loop with [pullFraction];
- * while [refreshing] a bright head with a tail chases round the grid; and when
- * the refresh ends the squares settle back into the logo's layout.
+ * At rest it is the logo: the lit squares solid, the others faint. Pulled down,
+ * the squares light row by row from the top as [pullFraction] goes to 1. While
+ * [refreshing], a single light runs clockwise round the edge of the grid; when
+ * the refresh ends it carries on to A3, stops there, and the logo builds itself
+ * back up from that square in the launch splash's order.
  */
 @Composable
 fun SquareLogo(
@@ -83,24 +99,45 @@ fun SquareLogo(
     refreshing: Boolean = false,
     pullFraction: () -> Float = { 0f },
 ) {
-    val spinWeight = remember { Animatable(0f) }
+    var mode by remember { mutableStateOf(LogoMode.Rest) }
+    var head by remember { mutableFloatStateOf(STOP_AT) }
+    // How far the spin has taken over from the pulled squares, and how far the
+    // logo has built itself back up.
+    val spinIn = remember { Animatable(0f) }
+    val built = remember { Animatable(1f) }
     LaunchedEffect(refreshing) {
         if (refreshing) {
-            spinWeight.animateTo(1f, tween(180))
-        } else {
-            spinWeight.animateTo(0f, tween(750, easing = FastOutSlowInEasing))
-        }
-    }
-    var phase by remember { mutableFloatStateOf(0f) }
-    val currentRefreshing by rememberUpdatedState(refreshing)
-    val animating by remember { derivedStateOf { currentRefreshing || spinWeight.value > 0.001f } }
-    LaunchedEffect(animating) {
-        if (!animating) return@LaunchedEffect
-        var last = androidx.compose.runtime.withFrameNanos { it }
-        while (true) {
-            val now = androidx.compose.runtime.withFrameNanos { it }
-            phase = (phase + (now - last) / 1_000_000_000f / SPIN_SECONDS) % 1f
-            last = now
+            if (mode != LogoMode.Spin) {
+                mode = LogoMode.Spin
+                launch {
+                    spinIn.snapTo(0f)
+                    spinIn.animateTo(1f, tween(180))
+                }
+            }
+            var last = androidx.compose.runtime.withFrameNanos { it }
+            while (true) {
+                val now = androidx.compose.runtime.withFrameNanos { it }
+                head = (head + (now - last) / 1_000_000_000f / SPIN_SECONDS * LOOP_LENGTH) % LOOP_LENGTH
+                last = now
+            }
+        } else if (mode == LogoMode.Spin) {
+            // On round to A3, then stop there.
+            var last = androidx.compose.runtime.withFrameNanos { it }
+            while (true) {
+                val now = androidx.compose.runtime.withFrameNanos { it }
+                val step = (now - last) / 1_000_000_000f / SPIN_SECONDS * LOOP_LENGTH
+                last = now
+                val left = ((STOP_AT - head) % LOOP_LENGTH + LOOP_LENGTH) % LOOP_LENGTH
+                if (step >= left) {
+                    head = STOP_AT
+                    break
+                }
+                head = (head + step) % LOOP_LENGTH
+            }
+            built.snapTo(0f)
+            mode = LogoMode.Build
+            built.animateTo(1f, tween(BUILD_MS, easing = LinearEasing))
+            mode = LogoMode.Rest
         }
     }
 
@@ -112,28 +149,41 @@ fun SquareLogo(
         val originX = (size.width - (2 * pitch + cell)) / 2f
         val originY = (size.height - (3 * pitch + cell)) / 2f
         val corner = CornerRadius(8f * unit)
-        val pull = pullFraction().coerceIn(0f, 2f)
-        val spin = spinWeight.value
-        val head = phase * LOOP_LENGTH
-        val litCells = pull.coerceAtMost(1f) * LOOP_CELLS
+        val pull = pullFraction().coerceIn(0f, 1f)
         val pullBlend = (pull * 5f).coerceIn(0f, 1f)
+        val currentMode = mode
+        val spin = spinIn.value
+        val buildLit = 1f + built.value * (BUILD_ORDER.size - 1)
 
         for (row in 0 until 4) {
             for (col in 0 until 3) {
                 val index = row * 3 + col
                 val rest = if (LOGO_LIT[row][col]) 1f else DIM_ALPHA
-                val loopAt = LOOP_POSITION[index]
-
-                // Pulled: everything dims, then lights along the loop.
-                val pulled = DIM_ALPHA + (1f - DIM_ALPHA) * (litCells - loopAt).coerceIn(0f, 1f)
-                val afterPull = rest + (pulled - rest) * pullBlend
-
-                // Refreshing: a head and its tail running round the loop.
-                var behind = (head - loopAt) % LOOP_LENGTH
-                if (behind < 0f) behind += LOOP_LENGTH
-                val spinning = DIM_ALPHA + (1f - DIM_ALPHA) * exp(-behind / TRAIL_LENGTH)
-
-                val alpha = afterPull + (spinning - afterPull) * spin
+                // Pulled: rows light from the top, A1 first, as the pull goes on.
+                val pulled = DIM_ALPHA + (1f - DIM_ALPHA) * (pull * 12f - index).coerceIn(0f, 1f)
+                val beforeSpin = rest + (pulled - rest) * pullBlend
+                val alpha = when (currentMode) {
+                    LogoMode.Rest -> beforeSpin
+                    LogoMode.Spin -> {
+                        val loopAt = LOOP_POSITION[index]
+                        val spinning = if (loopAt < 0f) {
+                            DIM_ALPHA
+                        } else {
+                            var behind = (head - loopAt) % LOOP_LENGTH
+                            if (behind < 0f) behind += LOOP_LENGTH
+                            DIM_ALPHA + (1f - DIM_ALPHA) * exp(-behind / TRAIL_LENGTH)
+                        }
+                        beforeSpin + (spinning - beforeSpin) * spin
+                    }
+                    LogoMode.Build -> {
+                        val order = BUILD_ORDER.indexOf(index)
+                        if (order < 0) {
+                            DIM_ALPHA
+                        } else {
+                            DIM_ALPHA + (1f - DIM_ALPHA) * (buildLit - order).coerceIn(0f, 1f)
+                        }
+                    }
+                }
                 drawRoundRect(
                     color = color.copy(alpha = color.alpha * alpha),
                     topLeft = Offset(originX + col * pitch, originY + row * pitch),
@@ -144,9 +194,6 @@ fun SquareLogo(
         }
     }
 }
-
-private const val LOOP_LENGTH = 10f
-private const val LOOP_CELLS = 10f
 
 /** The mark's height at rest, in the list's first row. */
 val HOME_LOGO_LARGE = 60.dp

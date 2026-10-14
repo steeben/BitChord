@@ -291,6 +291,8 @@ fun SongRow(
      * silently tick a checkbox.
      */
     onMore: (() -> Unit)? = null,
+    /** False leaves the ⋮ off; the long-press still opens the same sheet. */
+    showMore: Boolean = true,
     onSwipeToQueue: (() -> Unit)? = null,
     /**
      * What the row paints over the swipe reveal as it slides back.
@@ -362,7 +364,7 @@ fun SongRow(
             song = song,
             onClick = onClick,
             onLongPress = onLongPress,
-            onMore = onMore ?: onLongPress,
+            onMore = if (showMore) onMore ?: onLongPress else null,
             modifier = modifier,
             trackNumber = trackNumber,
             subtitleColor = subtitleColor,
@@ -409,7 +411,7 @@ fun SongRow(
             song = song,
             onClick = onClick,
             onLongPress = onLongPress,
-            onMore = onMore ?: onLongPress,
+            onMore = if (showMore) onMore ?: onLongPress else null,
             modifier = Modifier.background(rowBackground),
             trackNumber = trackNumber,
             subtitleColor = subtitleColor,

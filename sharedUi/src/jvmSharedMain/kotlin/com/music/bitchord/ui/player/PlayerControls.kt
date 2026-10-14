@@ -662,11 +662,20 @@ internal fun CircleGlyph(
         targetValue = if (active) 0.34f else 0.18f,
         label = "glyphDisc",
     )
+    val glass = LocalPlayerGlass.current
     Box(
         modifier = Modifier
             .size(34.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = discAlpha))
+            .let { sized ->
+                // Liquid glass when it is on, with the old disc's tint over it
+                // only while active, so a liked heart still reads as on.
+                if (glass != null) {
+                    glass.surface(sized, CircleShape)
+                        .background(Color.White.copy(alpha = (discAlpha - 0.18f).coerceAtLeast(0f)), CircleShape)
+                } else {
+                    sized.clip(CircleShape).background(Color.White.copy(alpha = discAlpha))
+                }
+            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -794,13 +803,20 @@ private fun pillWidth(segments: Int): Dp =
 @Composable
 private fun Pill(
     modifier: Modifier = Modifier,
+    /** Liquid glass rather than the translucent fill, when the app has glass on. */
+    glass: PlayerGlass? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
         modifier = modifier
             .height(BOTTOM_ACTION_SIZE)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.12f))
+            .let { sized ->
+                if (glass != null) {
+                    glass.surface(sized, CircleShape).clip(CircleShape)
+                } else {
+                    sized.clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+                }
+            }
             .animateContentSize(
                 animationSpec = spring(
                     dampingRatio = 0.82f,
@@ -842,7 +858,7 @@ private fun OutputPartyPill(
     onOpenMembers: () -> Unit,
 ) {
     val badge = rememberPartyBadge()
-    Pill {
+    Pill(glass = LocalPlayerGlass.current) {
         PillSegment(
             icon = Icons.Rounded.Headphones,
             iconSize = PILL_HEADPHONES_SIZE,

@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import com.music.bitchord.ui.components.AlphabetIndexer
+import com.music.bitchord.ui.components.indexSortKey
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -440,7 +441,9 @@ fun LocalMusicScreen(
                         },
                         // Downloads redefines the hold as "select", so the ⋮ has to
                         // carry the actions sheet itself or the page loses it.
-                        onSongMore = onSongLongPress,
+                        // Everywhere else it is left off, for the A–Z index's
+                        // room: holding the row opens the same sheet.
+                        onSongMore = onSongLongPress.takeIf { isDownloads },
                         onSongSwipe = onSongSwipe,
                         contentPadding = bodyContentPadding,
                     )
@@ -451,7 +454,7 @@ fun LocalMusicScreen(
                         sortedSongs.groupBy { it.artist }
                             .entries
                             .filter { searchQuery.isBlank() || it.key.contains(searchQuery, ignoreCase = true) }
-                            .sortedBy { it.key.lowercase(Locale.ROOT) }
+                            .sortedBy { indexSortKey(it.key) }
                     }
                     ArtistsTab(
                         artists = artists,
@@ -591,6 +594,7 @@ private fun SongsTab(
                         onClick = { onSongClick(songs, index) },
                         onLongPress = { onSongLongPress(song) },
                         onMore = onSongMore?.let { more -> { more(song) } },
+                        showMore = onSongMore != null,
                         onSwipeToQueue = { onSongSwipe(song) },
                     )
                     if (index < songs.lastIndex) {
@@ -834,12 +838,6 @@ private fun ArtistRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Icon(
-            imageVector = Icons.Rounded.PlayArrow,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
     }
 }
 
@@ -986,9 +984,9 @@ private fun albumEntries(
                 key = "tagged:$name",
             )
         }
-    return (asked + derived).sortedWith(
-        compareByDescending<AlbumEntry> { it.asked }.thenBy { it.title.lowercase(Locale.ROOT) },
-    )
+    // One alphabetical run, saved and tagged together, so the A–Z index can
+    // file every album under its letter.
+    return (asked + derived).sortedBy { indexSortKey(it.title) }
 }
 
 @Composable
@@ -1230,12 +1228,16 @@ private fun AlbumRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Icon(
-            imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.PlayArrow,
-            contentDescription = if (selected) stringResource(R.string.selected) else null,
-            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
+        // Only the selection tick: the arrow that sat here is gone, leaving
+        // the edge to the A–Z index.
+        if (selected) {
+            Icon(
+                imageVector = Icons.Rounded.CheckCircle,
+                contentDescription = stringResource(R.string.selected),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
@@ -1547,8 +1549,10 @@ internal fun Song.matchesSearch(query: String): Boolean =
         albumName?.contains(query, ignoreCase = true) == true
 
 private fun List<Song>.sortedForLibrary(order: LocalMusicSort): List<Song> = when (order) {
-    LocalMusicSort.TITLE_ASC -> sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
-    LocalMusicSort.TITLE_DESC -> sortedWith(compareByDescending<Song> { it.title.lowercase(Locale.ROOT) })
+    // By the same key the A–Z index files them under, so leading punctuation
+    // or an accent can't put a title out of its letter.
+    LocalMusicSort.TITLE_ASC -> sortedBy { indexSortKey(it.title) }
+    LocalMusicSort.TITLE_DESC -> sortedByDescending { indexSortKey(it.title) }
     LocalMusicSort.DATE_ADDED -> sortedWith(
         compareByDescending<Song> { it.localDateAddedSeconds ?: Long.MIN_VALUE }
             .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title },

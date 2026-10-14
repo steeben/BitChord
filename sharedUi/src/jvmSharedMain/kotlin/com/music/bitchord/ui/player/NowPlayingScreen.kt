@@ -972,9 +972,10 @@ fun NowPlayingScreen(
                 else -> LastPlayerScreen.MAIN
             },
         )
-        // A fresh visit always starts with the half player present. Scrolling
-        // the queue can then dismiss it without this effect firing again.
-        if (queueOpen) queueControlsOpen = true
+        // The queue opens on its own, the controls stood down so the list has
+        // the screen; scrolling it brings them back (and hides them again)
+        // without this effect firing again.
+        if (queueOpen) queueControlsOpen = false
     }
     // Change the panel and its controls in the same snapshot. Driving the
     // controls from a LaunchedEffect left one composed frame where lyrics were
@@ -998,7 +999,7 @@ fun NowPlayingScreen(
         // With the queue rather than after it, for the reason [openLyrics]
         // gives: left to the effect above, it was a second recomposition of
         // the whole player on the sleeve's first frame of moving.
-        if (opening) queueControlsOpen = true
+        if (opening) queueControlsOpen = false
         queueOpen = opening
         if (opening) closeLyrics()
     }
@@ -2187,6 +2188,10 @@ fun NowPlayingScreen(
             animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
             label = "fullArtworkBackdropCrossfade",
         )
+        // Everything behind the controls, recorded for the glass buttons to
+        // bend when liquid glass is on (see [PlayerGlass]).
+        val playerGlass = LocalPlayerGlass.current
+        Box(Modifier.matchParentSize().let { playerGlass?.source(it) ?: it }) {
         if (legacyMeshBackdrop) {
             // v1.5's backdrop, restored verbatim: no seam, because the blobs
             // are not anchored to anything on screen — they fill the player and
@@ -2281,6 +2286,7 @@ fun NowPlayingScreen(
                         .hazeSource(playerHaze),
                 )
             }
+        }
         }
 
         // This transparent top gradient is always present while the modal
@@ -2575,7 +2581,7 @@ fun NowPlayingScreen(
                                                 haptics.play(
                                                     if (open) Haptic.Expand else Haptic.Tap,
                                                 )
-                                                if (open) queueControlsOpen = true
+                                                if (open) queueControlsOpen = false
                                                 queueOpen = open
                                             }
                                             queueReleased++
@@ -2631,7 +2637,7 @@ fun NowPlayingScreen(
                                     onSettle = { open ->
                                         if (open != queueOpen) {
                                             haptics.play(if (open) Haptic.Expand else Haptic.Tap)
-                                            if (open) queueControlsOpen = true
+                                            if (open) queueControlsOpen = false
                                             queueOpen = open
                                         }
                                         queueReleased++
@@ -2653,7 +2659,7 @@ fun NowPlayingScreen(
                                 onSettle = { open ->
                                     if (open != queueOpen) {
                                         haptics.play(if (open) Haptic.Expand else Haptic.Tap)
-                                        if (open) queueControlsOpen = true
+                                        if (open) queueControlsOpen = false
                                         queueOpen = open
                                     }
                                     queueReleased++

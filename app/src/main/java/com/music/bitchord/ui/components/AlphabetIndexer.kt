@@ -66,12 +66,24 @@ private fun indexSections(keys: List<String>): List<IndexSection> {
 }
 
 private fun sectionLabel(key: String): String {
-    val first = key.trim().firstOrNull { it.isLetterOrDigit() } ?: return "#"
-    if (!first.isLetter()) return "#"
-    // Accented letters file under their base letter, as a phone's contacts do.
-    val base = java.text.Normalizer.normalize(first.toString(), java.text.Normalizer.Form.NFD)
-        .firstOrNull()?.uppercase(Locale.ROOT) ?: return "#"
-    return if (base.length == 1 && base[0] in 'A'..'Z') base else "#"
+    val first = indexSortKey(key).firstOrNull() ?: return "#"
+    return if (first in 'a'..'z') first.uppercaseChar().toString() else "#"
+}
+
+private val DIACRITICS = Regex("\\p{Mn}+")
+
+/**
+ * What a library list sorts by so the A–Z index matches it: lower case, any
+ * leading punctuation dropped, accents folded to their base letter — so
+ * "(What's the Story)" files under W and "Édith" under E, as a phone's
+ * contacts do.
+ */
+fun indexSortKey(title: String): String {
+    val start = title.indexOfFirst { it.isLetterOrDigit() }
+    val trimmed = if (start < 0) title else title.substring(start)
+    return java.text.Normalizer.normalize(trimmed, java.text.Normalizer.Form.NFD)
+        .replace(DIACRITICS, "")
+        .lowercase(Locale.ROOT)
 }
 
 /**

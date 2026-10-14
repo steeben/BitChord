@@ -6,7 +6,8 @@
   The system runs it off the app's main thread, so it plays smoothly while the
   app starts. 288dp is the splash icon's box without an icon background; the
   grid is 110dp high, well inside the 192dp circle the system keeps clear.
-  Runs 1600ms: LaunchGate.ANIMATION_MS and windowSplashScreenAnimationDuration.
+  Builds over 1200ms, then every square fades out over 300ms: 1500ms in all,
+  LaunchGate.ANIMATION_MS and windowSplashScreenAnimationDuration.
 -->
 <animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt">
@@ -62,86 +63,168 @@
     </aapt:attr>
     <target android:name="A3">
         <aapt:attr name="android:animation">
-            <objectAnimator
-                android:duration="400"
-                android:startOffset="0"
-                android:interpolator="@android:interpolator/fast_out_slow_in"
-                android:propertyName="fillAlpha"
-                android:valueFrom="0"
-                android:valueTo="1"
-                android:valueType="floatType" />
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="0"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="1"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
         </aapt:attr>
     </target>
     <target android:name="A4">
         <aapt:attr name="android:animation">
-            <objectAnimator
-                android:duration="400"
-                android:startOffset="200"
-                android:interpolator="@android:interpolator/fast_out_slow_in"
-                android:propertyName="fillAlpha"
-                android:valueFrom="0"
-                android:valueTo="1"
-                android:valueType="floatType" />
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="150"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="1"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
         </aapt:attr>
     </target>
     <target android:name="B4">
         <aapt:attr name="android:animation">
-            <objectAnimator
-                android:duration="400"
-                android:startOffset="400"
-                android:interpolator="@android:interpolator/fast_out_slow_in"
-                android:propertyName="fillAlpha"
-                android:valueFrom="0"
-                android:valueTo="1"
-                android:valueType="floatType" />
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="300"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="1"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
         </aapt:attr>
     </target>
     <target android:name="B3">
         <aapt:attr name="android:animation">
-            <objectAnimator
-                android:duration="400"
-                android:startOffset="600"
-                android:interpolator="@android:interpolator/fast_out_slow_in"
-                android:propertyName="fillAlpha"
-                android:valueFrom="0"
-                android:valueTo="1"
-                android:valueType="floatType" />
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="450"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="1"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
         </aapt:attr>
     </target>
     <target android:name="B2">
         <aapt:attr name="android:animation">
-            <objectAnimator
-                android:duration="400"
-                android:startOffset="800"
-                android:interpolator="@android:interpolator/fast_out_slow_in"
-                android:propertyName="fillAlpha"
-                android:valueFrom="0"
-                android:valueTo="1"
-                android:valueType="floatType" />
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="600"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="1"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
         </aapt:attr>
     </target>
     <target android:name="B1">
         <aapt:attr name="android:animation">
-            <objectAnimator
-                android:duration="400"
-                android:startOffset="1000"
-                android:interpolator="@android:interpolator/fast_out_slow_in"
-                android:propertyName="fillAlpha"
-                android:valueFrom="0"
-                android:valueTo="1"
-                android:valueType="floatType" />
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="750"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="1"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
         </aapt:attr>
     </target>
     <target android:name="C1">
         <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="900"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="1"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="dim">
+        <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="400"
-                android:startOffset="1200"
-                android:interpolator="@android:interpolator/fast_out_slow_in"
-                android:propertyName="fillAlpha"
-                android:valueFrom="0"
-                android:valueTo="1"
-                android:valueType="floatType" />
+                    android:duration="300"
+                    android:startOffset="1200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0.2"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
         </aapt:attr>
     </target>
 </animated-vector>

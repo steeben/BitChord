@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -453,13 +454,21 @@ fun MiniPlayer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .miniPlayerSwipeContent(swipe)
                 .padding(
                     horizontal = ROW_PADDING_HORIZONTAL,
                     vertical = ROW_PADDING_VERTICAL,
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+          // The song — cover and titles — slides under a swipe; the transport
+          // beside it stays where it is.
+          Row(
+            modifier = Modifier
+                .weight(1f)
+                .clipToBounds()
+                .miniPlayerSwipeContent(swipe),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
             AsyncImage(
                 model = artUrl?.artworkAt(ROW_ART_PX),
                 contentDescription = null,
@@ -486,6 +495,7 @@ fun MiniPlayer(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+          }
             if (isLoading) {
                 Box(Modifier.size(GLYPH_SLOT), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(

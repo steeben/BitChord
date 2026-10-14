@@ -1156,7 +1156,8 @@ fun SettingsScreen(
                     ReorderDialog(
                         title = homeSectionsTitle,
                         note = stringResource(R.string.home_sections_note),
-                        items = homeSections,
+                        // Without the speed dial: it is always on, always first.
+                        items = homeSections.filterNot { it.item == CustomizationSettings.SPEED_DIAL_TITLE },
                         label = { it },
                         onChange = CustomizationSettings::setHomeSections,
                         onDismiss = { editing = false },

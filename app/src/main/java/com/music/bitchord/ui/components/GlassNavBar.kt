@@ -376,8 +376,7 @@ private fun GlassNowPlaying(
             }
             .then(modifier)
             // The playhead as light in the glass, in the cover's colour; it may
-            // spill a little past the bottom edge, so it is drawn outside the
-            // clip that keeps the sliding content in.
+            // spill a little past the bottom edge.
             .miniPlayerProgress(
                 position = position,
                 durationMs = durationMs,
@@ -386,7 +385,6 @@ private fun GlassNowPlaying(
                 shape = shape,
                 corner = { size -> if (circular) size.height / 2f else with(density) { 16.dp.toPx() } },
             )
-            .clipToBounds()
             .clickable(
                 interactionSource = pressSource,
                 indication = null,
@@ -397,12 +395,20 @@ private fun GlassNowPlaying(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .miniPlayerSwipeContent(swipe)
                 .padding(
                     horizontal = if (isInline) 8.dp else 12.dp,
                     vertical = if (isInline) 4.dp else 8.dp,
                 ),
         ) {
+          // The song — cover and titles — slides under a swipe; the transport
+          // beside it stays where it is.
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .weight(1f)
+                .clipToBounds()
+                .miniPlayerSwipeContent(swipe),
+          ) {
             AsyncImage(
                 model = artUrl?.artworkAt(ROW_ART_PX),
                 contentDescription = null,
@@ -454,6 +460,7 @@ private fun GlassNowPlaying(
                     )
                 }
             }
+          }
             if (isLoading) {
                 Box(Modifier.size(glyphSlot), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(

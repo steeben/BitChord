@@ -2677,6 +2677,14 @@ private fun BitChordApp(
 
     // How far the back swipe has taken a pushed page toward closing, 0 to 1.
     val detailBackProgress = remember { Animatable(0f) }
+    // On Home's speed dial the miniplayer stays in full view: the bar doesn't
+    // fold away until the list is scrolled on past the dial.
+    val onDial by remember {
+        derivedStateOf { homeListState.firstVisibleItemIndex <= 1 }
+    }
+    val dialShowing = onDial && selectedTab == TAB_HOME && detail == null && selectedMoodGenre == null &&
+        libraryShowAll == null && !showSettings
+    LaunchedEffect(dialShowing, navBarScroll) { navBarScroll.holdExpanded = dialShowing }
     // The system splash stays up until Home has something to show (or,
     // starting on another page, for a moment). See LaunchGate.
     var splashTimedOut by remember { mutableStateOf(false) }
@@ -3824,6 +3832,13 @@ private fun BitChordApp(
                     artworkPageChrome = true,
                     backButtonHazeState = hazeState,
                     trailingTitle = if (detail != null && detailActiveShelf != null) detail.title else null,
+                    // A library folder (Downloads, YouTube Music, a server…) and
+                    // the Spotify library say which one they are up here.
+                    inlineTitle = when {
+                        showSpotify && detail == null -> stringResource(R.string.spotify)
+                        isLocalDetail && detail != null && detailActiveShelf == null -> detail.title
+                        else -> null
+                    },
                     // Search has no large in-list header to hand the title back to —
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
@@ -4400,7 +4415,16 @@ private fun BitChordApp(
                             playerSheetMotion.laidOut = true
                         },
                 ) {
-                    CompositionLocalProvider(LocalPlayerDock provides activeDock) {
+                    // The player's own backdrop, for its buttons' liquid glass
+                    // (the app's would show the pages behind its window).
+                    val playerBackdrop = rememberLayerBackdrop()
+                    val playerGlass = remember(playerBackdrop) {
+                        com.music.bitchord.ui.player.AppPlayerGlass(playerBackdrop)
+                    }
+                    CompositionLocalProvider(
+                        LocalPlayerDock provides activeDock,
+                        com.music.bitchord.ui.player.LocalPlayerGlass provides playerGlass.takeIf { glassSamplesBackdrop },
+                    ) {
                         nowPlaying(playerSong)
                     }
                 }

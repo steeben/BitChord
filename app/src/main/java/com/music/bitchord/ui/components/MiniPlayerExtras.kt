@@ -17,6 +17,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
@@ -105,7 +108,8 @@ fun Modifier.miniPlayerSwipeContent(swipe: MiniPlayerSwipe): Modifier =
  *
  * Plain ([glow] false): a thin line that stays inside the bar. Glass: a soft
  * glow rising inside the bar from its bottom edge, with a brighter line along
- * the edge and a little light spilling below it along the flat of the bottom.
+ * the edge and a little light spilling below it along the flat of the bottom,
+ * all of it tapering away over the last stretch before the playhead.
  * [shape] is the bar's, so the inside part follows its corners; [corner] is how
  * far its rounded ends reach in, where nothing spills.
  *
@@ -138,6 +142,12 @@ fun Modifier.miniPlayerProgress(
     val rise = GLOW_RISE.toPx()
     val spill = GLOW_SPILL.toPx()
     val edge = GLASS_LINE.toPx()
+    val inset = corner(size)
+    // Drawn into a layer of its own and then faded out towards the playhead as
+    // a whole, so the glow and the line taper off together rather than
+    // stopping at a hard edge.
+    val layer = Rect(0f, 0f, size.width, size.height + spill)
+    drawContext.canvas.saveLayer(layer, Paint())
     clipPath(outline) {
         // The light inside the glass, strongest at the bottom edge.
         drawRect(
@@ -151,19 +161,8 @@ fun Modifier.miniPlayerProgress(
             size = Size(end, rise),
         )
         drawRect(line, topLeft = Offset(0f, size.height - edge), size = Size(end, edge))
-        // The playhead itself, a brighter bloom where the line ends.
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(light.copy(alpha = 0.55f), Color.Transparent),
-                center = Offset(end, size.height),
-                radius = rise,
-            ),
-            radius = rise,
-            center = Offset(end, size.height),
-        )
     }
-    // And a little of it spilling out below, only along the flat of the bottom.
-    val inset = corner(size)
+    // A little of it spilling out below, only along the flat of the bottom.
     val spillEnd = end.coerceAtMost(size.width - inset)
     if (spillEnd > inset) {
         drawRect(
@@ -176,6 +175,20 @@ fun Modifier.miniPlayerProgress(
             size = Size(spillEnd - inset, spill),
         )
     }
+    val taper = minOf(GLOW_TAPER.toPx(), end * 0.5f)
+    drawRect(
+        brush = Brush.horizontalGradient(
+            0f to Color.Black,
+            ((end - taper) / end).coerceIn(0f, 1f) to Color.Black,
+            1f to Color.Transparent,
+            startX = 0f,
+            endX = end,
+        ),
+        topLeft = Offset.Zero,
+        size = Size(end, size.height + spill),
+        blendMode = BlendMode.DstIn,
+    )
+    drawContext.canvas.restore()
 }
 
 /**
@@ -194,5 +207,6 @@ private val PLAIN_LINE: Dp = 2.5.dp
 private val GLASS_LINE: Dp = 2.dp
 private val GLOW_RISE: Dp = 16.dp
 private val GLOW_SPILL: Dp = 6.dp
+private val GLOW_TAPER: Dp = 36.dp
 private const val SWIPE_OUT_MS = 150
 private const val SWIPE_IN_FROM = 0.45f

@@ -273,6 +273,16 @@ class FloatingTabBarScrollConnection(
 
     private var accumulatedScroll = 0f
 
+    /**
+     * While true the bar stays expanded whatever the page does: Home's speed
+     * dial, where the miniplayer is meant to be in full view.
+     */
+    var holdExpanded: Boolean = false
+        set(value) {
+            field = value
+            if (value) expand()
+        }
+
     fun expand() {
         isInline = false
         accumulatedScroll = 0f
@@ -285,7 +295,7 @@ class FloatingTabBarScrollConnection(
 
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         // If behavior is Never, don't change state
-        if (inlineBehavior == FloatingTabBarInlineBehavior.Never) {
+        if (inlineBehavior == FloatingTabBarInlineBehavior.Never || holdExpanded) {
             return Offset.Zero
         }
 

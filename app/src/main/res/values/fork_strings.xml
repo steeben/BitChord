@@ -18,7 +18,7 @@
     <string name="fork_obtainx">I suggest using ObtainX for automatic updates.</string>
     <string name="fork_releases">Get updates from this fork\'s releases page</string>
     <string name="home_sections">Home sections</string>
-    <string name="home_sections_note">Drag the handles to reorder, and switch off sections you don\'t want. New sections from YouTube Music are added here the first time Home shows them.</string>
+    <string name="home_sections_note">The speed dial always leads Home. Drag the handles to reorder the sections under it, and switch off ones you don\'t want. New sections from YouTube Music are added here the first time Home shows them.</string>
     <string name="home_sections_subtitle">Reorder or hide what Home shows</string>
     <string name="keep_nav_bar_expanded">Keep navigation bar expanded</string>
     <string name="keep_nav_bar_expanded_subtitle">Stops the bar from shrinking while you scroll</string>

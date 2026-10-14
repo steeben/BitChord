@@ -168,15 +168,18 @@ fun Modifier.lightweightLiquidGlass(
  * throws for any other shape type.
  */
 @Composable
-fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier {
+fun Modifier.liquidGlass(
+    shape: CornerBasedShape,
+    /** What it bends: the app's pages unless told otherwise (the player has its own). */
+    backdrop: Backdrop = LocalAppBackdrop.current,
+    exportedBackdrop: LayerBackdrop? = LocalGlassExport.current,
+): Modifier {
     if (!isGlassSupported()) return this
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     if (reduceDynamicBlur) {
         return background(MaterialTheme.colorScheme.surface, shape)
             .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
     }
-    val backdrop = LocalAppBackdrop.current
-    val exportedBackdrop = LocalGlassExport.current
     val density = LocalDensity.current
     val blurPx = with(density) { BLUR_RADIUS_DP.dp.toPx() } * GLASS_RESOLUTION_SCALE
     val lensHeightPx = with(density) { (LENS_HEIGHT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE

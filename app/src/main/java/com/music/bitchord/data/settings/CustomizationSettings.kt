@@ -155,9 +155,9 @@ object CustomizationSettings {
     }
 
     fun setHomeSections(value: List<OrderedToggle<String>>) {
-        homeSections.value = value
+        homeSections.value = withDialFirst(value)
         val json = JSONArray()
-        value.forEach { json.put(JSONObject().put("t", it.item).put("on", it.enabled)) }
+        homeSections.value.forEach { json.put(JSONObject().put("t", it.item).put("on", it.enabled)) }
         prefs?.edit()?.putString(KEY_HOME_SECTIONS, json.toString())?.apply()
     }
 
@@ -185,10 +185,12 @@ object CustomizationSettings {
                 val entry = json.getJSONObject(i)
                 OrderedToggle(entry.getString("t"), entry.optBoolean("on", true))
             }.distinctBy { it.item }
-        }.getOrDefault(default).let { list ->
-            if (list.any { it.item == SPEED_DIAL_TITLE }) list else listOf(OrderedToggle(SPEED_DIAL_TITLE, true)) + list
-        }
+        }.getOrDefault(default).let(::withDialFirst)
     }
+
+    /** The speed dial is always on and always Home's first section; it can't be moved or hidden. */
+    private fun withDialFirst(list: List<OrderedToggle<String>>): List<OrderedToggle<String>> =
+        listOf(OrderedToggle(SPEED_DIAL_TITLE, true)) + list.filterNot { it.item == SPEED_DIAL_TITLE }
 
     // ── Speed dial ──────────────────────────────────────────────────────
 

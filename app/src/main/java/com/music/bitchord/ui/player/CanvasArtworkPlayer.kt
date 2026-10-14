@@ -33,6 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onSizeChanged
@@ -167,6 +171,17 @@ internal fun AndroidCanvasArtworkPlayer(
 
     var url by remember(canvas) { mutableStateOf(canvas.url) }
     var rendered by remember(canvas) { mutableStateOf(false) }
+    // The clip's opening frame from the last time it played, if it has played
+    // this session: shown in its place until the new player has a frame of its
+    // own, so coming back to a clip already loaded never flashes the still
+    // sleeve first. Given up after a moment if no frame arrives.
+    var placeholder by remember(canvas) { mutableStateOf(CanvasFrameMemory.get(canvas.url)) }
+    LaunchedEffect(placeholder != null, rendered) {
+        if (placeholder == null) return@LaunchedEffect
+        // Held through the clip's own fade in over it, then dropped.
+        delay(if (rendered) PLACEHOLDER_FADE_MS else PLACEHOLDER_WAIT_MS)
+        placeholder = null
+    }
     // Aspect of the clip itself. Zero until the decoder reports it, which is
     // also the signal that there is nothing sensible to crop to yet.
     var clipAspect by remember(canvas) { mutableFloatStateOf(0f) }
@@ -287,8 +302,10 @@ internal fun AndroidCanvasArtworkPlayer(
     }
 
     val reportRendered by rememberUpdatedState(onRenderedChanged)
+    // To the caller the clip is up while its remembered frame stands in for it.
+    val shown = rendered || placeholder != null
+    LaunchedEffect(shown) { reportRendered(shown) }
     LaunchedEffect(rendered) {
-        reportRendered(rendered)
         if (!rendered) return@LaunchedEffect
         // Let the surface actually paint the frame that just triggered this
         // before reading it back — grabbing it the instant the callback fires
@@ -301,6 +318,10 @@ internal fun AndroidCanvasArtworkPlayer(
             onFrameCaptured(bitmap.asImageBitmap())
         } else {
             Log.w(TAG, "frame capture returned null after rendered=true")
+        }
+        // The opening frame as the view shows it, kept for next time.
+        if (CanvasFrameMemory.get(canvas.url) == null) {
+            view.captureWhole(PLACEHOLDER_PX)?.let { CanvasFrameMemory.put(canvas.url, it.asImageBitmap()) }
         }
     }
 
@@ -339,7 +360,9 @@ internal fun AndroidCanvasArtworkPlayer(
     // hidden behind a clip that is no longer mounted.
     val reportCover by rememberUpdatedState(onCoverChanged)
     LaunchedEffect(Unit) {
-        snapshotFlow { alpha * currentPresentationAlpha() }.collect { reportCover(it) }
+        snapshotFlow {
+            maxOf(alpha, if (placeholder != null) 1f else 0f) * currentPresentationAlpha()
+        }.collect { reportCover(it) }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -351,6 +374,17 @@ internal fun AndroidCanvasArtworkPlayer(
         }
     }
 
+    Box(modifier.onSizeChanged { bounds = it }) {
+    placeholder?.let { frame ->
+        Image(
+            bitmap = frame,
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { this.alpha = currentPresentationAlpha() },
+        )
+    }
     AndroidView(
         factory = { viewContext ->
             val texture = TextureView(viewContext).apply {
@@ -483,9 +517,41 @@ internal fun AndroidCanvasArtworkPlayer(
                 frame.fadeEndPx = bottomFadeEndPx
             }
         },
-        modifier = modifier.onSizeChanged { bounds = it },
+        modifier = Modifier.matchParentSize(),
     )
+    }
 }
+
+/**
+ * The opening frame of the last few clips played, as each view showed it, for
+ * [CanvasArtworkPlayer] to stand in with when the same clip is mounted again.
+ */
+private object CanvasFrameMemory {
+    private val frames = object : LinkedHashMap<String, ImageBitmap>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean = size > 3
+    }
+
+    @Synchronized
+    fun get(url: String): ImageBitmap? = frames[url]
+
+    @Synchronized
+    fun put(url: String, frame: ImageBitmap) {
+        frames[url] = frame
+    }
+}
+
+/** The view's whole picture, at most [maxPx] on its longest edge; null without one. */
+private fun TextureView.captureWhole(maxPx: Int): Bitmap? {
+    if (width <= 0 || height <= 0) return null
+    val scale = (maxPx.toFloat() / maxOf(width, height)).coerceAtMost(1f)
+    return runCatching {
+        getBitmap((width * scale).roundToInt().coerceAtLeast(1), (height * scale).roundToInt().coerceAtLeast(1))
+    }.getOrNull()
+}
+
+private const val PLACEHOLDER_PX = 1080
+private const val PLACEHOLDER_WAIT_MS = 1_500L
+private const val PLACEHOLDER_FADE_MS = 700L
 
 /**
  * A frame off the clip, no bigger than [maxPx] on its longest edge — see

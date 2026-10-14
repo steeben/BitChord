@@ -170,6 +170,11 @@ fun FrostedTopBar(
      * Root tabs have no back button there for it to collide with.
      */
     accessory: (@Composable () -> Unit)? = null,
+    /**
+     * A title set beside the back button, always showing: a library's name,
+     * on a page whose own content has no heading that says where you are.
+     */
+    inlineTitle: String? = null,
     actions: @Composable () -> Unit = {},
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
@@ -302,6 +307,22 @@ fun FrostedTopBar(
                         )
                     }
                 }
+            }
+            if (inlineTitle != null && accessory == null) {
+                Text(
+                    text = inlineTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(
+                            start = if (onBack != null) BAR_GUTTER + 44.dp + 12.dp else BAR_GUTTER,
+                            // Clear of the actions at the other end.
+                            end = 112.dp,
+                        ),
+                )
             }
             // No wordmark at the leading end: the root tabs carry it above
             // their large heading instead (LargePageTitle in :sharedUi).
