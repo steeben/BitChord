@@ -240,6 +240,7 @@ fun SettingsScreen(
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
     val miniPlayerShape by CustomizationSettings.miniPlayerShape.collectAsStateWithLifecycle()
+    val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
     val startPage by CustomizationSettings.startPage.collectAsStateWithLifecycle()
     val navTabs by CustomizationSettings.navTabs.collectAsStateWithLifecycle()
     val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
@@ -1069,6 +1070,16 @@ fun SettingsScreen(
                     ),
                     selectedIndex = MiniPlayerShape.entries.indexOf(miniPlayerShape),
                     onSelect = { CustomizationSettings.setMiniPlayerShape(MiniPlayerShape.entries[it]) },
+                    modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
+                )
+            }
+            val speedDialGridTitle = stringResource(R.string.speed_dial_grid)
+            row(speedDialGridTitle, "speed dial", "grid", "rows", "tiles") {
+                SettingsRow(icon = Icons.Rounded.CropSquare, title = speedDialGridTitle)
+                SegmentedControl(
+                    options = listOf("3 × 3", "3 × 4"),
+                    selectedIndex = speedDialRows - 3,
+                    onSelect = { CustomizationSettings.setSpeedDialRows(it + 3) },
                     modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
                 )
             }

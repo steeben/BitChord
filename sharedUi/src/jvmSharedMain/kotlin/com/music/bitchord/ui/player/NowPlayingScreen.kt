@@ -141,6 +141,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.compose.LocalPlatformContext
+import coil3.SingletonImageLoader
 import com.music.bitchord.ui.theme.StatusBarIcons
 import com.music.bitchord.ui.theme.rememberArtworkTopBandLuminance
 import com.music.bitchord.ui.theme.topBandScrimAlpha
@@ -156,7 +159,9 @@ import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.settings.LastPlayerScreen
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.PlaybackSourceType
+import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.PLAYER_ART_PX
+import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.playback.BACK_RESTARTS_AFTER_MS
 import dev.chrisbanes.haze.HazeInputScale
@@ -787,10 +792,27 @@ fun NowPlayingScreen(
     // every surface below reads the same value rather than each triggering
     // its own extraction.
     val remoteArt = rememberRemoteArtworkUrl(song)
+    // Fetch the covers of the next two tracks ahead of time, small copy first, so
+    // a skip lands on art that is already on the device. On a slow connection
+    // the full-size cover is what made the player sit on a grey tile.
+    val artContext = LocalPlatformContext.current
+    LaunchedEffect(queueIndex, queue.size) {
+        for (offset in 1..2) {
+            val url = queue.getOrNull(queueIndex + offset)?.thumbnailUrl ?: continue
+            if (!url.startsWith("http")) continue
+            val loader = SingletonImageLoader.get(artContext)
+            loader.enqueue(
+                ImageRequest.Builder(artContext).data(url.artworkAt(CARD_ART_PX)).size(CARD_ART_PX).build(),
+            )
+            loader.enqueue(
+                ImageRequest.Builder(artContext).data(url.artworkAt(ART_PX)).size(ART_PX).build(),
+            )
+        }
+    }
     // This is produced by the palette's existing 128 px decode and cache. It
     // samples the upper band rather than the whole sleeve because that is what
     // lies beneath the status bar when the player expands to full bleed.
-    val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, ART_PX)
+    val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, CARD_ART_PX)
     val artworkStatusScrimAlpha = topBandScrimAlpha(artTopLuminance)
 
     // Media-player convention: the player always owns light status icons. The
@@ -1411,7 +1433,7 @@ fun NowPlayingScreen(
     // Portrait clips always use the existing artwork mesh, even if the user
     // selected the legacy backdrop for ordinary artwork.
     val artMesh = if (legacyMesh && !canvasFirstPortrait) null else
-        key(song.videoId) { rememberArtworkMesh(remoteArt, canvasFrame, ART_PX) }
+        key(song.videoId) { rememberArtworkMesh(remoteArt, canvasFrame, CARD_ART_PX) }
     // Whether the banner is the presentation at all: full-bleed is on, and there
     // is something to blow out. The collapse is deliberately *not* part of this:
     // the sleeve goes from banner to thumbnail as one movement, rather than the
@@ -1683,7 +1705,7 @@ fun NowPlayingScreen(
     // effect.
     val fullArtworkBlurImage = rememberFullArtworkBlurImage(
         imageUrl = remoteArt,
-        artPx = ART_PX,
+        artPx = CARD_ART_PX,
         prepare = landscape || tabletArtworkBackdrop || lyricsOpen || queueOpen ||
             playerPrewarmStage >= 1,
     )
@@ -3128,7 +3150,7 @@ fun NowPlayingScreen(
                             .background(Color.Black.copy(alpha = 0.18f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (!art.loaded && !canvasRendered) {
+                        if (!art.loaded && !art.previewLoaded && !canvasRendered) {
                             Icon(
                                 imageVector = BitChordIcons.MusicNote,
                                 contentDescription = null,
@@ -3142,6 +3164,19 @@ fun NowPlayingScreen(
                                     },
                             )
                         }
+                    }
+                    // The small copy of the cover, under the full-size one. It is the
+                    // size every list already holds, so it is usually on the device
+                    // or a fraction of the download, and it fills the tile while the
+                    // large one is still coming over a slow connection.
+                    if (!art.loaded) {
+                        AsyncImage(
+                            model = art.previewRequest,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            onState = art::onPreviewState,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                     AsyncImage(
                         // Decode at the sleeve's *expanded* size, always.

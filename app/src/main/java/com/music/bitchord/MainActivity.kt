@@ -246,6 +246,7 @@ import com.music.bitchord.ui.components.GlassNavBar
 import com.music.bitchord.ui.components.floatingtabbar.FloatingTabBarInlineBehavior
 import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.FrostedTopBar
+import com.music.bitchord.ui.components.HomeStickyLogo
 import com.music.bitchord.ui.components.LastfmLoginAlert
 import com.music.bitchord.ui.components.LocalAppBackdrop
 import com.music.bitchord.ui.components.LocalLiquidGlassEnabled
@@ -722,6 +723,7 @@ private fun BitChordApp(
     val speedDialPins by CustomizationSettings.speedDialPins.collectAsStateWithLifecycle()
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
     var editingSpeedDial by remember { mutableStateOf(false) }
+    val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
     val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
     val defaultLibraryPage by CustomizationSettings.defaultLibraryPage.collectAsStateWithLifecycle()
     // The library folder whose options are up, from a long press on the Library page.
@@ -3157,6 +3159,10 @@ private fun BitChordApp(
                             state = arrangedHomeState,
                             speedDialPinned = speedDialPinnedIds,
                             onSpeedDialHeaderLongPress = { editingSpeedDial = true },
+                            speedDialRows = speedDialRows,
+                            onSpeedDialReorder = { reordered ->
+                                CustomizationSettings.setSpeedDialPins(reordered)
+                            },
                             skeletonSpeedDialFirst = homeSections.firstOrNull { it.enabled }?.item ==
                                 CustomizationSettings.SPEED_DIAL_TITLE,
                             skeletonShowRecents = homeSections.none { it.item == "Recents" && !it.enabled },
@@ -3633,8 +3639,15 @@ private fun BitChordApp(
                         .graphicsLayer { alpha = topFadeAlpha },
                 )
 
+                // Home with nothing opened over it: the page whose mark is pinned in
+                // the top left and whose refresh is the mark spinning.
+                val homeRoot = selectedTab == TAB_HOME && detail == null && selectedMoodGenre == null &&
+                    libraryShowAll == null && !showSpotify && !showDiscord && !showHistory &&
+                    !showSettings && !showAccountScrobbling && !showSources && !showListenTogether &&
+                    !showEqualizer && !showReplay
                 FrostedTopBar(
                     title = when {
+                        homeRoot -> ""
                         showSpotify && detail == null -> stringResource(R.string.spotify)
                         showDiscord -> "Discord"
                         showHistory -> stringResource(R.string.history)
@@ -3673,8 +3686,8 @@ private fun BitChordApp(
                         detail != null -> detailScrolled
                         else -> scrolled || selectedTab == TAB_SEARCH || selectedTab == TAB_PLAYLISTS
                     },
-                    refreshing = currentFeed != null && currentFeed in refreshing,
-                    pullFraction = { currentPull?.distanceFraction ?: 0f },
+                    refreshing = !homeRoot && currentFeed != null && currentFeed in refreshing,
+                    pullFraction = { if (homeRoot) 0f else currentPull?.distanceFraction ?: 0f },
                     onBack = when {
                         showSpotify && detail == null -> ({ showSpotify = false })
                         showDiscord -> ({ showDiscord = false })
@@ -3921,6 +3934,21 @@ private fun BitChordApp(
                         }
                     },
                 )
+
+                // The mark, above the bar and its fade so neither washes it out.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = homeRoot,
+                    enter = fadeIn(tween(200)),
+                    exit = fadeOut(tween(150)),
+                    modifier = Modifier.align(Alignment.TopStart),
+                ) {
+                    HomeStickyLogo(
+                        listState = homeListState,
+                        topPadding = topBarContentPadding(),
+                        refreshing = MainViewModel.Feed.HOME in refreshing,
+                        pullFraction = { homePull.distanceFraction },
+                    )
+                }
 
                 // Drawn before the bars so their own glass reads on top of it.
                 BottomFadeScrim(

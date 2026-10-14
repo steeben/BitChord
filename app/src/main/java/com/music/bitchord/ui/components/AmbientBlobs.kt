@@ -32,14 +32,16 @@ val AmbientSpotifyColor = Color(0xFF1DB954)
 val AmbientYouTubeColor = Color(0xFFFF0033)
 
 /**
- * The colour [target] is drawn in behind the pages: never brighter than a
- * mid-tone, so text on top of it stays legible whatever colour it starts as.
- * A near-white cover comes out as a dim grey rather than a white wash.
+ * The colour [target] is drawn in behind the pages: held between a floor and a
+ * ceiling of brightness. The ceiling keeps text on top of it legible whatever
+ * colour it starts as — a near-white cover comes out as a dim grey, not a white
+ * wash — and the floor keeps a dark cover from vanishing into the black behind
+ * it, so there is always some colour in the background.
  */
 private fun ambientTone(target: Color): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(target.toArgb(), hsv)
-    hsv[2] = hsv[2].coerceAtMost(AMBIENT_MAX_VALUE)
+    hsv[2] = hsv[2].coerceIn(AMBIENT_MIN_VALUE, AMBIENT_MAX_VALUE)
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
@@ -135,6 +137,9 @@ fun Modifier.ambientBlobs(blobs: AmbientBlobs?): Modifier =
 
 /** The brightest the blobs' colour may be (HSV value), before its alpha. */
 private const val AMBIENT_MAX_VALUE = 0.85f
+
+/** The darkest it may be: a dark cover is lifted to this, keeping its hue. */
+private const val AMBIENT_MIN_VALUE = 0.6f
 
 /** How strongly the nearest blob tints the page at its centre. */
 private const val AMBIENT_ALPHA = 0.30f

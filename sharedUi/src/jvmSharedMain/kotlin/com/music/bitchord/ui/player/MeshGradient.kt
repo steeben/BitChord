@@ -37,6 +37,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.model.CARD_ART_PX
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -222,7 +224,7 @@ fun rememberArtworkColors(imageUrl: String?, canvasFrame: ImageBitmap? = null): 
     LaunchedEffect(imageUrl) {
         if (imageUrl == null) return@LaunchedEffect
         val request = ImageRequest.Builder(context)
-            .data(imageUrl)
+            .data(imageUrl.artworkAt(CARD_ART_PX)) // the copy lists already hold
             .size(128) // palette quality is fine at thumbnail size, and it's fast
             .forPixelAccess() // Palette needs pixel access
             .build()

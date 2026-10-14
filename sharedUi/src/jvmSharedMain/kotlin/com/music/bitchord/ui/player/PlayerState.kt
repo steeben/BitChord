@@ -24,6 +24,7 @@ import coil3.compose.LocalPlatformContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
+import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.canvas.CanvasArtwork
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
@@ -149,6 +150,21 @@ internal class PlayerArtwork(val url: String?, private val context: PlatformCont
             // entry. The disk key is unaffected either way.
             .apply { if (attempt > 0) memoryCacheKeyExtra("attempt", attempt.toString()) }
             .build()
+    }
+
+    /** The small copy of the cover, shown until [request]'s full-size one has loaded. */
+    val previewRequest: ImageRequest by lazy {
+        ImageRequest.Builder(context)
+            .data(url?.artworkAt(CARD_ART_PX))
+            .size(CARD_ART_PX)
+            .build()
+    }
+
+    var previewLoaded by mutableStateOf(false)
+        private set
+
+    fun onPreviewState(state: AsyncImagePainter.State) {
+        previewLoaded = state is AsyncImagePainter.State.Success
     }
 
     /** Fed from each painter drawing [request]. */

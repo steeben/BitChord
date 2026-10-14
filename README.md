@@ -49,8 +49,9 @@
 - **List or grid per library tab**, and a **Last played** sort.
 
 ### Home
-- **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home. Hold the "Speed Dial" heading to reorder your pins.
+- **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen, and hold at the edge to move it to another page. Hold the "Speed Dial" heading to reorder pins from a list.
 - **Reorder the Home layout** and **hide sections** you don't use.
+- **A logo made of squares.** It stays pinned in the top left as you scroll, and pulling down to refresh lights the squares up in a spin, then settles them back into the logo.
 
 ### Navigation
 - **Customize the nav bar.** Reorder the tabs, or swap one out for a **Playlists** shortcut.
@@ -66,6 +67,7 @@
 - **Gestures.** Swipe up on the controls area to open the queue, and swipe down to close it. Swipe down on the player screen to minimize it. The system back gesture plays the same slide-down.
 
 ### Under the hood
+- Album art loads a small copy first, and prefetches the next tracks, so the player and its blur keep up on mobile data.
 - The Home feed and library pages are cached on disk and in memory for a faster start.
 - Builds are optimized for speed.
 

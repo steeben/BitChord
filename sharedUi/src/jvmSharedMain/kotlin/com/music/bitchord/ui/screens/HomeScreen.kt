@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cached
@@ -74,6 +75,7 @@ import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.settings.LibraryViewType
 import com.music.bitchord.ui.components.HERO_CARD_RATIO
 import com.music.bitchord.ui.components.MessageState
+import com.music.bitchord.ui.components.HOME_LOGO_RESERVE
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.RowMoreButton
 import com.music.bitchord.ui.components.PlayingAccent
@@ -143,6 +145,10 @@ fun HomeScreen(
     speedDialPinned: Set<String> = emptySet(),
     /** Holding the speed dial's heading, to rearrange its pins. */
     onSpeedDialHeaderLongPress: (() -> Unit)? = null,
+    /** Rows of three tiles per speed dial page. */
+    speedDialRows: Int = 4,
+    /** The pinned tiles in their new order, after one is dragged. */
+    onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     /**
      * The saved section layout, for the loading placeholders: whether the speed
      * dial leads Home, and whether Recents is shown at all.
@@ -158,6 +164,20 @@ fun HomeScreen(
         state = pullState,
         modifier = modifier,
     ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+        // What the speed dial may take of the screen when it leads Home: down to
+        // just above the miniplayer, so the whole grid is in view. Measured from
+        // the list's own top, past the mark's reserved row (and the sign-in
+        // banner, when that is showing).
+        val dialTop = (contentPadding.calculateTopPadding() - HOME_TITLE_LIFT).coerceAtLeast(0.dp) +
+            (if (title != null) HOME_LOGO_RESERVE else 0.dp) +
+            (if (!signedIn && onSignIn != null) SIGN_IN_BANNER_ALLOWANCE else 0.dp)
+        val dialMaxHeight: Dp? = if (title != null) {
+            (maxHeight - dialTop - (contentPadding.calculateBottomPadding() - DIAL_BOTTOM_TRIM))
+                .coerceAtLeast(0.dp)
+        } else {
+            null
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -173,7 +193,9 @@ fun HomeScreen(
             },
         ) {
             if (title != null) {
-                item { HomeTitle(title) }
+                // The mark itself is drawn above the top bar, by the caller; this
+                // is only the room it leaves in the list.
+                item(key = "home-logo-space") { Spacer(Modifier.height(HOME_LOGO_RESERVE)) }
             }
             if (!signedIn && onSignIn != null) {
                 item {
@@ -182,7 +204,7 @@ fun HomeScreen(
             }
             when (state) {
                 is UiState.Loading -> {
-                    if (skeletonSpeedDialFirst) speedDialSkeleton()
+                    if (skeletonSpeedDialFirst) speedDialSkeleton(speedDialRows, dialMaxHeight)
                     if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                         // Recents owns the leading layout while its request is
@@ -202,7 +224,7 @@ fun HomeScreen(
                     // rather than swapping to the Recents one and back.
                     val holdSpeedDial = recentlyPlayedLoading && skeletonSpeedDialFirst
                     if (holdSpeedDial) {
-                        speedDialSkeleton()
+                        speedDialSkeleton(speedDialRows, dialMaxHeight)
                     } else if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                     }
@@ -222,6 +244,9 @@ fun HomeScreen(
                         firstIsHero = leadHero && !recentlyPlayedLoading,
                         speedDialPinned = speedDialPinned,
                         onSpeedDialHeaderLongPress = onSpeedDialHeaderLongPress,
+                        speedDialRows = speedDialRows,
+                        speedDialMaxHeight = dialMaxHeight,
+                        onSpeedDialReorder = onSpeedDialReorder,
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
                             AppUi.host.setHomeRecentsViewType(
@@ -236,6 +261,7 @@ fun HomeScreen(
                     if (loadingMore) feedMoreSkeleton()
                 }
             }
+        }
         }
     }
 
@@ -272,6 +298,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     firstIsHero: Boolean = true,
     speedDialPinned: Set<String> = emptySet(),
     onSpeedDialHeaderLongPress: (() -> Unit)? = null,
+    speedDialRows: Int = 4,
+    speedDialMaxHeight: Dp? = null,
+    onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
 ) {
@@ -282,8 +311,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 SpeedDialShelf(
                     shelf = shelf,
                     pinnedIds = speedDialPinned,
+                    rows = speedDialRows,
+                    // Only worth fitting when it is what Home opens on.
+                    maxShelfHeight = if (index == 0) speedDialMaxHeight else null,
                     onItemClick = openItem,
                     onItemLongPress = onItemLongPress,
+                    onReorder = onSpeedDialReorder,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                     onHeaderLongPress = onSpeedDialHeaderLongPress,
@@ -519,41 +552,11 @@ fun CompactTrackRow(
     }
 }
 
-/**
- * Listen now's large heading, with the wordmark stacked above it.
- *
- * Only the home tab carries it — the top bar no longer shows the logo, so this
- * is where the app's mark lives. Its height is taken from the heading's own
- * font size rather than a fixed dp, so the two keep their proportion under the
- * system font scale.
- */
-@Composable
-private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
-    val style = MaterialTheme.typography.displayLarge
-    val logoHeight = with(LocalDensity.current) { (style.fontSize * LOGO_TO_FONT).toDp() }
-    Column(modifier = modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp)) {
-        Icon(
-            painter = painterResource(Res.drawable.ic_logo),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier
-                .padding(bottom = 14.dp)
-                .height(logoHeight)
-                .aspectRatio(LOGO_ASPECT),
-        )
-        Text(
-            text = title,
-            style = style,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-    }
-}
+/** Room allowed for the sign-in banner above the speed dial, when it is showing. */
+private val SIGN_IN_BANNER_ALLOWANCE = 72.dp
 
-/** The wordmark's height against the heading's font size. */
-private const val LOGO_TO_FONT = 0.9f
-
-/** ic_logo's viewport, 730 x 484. */
-private const val LOGO_ASPECT = 730f / 484f
+/** The part of the list's bottom padding that is margin, not miniplayer. */
+private val DIAL_BOTTOM_TRIM = 40.dp
 
 /**
  * Shared by the home feed, Explore and Library so headings line up across tabs.

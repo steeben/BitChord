@@ -271,26 +271,49 @@ fun LazyListScope.feedSkeleton(shelves: Int = 3, firstIsHero: Boolean = true) {
     }
 }
 
-/** The speed dial's 3x3 grid of tiles while Home loads. */
-fun LazyListScope.speedDialSkeleton() {
+/**
+ * The speed dial's grid of tiles while Home loads, built from the same metrics
+ * as the real shelf so the tiles land exactly where the placeholders were.
+ */
+fun LazyListScope.speedDialSkeleton(rows: Int = 4, maxShelfHeight: Dp? = null) {
     item(key = "skeleton:speed-dial") {
         Column(Modifier.padding(bottom = 26.dp)) {
-            SectionHeaderSkeleton(index = 0)
-            Column(
-                modifier = Modifier.padding(horizontal = PAGE_GUTTER),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(com.music.bitchord.ui.screens.SPEED_DIAL_HEADER_HEIGHT)
+                    .padding(horizontal = PAGE_GUTTER),
+                contentAlignment = Alignment.CenterStart,
             ) {
-                repeat(3) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        repeat(3) {
-                            ShimmerBox(
-                                modifier = Modifier.weight(1f).aspectRatio(1f),
-                                shape = RoundedCornerShape(10.dp),
-                            )
+                ShimmerBox(
+                    modifier = Modifier.width(190.dp).height(34.dp),
+                    shape = RoundedCornerShape(8.dp),
+                )
+            }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val metrics = com.music.bitchord.ui.screens.speedDialMetrics(
+                    maxWidth - PAGE_GUTTER * 2,
+                    rows,
+                    maxShelfHeight,
+                )
+                Column(
+                    modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    repeat(rows) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            repeat(3) {
+                                ShimmerBox(
+                                    modifier = Modifier.size(metrics.tileWidth, metrics.tileHeight),
+                                    shape = RoundedCornerShape(10.dp),
+                                )
+                            }
                         }
                     }
                 }
             }
+            // The real shelf's page-dots row, empty here, keeps the height equal.
+            Spacer(Modifier.height(16.dp))
         }
     }
 }

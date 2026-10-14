@@ -44,4 +44,5 @@
     <string name="start_screen_subtitle">The page the app opens to</string>
     <string name="youtube_music">YouTube Music</string>
     <string name="youtube_music_library_subtitle">Everything in your YouTube Music library</string>
+    <string name="speed_dial_grid">Speed dial grid</string>
 </resources>

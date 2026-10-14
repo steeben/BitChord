@@ -52,6 +52,9 @@ object CustomizationSettings {
     val keepNavBarExpanded = MutableStateFlow(false)
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
+    /** How many rows of three tiles the speed dial shows per page: 3 or 4. */
+    val speedDialRows = MutableStateFlow(DEFAULT_SPEED_DIAL_ROWS)
+
     /**
      * Over a Spotify Canvas, shrink the controls to the foot of the screen
      * instead of hiding them: title, live lyrics and transport stay.
@@ -95,6 +98,8 @@ object CustomizationSettings {
         }.let(::ensureOneTab)
         startPage.value = NavPage.entries.firstOrNull { it.name == p.getString(KEY_START_PAGE, null) } ?: NavPage.HOME
         keepNavBarExpanded.value = p.getBoolean(KEY_KEEP_NAV_EXPANDED, false)
+        speedDialRows.value = p.getInt(KEY_SPEED_DIAL_ROWS, DEFAULT_SPEED_DIAL_ROWS).takeIf { it in 3..4 }
+            ?: DEFAULT_SPEED_DIAL_ROWS
         miniPlayerShape.value = MiniPlayerShape.entries
             .firstOrNull { it.name == p.getString(KEY_MINI_PLAYER_SHAPE, null) } ?: MiniPlayerShape.CIRCULAR
         compactCanvasControls.value = p.getBoolean(KEY_COMPACT_CANVAS_CONTROLS, true)
@@ -300,6 +305,12 @@ object CustomizationSettings {
         prefs?.edit()?.putString(KEY_MINI_PLAYER_SHAPE, value.name)?.apply()
     }
 
+    fun setSpeedDialRows(value: Int) {
+        val rows = value.coerceIn(3, 4)
+        speedDialRows.value = rows
+        prefs?.edit()?.putInt(KEY_SPEED_DIAL_ROWS, rows)?.apply()
+    }
+
     private fun ensureOneTab(tabs: List<OrderedToggle<NavPage>>): List<OrderedToggle<NavPage>> =
         if (tabs.any { it.enabled }) {
             tabs
@@ -334,7 +345,8 @@ object CustomizationSettings {
     /** The title the speed dial goes by, both YouTube's and the one built here. */
     const val SPEED_DIAL_TITLE = "Speed dial"
     private const val RECENTS_TITLE = "Recents"
-    const val SPEED_DIAL_SIZE = 27
+    const val SPEED_DIAL_SIZE = 36
+    const val DEFAULT_SPEED_DIAL_ROWS = 4
     private const val MAX_HOME_SECTIONS = 60
 
     private const val KEY_NAV_TABS = "custom_nav_tabs"
@@ -350,6 +362,7 @@ object CustomizationSettings {
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"
+    private const val KEY_SPEED_DIAL_ROWS = "custom_speed_dial_rows"
 }
 
 /** What identifies an item on the speed dial: its track, or the page it opens. */
