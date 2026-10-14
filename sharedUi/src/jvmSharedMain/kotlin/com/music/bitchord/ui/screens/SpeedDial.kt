@@ -120,7 +120,7 @@ internal fun speedDialLead(metrics: SpeedDialMetrics, rows: Int, maxShelfHeight:
     return (maxShelfHeight - used).coerceIn(0.dp, DIAL_TOP_LEAD)
 }
 
-private val DIAL_TOP_LEAD = 28.dp
+private val DIAL_TOP_LEAD = 42.dp
 
 private fun ShelfItem.dialId(): String = videoId ?: browseId ?: title
 
@@ -180,7 +180,7 @@ internal fun SpeedDialShelf(
         }
     }
 
-    Column(Modifier.padding(bottom = 42.dp)) {
+    Column(Modifier.padding(bottom = 66.dp)) {
         Spacer(Modifier.height(SPEED_DIAL_HEADER_HEIGHT))
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val metrics = speedDialMetrics(maxWidth - PAGE_GUTTER * 2, rows, maxShelfHeight)
