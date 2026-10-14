@@ -27,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -812,12 +814,24 @@ internal fun AlertScaffold(
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(ALERT_CORNER)
+    // Pops in the way an iOS alert does: a touch large and clear, settling to
+    // size as it fades up, with the dim behind it fading in alongside.
+    val shown = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        shown.animateTo(
+            1f,
+            androidx.compose.animation.core.spring(
+                dampingRatio = 0.85f,
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+            ),
+        )
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { alpha = shown.value.coerceIn(0f, 1f) }
             .background(SCRIM_COLOR)
             .clickable(
                 indication = null,
@@ -829,17 +843,13 @@ internal fun AlertScaffold(
         Column(
             modifier = Modifier
                 .width(ALERT_WIDTH)
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
-                    },
-                )
+                .graphicsLayer {
+                    val scale = 1.12f - 0.12f * shown.value
+                    scaleX = scale
+                    scaleY = scale
+                }
+                // Liquid glass when that is on, frosted otherwise.
+                .popupSurface(shape, hazeState)
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },

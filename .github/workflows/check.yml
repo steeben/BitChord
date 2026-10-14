@@ -48,23 +48,30 @@ jobs:
             echo "::warning::DEBUG_KEYSTORE_BASE64 is not set, so this APK has a throwaway key."
           fi
 
+      # The benchmark build type: the release build's R8 and non-debuggable
+      # runtime, signed with the shared key under the app's own package, so it
+      # installs over the last one. A debug build is interpreted and checked at
+      # runtime and runs Compose several times slower than the app really does,
+      # which made every scroll and launch feel laggier than it is. Release lint
+      # is skipped: it stops on translation leftovers in the upstream strings.
       - name: Build the dev APK
         run: |
           if [ -n "$SHARED_KEYSTORE" ]; then
-            ./gradlew assembleDevDebug \
+            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix \
               -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
               -Pandroid.injected.signing.store.password=android \
               -Pandroid.injected.signing.key.alias=androiddebugkey \
               -Pandroid.injected.signing.key.password=android
           else
-            ./gradlew assembleDevDebug
+            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix
           fi
 
       - name: Upload the dev APK
         uses: actions/upload-artifact@v4
         with:
-          name: bitchord-dev-debug
-          path: app/build/outputs/apk/dev/debug/*.apk
+          name: bitchord-dial-${{ github.sha }}
+          path: app/build/outputs/apk/dev/benchmark/*.apk
+          if-no-files-found: error
 
       - name: Upload test reports
         if: failure()

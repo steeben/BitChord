@@ -122,12 +122,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.music.bitchord.ui.components.LaunchSplash
 import com.music.bitchord.ui.components.LaunchGate
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.TransformOrigin
+import com.music.bitchord.ui.components.popupContentColor
+import com.music.bitchord.ui.components.popupSurface
+import com.music.bitchord.ui.components.PopupLayer
+import com.music.bitchord.ui.screens.SpeedDialIntro
 import com.music.bitchord.ui.screens.speedDialArtRequest
-import com.music.bitchord.ui.components.HOME_LOGO_LARGE
-import com.music.bitchord.ui.components.PAGE_GUTTER
-import androidx.compose.ui.unit.DpOffset
 import com.music.bitchord.ui.theme.Metropolis
 import com.music.bitchord.ui.components.HomeTitleAlert
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -370,10 +372,23 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // The system splash is drawn to match the first frame of LaunchSplash,
-        // so it is dropped at once instead of fading out over it.
+        // A fresh start plays the dial's entrance once the app is on screen; a
+        // rotation or a restored activity doesn't play it again.
+        if (savedInstanceState == null) {
+            SpeedDialIntro.played = false
+            SpeedDialIntro.canStart = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+        } else {
+            SpeedDialIntro.played = true
+        }
+        // The system splash fades into the app once it lets go: see LaunchGate.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            splashScreen.setOnExitAnimationListener { view -> view.remove() }
+            splashScreen.setOnExitAnimationListener { view ->
+                view.animate()
+                    .alpha(0f)
+                    .setDuration(LaunchGate.EXIT_FADE_MS)
+                    .withEndAction { view.remove() }
+                    .start()
+            }
             // Hold the first frame, and so the system splash and its animation,
             // until Home is ready to be seen (see LaunchGate). A rotation or
             // a return to a live activity has nothing to wait for.
@@ -2660,9 +2675,8 @@ private fun BitChordApp(
 
     // How far the back swipe has taken a pushed page toward closing, 0 to 1.
     val detailBackProgress = remember { Animatable(0f) }
-    // The launch screen, until Home has something to show (or, starting on
-    // another page, for a moment). Saved, so turning the phone doesn't replay it.
-    var launchSplash by rememberSaveable { mutableStateOf(true) }
+    // The system splash stays up until Home has something to show (or,
+    // starting on another page, for a moment). See LaunchGate.
     var splashTimedOut by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(SPLASH_MAX_MS)
@@ -2689,15 +2703,13 @@ private fun BitChordApp(
     val splashReady = startTab != TAB_HOME || splashTimedOut ||
         (arrangedHomeState !is UiState.Loading && dialArtReady)
     // Lets the system splash go once the app is ready, and not before its
-    // animation has played through. Below Android 12 there is no system
-    // splash to hold, so the gate is open from the start.
-    var splashGateOpen by remember { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.S) }
+    // animation has played through.
     LaunchedEffect(splashReady) {
         if (!splashReady) return@LaunchedEffect
         val shown = android.os.SystemClock.uptimeMillis() - LaunchGate.createdAt
         delay((LaunchGate.ANIMATION_MS - shown).coerceAtLeast(0L))
         LaunchGate.open = true
-        splashGateOpen = true
+        SpeedDialIntro.canStart = true
     }
     Box(
         Modifier
@@ -4086,9 +4098,6 @@ private fun BitChordApp(
                 ) {
                     HomeStickyLogo(
                         listState = homeListState,
-                        // The launch screen's mark lands here; until it has,
-                        // this one stays out of the way.
-                        showMark = !launchSplash,
                         topPadding = topBarContentPadding(),
                         refreshing = MainViewModel.Feed.HOME in refreshing,
                         pullFraction = { homePull.distanceFraction },
@@ -5292,9 +5301,10 @@ private fun BitChordApp(
             )
         }
 
-        if (songSortMenuOpen) {
-            BackHandler { songSortMenuOpen = false }
+        run {
+            BackHandler(enabled = songSortMenuOpen) { songSortMenuOpen = false }
             FrostedSortMenu(
+                visible = songSortMenuOpen,
                 hazeState = hazeState,
                 selected = songSort,
                 onSelect = { option ->
@@ -5319,9 +5329,11 @@ private fun BitChordApp(
             )
         }
 
-        if (showAccountSelector) {
-            BackHandler { showAccountSelector = false }
+        // Always composed so it can animate both ways; draws nothing while shut.
+        run {
+            BackHandler(enabled = showAccountSelector) { showAccountSelector = false }
             AccountProfileSelector(
+                visible = showAccountSelector,
                 accounts = googleAccounts,
                 activeAccountId = activeAccountId,
                 activeProfileId = activeProfileId,
@@ -5640,23 +5652,6 @@ private fun BitChordApp(
             )
         }
 
-        // The launch screen, over everything: it carries on from the system
-        // splash and hands over to Home's own mark. See [LaunchSplash].
-        if (launchSplash) {
-            LaunchSplash(
-                // Only once the system splash has let go, so the glide isn't
-                // spent behind it.
-                ready = splashReady && splashGateOpen,
-                reveal = Build.VERSION.SDK_INT < Build.VERSION_CODES.S,
-                target = if (startTab == TAB_HOME && selectedTab == TAB_HOME && detail == null) {
-                    DpOffset(PAGE_GUTTER, topBarContentPadding() - HOME_LOGO_REST_LIFT)
-                } else {
-                    null
-                },
-                targetHeight = HOME_LOGO_LARGE,
-                onFinished = { launchSplash = false },
-            )
-        }
     }
 }
 
@@ -5680,40 +5675,34 @@ private fun LibrarySort.localizedLabel(): String = when (this) {
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun FrostedSortMenu(
+    visible: Boolean,
     hazeState: HazeState,
     selected: SongSort,
     onSelect: (SongSort) -> Unit,
     onFlipDateDirection: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val shape = MaterialTheme.shapes.extraLarge
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = .48f))
-            .clickable(onClick = onDismiss),
+    // Grows out of the sort button at the top right; see [PopupLayer].
+    PopupLayer(
+        visible = visible,
+        onDismiss = onDismiss,
         contentAlignment = Alignment.TopEnd,
+        origin = TransformOrigin(1f, 0f),
     ) {
         Surface(
             color = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            contentColor = popupContentColor(),
             shape = shape,
             modifier = Modifier
                 .padding(top = 56.dp, end = 20.dp)
                 .width(IntrinsicSize.Max)
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.thin(MaterialTheme.colorScheme.surface),
-                        )
-                    },
-                )
-                .clickable(onClick = {}),
+                .popupSurface(shape, hazeState)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {},
+                ),
         ) {
             Column(Modifier.padding(vertical = 8.dp)) {
                 // Date added is one row, Spotify-style: the arrow on it shows
@@ -5881,8 +5870,6 @@ private const val SPLASH_MAX_MS = 5_000L
 /** How long the splash waits for the dial's artwork before lifting anyway. */
 private const val DIAL_ART_WAIT_MS = 1_500L
 
-/** How far Home's mark sits above the list's top padding at rest; see HomeStickyLogo. */
-private val HOME_LOGO_REST_LIFT = 20.dp
 private const val TAB_EXPLORE = 1
 private const val TAB_LIBRARY = 2
 private const val TAB_SEARCH = 3

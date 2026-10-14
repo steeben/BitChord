@@ -69,7 +69,7 @@
 - **Gestures.** Swipe up on the controls area to open the queue, and swipe down to close it. Swipe down on the player screen to minimize it. The system back gesture plays the same slide-down.
 
 ### Under the hood
-- A launch screen of the logo's squares spinning while the app loads, which then settle into the logo and glide into place on Home.
+- A launch screen that builds the logo square by square while the app loads, then opens on the speed dial as it fades in tile by tile.
 - Album art loads a small copy first, and prefetches the next tracks, so the player and its blur keep up on mobile data.
 - The Home feed and library pages are cached on disk and in memory for a faster start.
 - Builds are optimized for speed.

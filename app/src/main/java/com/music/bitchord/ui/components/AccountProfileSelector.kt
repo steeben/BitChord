@@ -31,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -47,10 +49,13 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
-/** Shared compact selector for every visible YouTube account avatar. */
-@OptIn(ExperimentalHazeMaterialsApi::class)
+/**
+ * Shared compact selector for every visible YouTube account avatar. Opens out of
+ * the account photo at the top right; see [PopupLayer].
+ */
 @Composable
 fun AccountProfileSelector(
+    visible: Boolean,
     accounts: List<GoogleAccountSession>,
     activeAccountId: String?,
     activeProfileId: String?,
@@ -62,33 +67,28 @@ fun AccountProfileSelector(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var managing by remember { mutableStateOf(false) }
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    var managing by remember(visible) { mutableStateOf(false) }
     val shape = MaterialTheme.shapes.extraLarge
-    Column(
-        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .48f))
-            .clickable(onClick = onDismiss),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    PopupLayer(
+        visible = visible,
+        onDismiss = onDismiss,
+        contentAlignment = Alignment.TopCenter,
+        // The account photo sits near the card's top right corner.
+        origin = TransformOrigin(0.92f, 0f),
     ) {
         Surface(
             color = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            contentColor = popupContentColor(),
             shape = shape,
-            modifier = Modifier
+            modifier = modifier
                 .padding(top = 56.dp, start = 20.dp, end = 20.dp)
                 .fillMaxWidth()
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.thin(MaterialTheme.colorScheme.surface),
-                        )
-                    },
-                )
-                .clickable(onClick = {}),
+                .popupSurface(shape, hazeState)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {},
+                ),
         ) {
             LazyColumn {
                 item { Text(stringResource(R.string.switch_account), style = MaterialTheme.typography.titleLarge,

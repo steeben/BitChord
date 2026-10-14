@@ -59,6 +59,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.snapshotFlow
 import coil3.request.ImageRequest
 import coil3.compose.LocalPlatformContext
 import coil3.PlatformContext
@@ -174,6 +176,9 @@ internal fun SpeedDialShelf(
     // appearance and every page swiped to stay instant.
     val shownIds = remember { HashSet<String>() }
     SideEffect { order.forEach { shownIds += it.dialId() } }
+    // The first dial of a launch comes in tile by tile; see [SpeedDialIntro].
+    val intro = remember { !SpeedDialIntro.played }
+    SideEffect { SpeedDialIntro.played = true }
 
     // Turn the page while the finger rests at a side.
     LaunchedEffect(edge, dragId) {
@@ -322,10 +327,25 @@ internal fun SpeedDialShelf(
                                     label = "speedDialTile",
                                 )
                                 val id = item.dialId()
+                                val entering = intro && page == 0
                                 val appear = remember(id) {
-                                    Animatable(if (shownIds.isNotEmpty() && id !in shownIds) 0f else 1f)
+                                    Animatable(if (entering || (shownIds.isNotEmpty() && id !in shownIds)) 0f else 1f)
                                 }
-                                LaunchedEffect(appear) { appear.animateTo(1f, tween(TILE_FADE_MS)) }
+                                LaunchedEffect(appear) {
+                                    if (appear.value >= 1f) return@LaunchedEffect
+                                    if (entering) {
+                                        // Down each column, then the next: A1, A2,
+                                        // A3, A4, B1 and on. Not before the app is
+                                        // actually on screen.
+                                        snapshotFlow { SpeedDialIntro.canStart }.first { it }
+                                        val column = cell % SPEED_DIAL_COLUMNS
+                                        val row = cell / SPEED_DIAL_COLUMNS
+                                        delay((column * rows + row) * INTRO_STEP_MS)
+                                        appear.animateTo(1f, tween(INTRO_FADE_MS))
+                                    } else {
+                                        appear.animateTo(1f, tween(TILE_FADE_MS))
+                                    }
+                                }
                                 SpeedDialTile(
                                     item = item,
                                     pinned = id in pinnedIds,
@@ -415,6 +435,21 @@ fun speedDialArtRequest(context: PlatformContext, url: String?): ImageRequest =
         .build()
 
 private const val TILE_FADE_MS = 300
+
+/** The launch entrance: the gap between one tile starting and the next, and each one's fade. */
+private const val INTRO_STEP_MS = 40L
+private const val INTRO_FADE_MS = 260
+
+/**
+ * The dial's entrance when the app opens: its first page fades in one tile at
+ * a time, column by column. Once per launch; the app resets [played] when the
+ * activity starts fresh, and holds [canStart] false until its first frame is
+ * actually on screen (behind the splash, the entrance would play unseen).
+ */
+object SpeedDialIntro {
+    var played: Boolean = false
+    var canStart: Boolean by mutableStateOf(true)
+}
 
 /** The faint chevron under the dial's page dots: there is more below. */
 @Composable
