@@ -3,6 +3,7 @@ package com.music.bitchord.ui.components
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -13,10 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -38,13 +37,38 @@ import kotlinx.coroutines.launch
 val SPLASH_LOGO_HEIGHT = 120.dp
 
 /**
+ * Holds the system splash on screen until Home is ready to be seen.
+ *
+ * On Android 12 and up the system splash plays the logo building itself, as an
+ * animated vector the system runs off the app's main thread, so it stays smooth
+ * however busy the app is starting up. The activity holds back its first frame
+ * (and with it the splash's exit) until [open] is set.
+ */
+object LaunchGate {
+    @Volatile
+    var open: Boolean = false
+
+    /** When the activity was created, for the splash animation's minimum run. */
+    @Volatile
+    var createdAt: Long = 0L
+
+    /** How long the system splash's animation takes; see `drawable/splash_logo_animated`. */
+    const val ANIMATION_MS = 850L
+
+    /** The longest the first frame is held back, whatever happens. */
+    const val MAX_HOLD_MS = 6_000L
+}
+
+/**
  * What the app shows while it starts, carrying on from the system splash.
  *
- * The squares chase round the grid until [ready], then settle into the logo.
- * With a [target] (Home is the page underneath, its mark at that top-left
- * corner and [targetHeight] high) the logo then glides there as the screen
- * fades, landing exactly on Home's own mark; without one it simply fades.
- * [onFinished] is called once it is fully gone.
+ * With [reveal] (no system splash to have played it: Android 11 and older) the
+ * squares start dim and light up a row at a time, bottom to top, into the logo.
+ * Otherwise the logo is already built when this first shows. Once [ready], and
+ * with a [target] (Home is the page underneath, its mark at that top-left corner
+ * and [targetHeight] high), the logo glides there as the screen fades, landing
+ * exactly on Home's own mark; without one it simply fades. [onFinished] is
+ * called once it is fully gone.
  *
  * Always white on black, like the system splash before it, whatever the app's
  * theme; the mark eases into the theme's colour on its way to Home.
@@ -52,26 +76,34 @@ val SPLASH_LOGO_HEIGHT = 120.dp
 @Composable
 fun LaunchSplash(
     ready: Boolean,
+    reveal: Boolean,
     target: DpOffset?,
     targetHeight: Dp,
     onFinished: () -> Unit,
 ) {
     val started = remember { SystemClock.uptimeMillis() }
-    var spinning by remember { mutableStateOf(true) }
+    val built = remember { Animatable(if (reveal) 0f else 1f) }
     val travel = remember { Animatable(0f) }
     val cover = remember { Animatable(1f) }
     val finished by rememberUpdatedState(onFinished)
     val landing by rememberUpdatedState(target)
     val markColor = MaterialTheme.colorScheme.onBackground
 
+    if (reveal) {
+        LaunchedEffect(Unit) {
+            built.animateTo(1f, tween(LaunchGate.ANIMATION_MS.toInt(), easing = LinearEasing))
+        }
+    }
     LaunchedEffect(ready) {
         if (!ready) return@LaunchedEffect
-        // At least most of a lap, so a fast start still reads as an animation
-        // rather than a flicker.
-        delay((MIN_SPIN_MS - (SystemClock.uptimeMillis() - started)).coerceAtLeast(0L))
-        spinning = false
-        // The squares resolving into the logo (SquareLogo's own settle).
-        delay(SETTLE_MS)
+        if (reveal) {
+            // Let the logo finish building first.
+            delay((LaunchGate.ANIMATION_MS + 150L - (SystemClock.uptimeMillis() - started)).coerceAtLeast(0L))
+        } else {
+            // The first frames after the system splash lets go are the heaviest;
+            // start moving once they're past, not in the middle of them.
+            delay(SETTLE_MS)
+        }
         coroutineScope {
             if (landing != null) {
                 launch { travel.animateTo(1f, tween(GLIDE_MS, easing = FastOutSlowInEasing)) }
@@ -102,8 +134,8 @@ fun LaunchSplash(
         val endTarget = target
         val t = travel.value
         SquareLogo(
-            refreshing = spinning,
             color = lerp(Color.White, markColor, t),
+            reveal = { built.value },
             modifier = Modifier
                 .size(startW, SPLASH_LOGO_HEIGHT)
                 .graphicsLayer {
@@ -134,7 +166,6 @@ fun LaunchSplash(
     }
 }
 
-private const val MIN_SPIN_MS = 900L
-private const val SETTLE_MS = 700L
+private const val SETTLE_MS = 150L
 private const val GLIDE_MS = 650
 private const val FADE_MS = 350

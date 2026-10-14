@@ -59,6 +59,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.compose.LocalPlatformContext
+import coil3.PlatformContext
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.SideEffect
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
@@ -163,6 +169,11 @@ internal fun SpeedDialShelf(
 
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
+    // Tiles already shown, so that one arriving later (a fresh dial replacing
+    // the saved one) fades in rather than popping, while the dial's first
+    // appearance and every page swiped to stay instant.
+    val shownIds = remember { HashSet<String>() }
+    SideEffect { order.forEach { shownIds += it.dialId() } }
 
     // Turn the page while the finger rests at a side.
     LaunchedEffect(edge, dragId) {
@@ -245,8 +256,13 @@ internal fun SpeedDialShelf(
                                 while (true) {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    // Read before consuming: a consumed change no
+                                    // longer reports itself as lifted, so the drop
+                                    // went unseen and the tile hung in the air until
+                                    // the next touch ended the gesture.
+                                    val lifted = !change.pressed
                                     change.consume()
-                                    if (change.changedToUp()) {
+                                    if (lifted) {
                                         finished = true
                                         if (moved) {
                                             latestReorder?.invoke(latestOrder.take(latestPinned))
@@ -306,6 +322,10 @@ internal fun SpeedDialShelf(
                                     label = "speedDialTile",
                                 )
                                 val id = item.dialId()
+                                val appear = remember(id) {
+                                    Animatable(if (shownIds.isNotEmpty() && id !in shownIds) 0f else 1f)
+                                }
+                                LaunchedEffect(appear) { appear.animateTo(1f, tween(TILE_FADE_MS)) }
                                 SpeedDialTile(
                                     item = item,
                                     pinned = id in pinnedIds,
@@ -321,7 +341,7 @@ internal fun SpeedDialShelf(
                                     modifier = Modifier
                                         .offset { offset }
                                         .size(tileW, tileH)
-                                        .graphicsLayer { alpha = if (dragId == id) 0f else 1f },
+                                        .graphicsLayer { alpha = if (dragId == id) 0f else appear.value },
                                 )
                             }
                         }
@@ -383,6 +403,19 @@ internal fun SpeedDialShelf(
     }
 }
 
+/**
+ * A dial tile's artwork request. Fixed in size, so the copy fetched ahead of
+ * time while the app starts is the very one the tile then asks for, and comes
+ * straight out of the memory cache.
+ */
+fun speedDialArtRequest(context: PlatformContext, url: String?): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(url?.artworkAt(CARD_ART_PX))
+        .size(CARD_ART_PX)
+        .build()
+
+private const val TILE_FADE_MS = 300
+
 /** The faint chevron under the dial's page dots: there is more below. */
 @Composable
 internal fun SpeedDialMoreHint() {
@@ -415,8 +448,12 @@ private fun SpeedDialTile(
             .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
             .contextClick(onLongPress),
     ) {
+        val context = LocalPlatformContext.current
+        // Remembered: a request has no equals, so a new one each recomposition
+        // would be a new load each time.
+        val request = remember(item.thumbnailUrl, context) { speedDialArtRequest(context, item.thumbnailUrl) }
         AsyncImage(
-            model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+            model = request,
             contentDescription = item.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),

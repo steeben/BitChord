@@ -123,6 +123,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.components.LaunchSplash
+import com.music.bitchord.ui.components.LaunchGate
+import com.music.bitchord.ui.screens.speedDialArtRequest
 import com.music.bitchord.ui.components.HOME_LOGO_LARGE
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import androidx.compose.ui.unit.DpOffset
@@ -372,6 +374,26 @@ class MainActivity : AppCompatActivity() {
         // so it is dropped at once instead of fading out over it.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             splashScreen.setOnExitAnimationListener { view -> view.remove() }
+            // Hold the first frame, and so the system splash and its animation,
+            // until Home is ready to be seen (see LaunchGate). A rotation or
+            // a return to a live activity has nothing to wait for.
+            if (savedInstanceState == null) {
+                LaunchGate.open = false
+                LaunchGate.createdAt = android.os.SystemClock.uptimeMillis()
+                val content = findViewById<View>(android.R.id.content)
+                content.viewTreeObserver.addOnPreDrawListener(
+                    object : android.view.ViewTreeObserver.OnPreDrawListener {
+                        override fun onPreDraw(): Boolean {
+                            val held = android.os.SystemClock.uptimeMillis() - LaunchGate.createdAt
+                            if (!LaunchGate.open && held < LaunchGate.MAX_HOLD_MS) return false
+                            content.viewTreeObserver.removeOnPreDrawListener(this)
+                            return true
+                        }
+                    },
+                )
+            } else {
+                LaunchGate.open = true
+            }
         }
         // Before the composition, so a cold launch from a widget's artwork has
         // the request already standing by the time BitChordApp first reads it.
@@ -792,12 +814,33 @@ private fun BitChordApp(
             CustomizationSettings.learnHomeSections(shelves.map { it.title })
         }
     }
+    // The dial Home showed last time, held until this launch's feed and
+    // Recently played are both in, so the tiles change once at most rather
+    // than shuffling with every response that lands.
+    val lastSpeedDial by CustomizationSettings.lastSpeedDial.collectAsStateWithLifecycle()
+    val homeFresh by viewModel.homeFresh.collectAsStateWithLifecycle()
+    val holdSavedDial = !homeFresh && lastSpeedDial.isNotEmpty()
+    val dialLeadsHome = homeSections.firstOrNull { it.enabled }?.item == CustomizationSettings.SPEED_DIAL_TITLE
     // The feed as Home draws it: the speed dial built in, then the sections in
     // the order Settings gives them, minus the hidden ones.
-    val arrangedHomeState = remember(homeState, homeSections, speedDialPins) {
+    val arrangedHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial) {
+        val savedDial = if (holdSavedDial) {
+            CustomizationSettings.buildSpeedDial(
+                speedDialPins,
+                listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, lastSpeedDial)),
+            )
+        } else {
+            null
+        }
         when (val state = homeState) {
+            // Nothing from the network yet, but the dial can already be shown.
+            is UiState.Loading -> if (savedDial != null && dialLeadsHome) {
+                UiState.Success(listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, savedDial)))
+            } else {
+                state
+            }
             is UiState.Success -> {
-                val dial = CustomizationSettings.buildSpeedDial(speedDialPins, state.data)
+                val dial = savedDial ?: CustomizationSettings.buildSpeedDial(speedDialPins, state.data)
                 val feed = state.data.filterNot {
                     it.title.equals(CustomizationSettings.SPEED_DIAL_TITLE, ignoreCase = true)
                 }
@@ -810,6 +853,14 @@ private fun BitChordApp(
             }
             else -> state
         }
+    }
+    // Saved once the fresh dial is what's showing, for the next launch.
+    LaunchedEffect(arrangedHomeState, homeFresh) {
+        if (!homeFresh) return@LaunchedEffect
+        val dial = (arrangedHomeState as? UiState.Success)?.data
+            ?.firstOrNull { it.title == CustomizationSettings.SPEED_DIAL_TITLE }?.items
+            ?: return@LaunchedEffect
+        CustomizationSettings.setLastSpeedDial(dial)
     }
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
     val homeRecentlyPlayedLoading by viewModel.homeRecentlyPlayedLoading.collectAsStateWithLifecycle()
@@ -2617,7 +2668,37 @@ private fun BitChordApp(
         delay(SPLASH_MAX_MS)
         splashTimedOut = true
     }
-    val splashReady = startTab != TAB_HOME || homeState !is UiState.Loading || splashTimedOut
+    // The dial's first page of artwork, fetched into memory while the splash is
+    // up so the tiles are already filled in when it lifts.
+    var dialArtReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val firstPage = CustomizationSettings.buildSpeedDial(
+            CustomizationSettings.speedDialPins.value,
+            listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, CustomizationSettings.lastSpeedDial.value)),
+        ).take(3 * CustomizationSettings.speedDialRows.value)
+        val loader = coil3.SingletonImageLoader.get(context)
+        kotlinx.coroutines.withTimeoutOrNull(DIAL_ART_WAIT_MS) {
+            kotlinx.coroutines.coroutineScope {
+                firstPage.forEach { item ->
+                    launch { loader.execute(speedDialArtRequest(context, item.thumbnailUrl)) }
+                }
+            }
+        }
+        dialArtReady = true
+    }
+    val splashReady = startTab != TAB_HOME || splashTimedOut ||
+        (arrangedHomeState !is UiState.Loading && dialArtReady)
+    // Lets the system splash go once the app is ready, and not before its
+    // animation has played through. Below Android 12 there is no system
+    // splash to hold, so the gate is open from the start.
+    var splashGateOpen by remember { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.S) }
+    LaunchedEffect(splashReady) {
+        if (!splashReady) return@LaunchedEffect
+        val shown = android.os.SystemClock.uptimeMillis() - LaunchGate.createdAt
+        delay((LaunchGate.ANIMATION_MS - shown).coerceAtLeast(0L))
+        LaunchGate.open = true
+        splashGateOpen = true
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -3254,8 +3335,10 @@ private fun BitChordApp(
                             pullState = homePull,
                             contentPadding = listPadding,
                             onLoadMore = viewModel::loadMoreHome,
+                            onSectionsRevealed = viewModel::revealHomeSections,
                             loadingMore = homeLoadingMore,
-                            recentlyPlayedLoading = homeRecentlyPlayedLoading,
+                            // The saved dial needs no placeholder while Recently played loads.
+                            recentlyPlayedLoading = homeRecentlyPlayedLoading && !holdSavedDial,
                         )
                         TAB_EXPLORE -> selectedMoodGenre?.let { category ->
                             MoodGenrePlaylistsScreen(
@@ -5561,7 +5644,10 @@ private fun BitChordApp(
         // splash and hands over to Home's own mark. See [LaunchSplash].
         if (launchSplash) {
             LaunchSplash(
-                ready = splashReady,
+                // Only once the system splash has let go, so the glide isn't
+                // spent behind it.
+                ready = splashReady && splashGateOpen,
+                reveal = Build.VERSION.SDK_INT < Build.VERSION_CODES.S,
                 target = if (startTab == TAB_HOME && selectedTab == TAB_HOME && detail == null) {
                     DpOffset(PAGE_GUTTER, topBarContentPadding() - HOME_LOGO_REST_LIFT)
                 } else {
@@ -5791,6 +5877,9 @@ private const val TAB_HOME = 0
 
 /** The longest the launch screen waits for Home before giving way anyway. */
 private const val SPLASH_MAX_MS = 5_000L
+
+/** How long the splash waits for the dial's artwork before lifting anyway. */
+private const val DIAL_ART_WAIT_MS = 1_500L
 
 /** How far Home's mark sits above the list's top padding at rest; see HomeStickyLogo. */
 private val HOME_LOGO_REST_LIFT = 20.dp

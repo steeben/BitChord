@@ -89,6 +89,13 @@ object CustomizationSettings {
     /** Items pinned to the speed dial, in the order they were pinned. */
     val speedDialPins = MutableStateFlow<List<ShelfItem>>(emptyList())
 
+    /**
+     * The speed dial as Home last showed it, saved so the next launch opens on
+     * the same tiles straight away instead of building them up as the feed,
+     * Recently played and the rest come in.
+     */
+    val lastSpeedDial = MutableStateFlow<List<ShelfItem>>(emptyList())
+
     fun init(prefs: SharedPreferences) {
         this.prefs = prefs
         readAll()
@@ -121,6 +128,7 @@ object CustomizationSettings {
             .firstOrNull { it.name == p.getString(KEY_DEFAULT_LIBRARY_PAGE, null) } ?: LibraryStartPage.SONGS
         homeSections.value = readHomeSections(p.getString(KEY_HOME_SECTIONS, null))
         speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
+        lastSpeedDial.value = readPins(p.getString(KEY_LAST_SPEED_DIAL, null))
     }
 
     // ── Home sections ───────────────────────────────────────────────────
@@ -197,8 +205,19 @@ object CustomizationSettings {
     fun setSpeedDialPins(value: List<ShelfItem>) {
         val updated = value.distinctBy { it.speedDialId }.take(SPEED_DIAL_SIZE)
         speedDialPins.value = updated
+        prefs?.edit()?.putString(KEY_SPEED_DIAL_PINS, writeItems(updated))?.apply()
+    }
+
+    /** Saves the dial Home is showing, for the next launch to open on. */
+    fun setLastSpeedDial(value: List<ShelfItem>) {
+        if (value == lastSpeedDial.value) return
+        lastSpeedDial.value = value
+        prefs?.edit()?.putString(KEY_LAST_SPEED_DIAL, writeItems(value))?.apply()
+    }
+
+    private fun writeItems(items: List<ShelfItem>): String {
         val json = JSONArray()
-        updated.forEach { pin ->
+        items.forEach { pin ->
             json.put(
                 JSONObject()
                     .put("title", pin.title)
@@ -208,7 +227,7 @@ object CustomizationSettings {
                     .put("browse", pin.browseId ?: JSONObject.NULL),
             )
         }
-        prefs?.edit()?.putString(KEY_SPEED_DIAL_PINS, json.toString())?.apply()
+        return json.toString()
     }
 
     /**
@@ -372,6 +391,7 @@ object CustomizationSettings {
     private const val KEY_DEFAULT_LIBRARY_TITLE = "custom_default_library_title"
     private const val KEY_DEFAULT_LIBRARY_PAGE = "custom_default_library_page"
     private const val KEY_SPEED_DIAL_PINS = "custom_speed_dial_pins"
+    private const val KEY_LAST_SPEED_DIAL = "custom_last_speed_dial"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"

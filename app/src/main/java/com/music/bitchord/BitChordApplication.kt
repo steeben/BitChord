@@ -180,6 +180,9 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
             // the header is attached per request instead. See WebDavCoilAuth.
             .components {
                 add(WebDavCoilAuth())
+                // Video thumbnails come letterboxed; trim the bars so a
+                // square crop fills with picture. See LetterboxCrop.
+                add(com.music.bitchord.data.LetterboxCrop.Install())
                 // Covers filed on the SMB share; anything else falls
                 // through to Coil's own fetchers. See SmbCoverFetcher.
                 add(SmbCoverFetcher.Factory())

@@ -82,6 +82,11 @@ fun SquareLogo(
     color: Color = MaterialTheme.colorScheme.onBackground,
     refreshing: Boolean = false,
     pullFraction: () -> Float = { 0f },
+    /**
+     * When set, the logo builds itself: every square starts dim and the lit
+     * ones come on a row at a time from the bottom up as this goes from 0 to 1.
+     */
+    reveal: (() -> Float)? = null,
 ) {
     val spinWeight = remember { Animatable(0f) }
     LaunchedEffect(refreshing) {
@@ -117,11 +122,17 @@ fun SquareLogo(
         val head = phase * LOOP_LENGTH
         val litCells = pull.coerceAtMost(1f) * LOOP_CELLS
         val pullBlend = (pull * 5f).coerceIn(0f, 1f)
+        val built = reveal?.invoke()?.coerceIn(0f, 1f)
 
         for (row in 0 until 4) {
             for (col in 0 until 3) {
                 val index = row * 3 + col
-                val rest = if (LOGO_LIT[row][col]) 1f else DIM_ALPHA
+                val rest = when {
+                    !LOGO_LIT[row][col] -> DIM_ALPHA
+                    built == null -> 1f
+                    // Bottom row first: row 3 lights over the first quarter, row 0 the last.
+                    else -> DIM_ALPHA + (1f - DIM_ALPHA) * (built * 4f - (3 - row)).coerceIn(0f, 1f)
+                }
                 val loopAt = LOOP_POSITION[index]
 
                 // Pulled: everything dims, then lights along the loop.

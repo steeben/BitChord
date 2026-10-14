@@ -135,6 +135,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _homeRecentlyPlayedLoading = MutableStateFlow(false)
     val homeRecentlyPlayedLoading: StateFlow<Boolean> = _homeRecentlyPlayedLoading.asStateFlow()
+
+    /**
+     * Whether this load's fresh feed and Recently played are both in (or have
+     * failed). Until then Home keeps the speed dial it saved last time, so the
+     * tiles change at most once on launch rather than with every response.
+     */
+    private val _homeFresh = MutableStateFlow(false)
+    val homeFresh: StateFlow<Boolean> = _homeFresh.asStateFlow()
+
+    /**
+     * Whether the listener has scrolled Home past the speed dial this session.
+     * Until they do, the extra shelves under it (the supplements and further
+     * pages) aren't asked for at all.
+     */
+    private var homeSectionsRevealed = false
+
+    /** The supplements for the current load, held back until Home is scrolled. */
+    private var pendingHomeSupplements: (() -> Unit)? = null
     private val homeLoadGeneration = AtomicLong(0L)
 
     private val _explore = MutableStateFlow<UiState<List<MoodGenreSection>>>(UiState.Loading)
@@ -1608,10 +1626,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         homeSeenTitles.clear()
         _homeLoadingMore.value = false
         _homeRecentlyPlayedLoading.value = _signedIn.value
-        // The core feed plus one browse per supplement. Recently played is left
-        // out: it has its own skeleton at the head of the page rather than the
-        // one at the tail.
-        _homePendingShelves.value = 1 + YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.size
+        _homeFresh.value = false
+        // The core feed now; the supplements once Home is scrolled to them.
+        // Recently played is left out of the count: it has its own skeleton at
+        // the head of the page rather than the one at the tail.
+        _homePendingShelves.value = 1
         viewModelScope.launch {
             // The last feed this listener saw, shown at once while the fresh
             // one is fetched and swapped in behind it.
@@ -1622,17 +1641,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _home.value = UiState.Success(cached)
                 _homeRecentlyPlayedLoading.value = false
                 _homePendingShelves.value = 0
-                refreshHome(identity)
-                YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
-                    launch {
-                        YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
-                            if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
-                        }
-                    }
+                try {
+                    refreshHome(identity, reloadSupplements = false)
+                } finally {
+                    if (isCurrentHomeLoad(identity, generation)) _homeFresh.value = true
                 }
+                deferHomeSupplements(identity, generation, counted = false)
                 return@launch
             }
-            launch {
+            val core = launch {
                 try {
                     YtMusicRepository.home()
                         .onSuccess { feed ->
@@ -1649,7 +1666,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     homeShelfRequestSettled(identity, generation)
                 }
             }
-            if (_signedIn.value) {
+            val recent = if (_signedIn.value) {
                 launch {
                     YtMusicRepository.homeRecentlyPlayed()
                         .onSuccess { shelf ->
@@ -1662,19 +1679,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             if (isCurrentHomeLoad(identity, generation)) _homeRecentlyPlayedLoading.value = false
                         }
                 }
+            } else {
+                null
             }
-            YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
-                launch {
-                    try {
-                        YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
-                            if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+            deferHomeSupplements(identity, generation, counted = true)
+            core.join()
+            recent?.join()
+            if (isCurrentHomeLoad(identity, generation)) _homeFresh.value = true
+        }
+    }
+
+    /**
+     * Sets up this load's supplement browses to run once Home is scrolled past
+     * the speed dial — straight away if it already has been this session.
+     * [counted] adds them to [_homePendingShelves], so the tail skeleton shows
+     * while they are on their way.
+     */
+    private fun deferHomeSupplements(identity: String?, generation: Long, counted: Boolean) {
+        val run = {
+            if (isCurrentHomeLoad(identity, generation)) {
+                if (counted) {
+                    _homePendingShelves.value += YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.size
+                }
+                YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
+                    viewModelScope.launch {
+                        try {
+                            YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
+                                if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+                            }
+                        } finally {
+                            if (counted) homeShelfRequestSettled(identity, generation)
                         }
-                    } finally {
-                        homeShelfRequestSettled(identity, generation)
                     }
                 }
             }
         }
+        if (homeSectionsRevealed) {
+            pendingHomeSupplements = null
+            run()
+        } else {
+            pendingHomeSupplements = run
+        }
+    }
+
+    /** Home has been scrolled past the speed dial: fetch what goes under it. */
+    fun revealHomeSections() {
+        if (homeSectionsRevealed) return
+        homeSectionsRevealed = true
+        pendingHomeSupplements?.invoke()
+        pendingHomeSupplements = null
     }
 
     /**
@@ -1706,19 +1759,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (added.isNotEmpty()) _home.value = UiState.Success(existing + added)
     }
 
-    /** Refreshes the core feed without blanking the current Play page first. */
-    private suspend fun refreshHome(identity: String?) = coroutineScope {
+    /**
+     * Refreshes the core feed without blanking the current Play page first.
+     * The feed and Recently played are fetched together and swapped in as one,
+     * so the page (and the speed dial built from it) changes once, not twice.
+     */
+    private suspend fun refreshHome(identity: String?, reloadSupplements: Boolean = true) = coroutineScope {
         val recent = if (_signedIn.value) async { YtMusicRepository.homeRecentlyPlayed() } else null
-        YtMusicRepository.home().onSuccess { feed ->
-            if (identity != listenerKey()) return@onSuccess
+        val core = YtMusicRepository.home()
+        val recentShelf = recent?.await()?.getOrNull()
+        if (identity != listenerKey()) return@coroutineScope
+        core.onSuccess { feed ->
             homeContinuation = feed.continuation
             homeSeenTitles.clear()
-            val shelves = feed.shelves.withoutRepeatsOf(emptyList())
+            val lead = listOfNotNull(recentShelf)
+            lead.forEach { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
+            val shelves = feed.shelves.withoutRepeatsOf(lead)
                 .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
-            if (shelves.isNotEmpty()) _home.value = UiState.Success(shelves)
-        }
-        recent?.await()?.onSuccess { shelf ->
-            if (identity == listenerKey()) shelf?.let { publishHomeShelves(listOf(it), prepend = true) }
+            if (shelves.isNotEmpty()) _home.value = UiState.Success(lead + shelves)
+            // A pull to refresh after the supplements were shown fetches them again.
+            if (reloadSupplements && homeSectionsRevealed) {
+                deferHomeSupplements(identity, homeLoadGeneration.get(), counted = false)
+            }
+        }.onFailure {
+            recentShelf?.let { publishHomeShelves(listOf(it), prepend = true) }
         }
     }
 
@@ -1728,6 +1792,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * loaded — [homeContinuation] covers all three by construction.
      */
     fun loadMoreHome() {
+        if (!homeSectionsRevealed) return
         val token = homeContinuation ?: return
         if (_homeLoadingMore.value) return
         val identity = listenerKey()

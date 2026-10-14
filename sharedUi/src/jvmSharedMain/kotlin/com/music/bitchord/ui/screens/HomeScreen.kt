@@ -46,6 +46,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.animation.core.tween
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -156,6 +158,12 @@ fun HomeScreen(
      */
     skeletonSpeedDialFirst: Boolean = false,
     skeletonShowRecents: Boolean = true,
+    /**
+     * Called once the list is first scrolled past the top, or straight away when
+     * the speed dial doesn't lead: the sections under the dial are only fetched
+     * from then on.
+     */
+    onSectionsRevealed: (() -> Unit)? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -300,6 +308,21 @@ fun HomeScreen(
         }
     }
 
+    if (onSectionsRevealed != null) {
+        val reveal by rememberUpdatedState(onSectionsRevealed)
+        val dialFirst = title != null && (
+            state is UiState.Loading ||
+                (state is UiState.Success && state.data.firstOrNull()?.title == SPEED_DIAL_SHELF_TITLE)
+            )
+        LaunchedEffect(listState, dialFirst) {
+            if (dialFirst) {
+                snapshotFlow { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
+                    .first { it }
+            }
+            reveal()
+        }
+    }
+
     if (onLoadMore != null && state is UiState.Success) {
         val loadMore by rememberUpdatedState(onLoadMore)
         // Re-checked on every layout change, rather than on the rising edge of
@@ -346,47 +369,50 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     shelves.forEachIndexed { index, shelf ->
         if (index == 1) afterLead?.invoke(this)
         item(key = shelf.title + index) {
-            val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
-                SpeedDialShelf(
-                    shelf = shelf,
-                    pinnedIds = speedDialPinned,
-                    rows = speedDialRows,
-                    // Only worth fitting when it is what Home opens on.
-                    maxShelfHeight = if (index == 0) speedDialMaxHeight else null,
-                    pageHeight = if (index == 0) speedDialPageHeight else null,
-                    onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
-                    onReorder = onSpeedDialReorder,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                )
-            } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
-                RecentShelf(
-                    shelf = shelf,
-                    onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                    viewType = recentsViewType,
-                    onViewTypeToggle = onRecentsViewTypeToggle,
-                )
-            } else if (index == 0 && firstIsHero) {
-                HeroShelf(
-                    shelf = shelf,
-                    onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                )
-            } else {
-                Shelf(
-                    shelf = shelf,
-                    onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                )
+            // Shelves that arrive after the page is up fade in rather than pop.
+            Box(Modifier.animateItem(fadeInSpec = tween(SHELF_FADE_MS), fadeOutSpec = tween(SHELF_FADE_MS / 2))) {
+                val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
+                if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
+                    SpeedDialShelf(
+                        shelf = shelf,
+                        pinnedIds = speedDialPinned,
+                        rows = speedDialRows,
+                        // Only worth fitting when it is what Home opens on.
+                        maxShelfHeight = if (index == 0) speedDialMaxHeight else null,
+                        pageHeight = if (index == 0) speedDialPageHeight else null,
+                        onItemClick = openItem,
+                        onItemLongPress = onItemLongPress,
+                        onReorder = onSpeedDialReorder,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                    )
+                } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
+                    RecentShelf(
+                        shelf = shelf,
+                        onItemClick = openItem,
+                        onItemLongPress = onItemLongPress,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                        viewType = recentsViewType,
+                        onViewTypeToggle = onRecentsViewTypeToggle,
+                    )
+                } else if (index == 0 && firstIsHero) {
+                    HeroShelf(
+                        shelf = shelf,
+                        onItemClick = openItem,
+                        onItemLongPress = onItemLongPress,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                    )
+                } else {
+                    Shelf(
+                        shelf = shelf,
+                        onItemClick = openItem,
+                        onItemLongPress = onItemLongPress,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                    )
+                }
             }
         }
     }
@@ -592,6 +618,9 @@ fun CompactTrackRow(
         }
     }
 }
+
+/** How long a shelf takes to fade in when it arrives. */
+internal const val SHELF_FADE_MS = 300
 
 /** The list's bottom padding with the miniplayer showing, which the dial always leaves room for. */
 private val DIAL_BOTTOM_RESERVE = 210.dp
