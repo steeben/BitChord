@@ -7,6 +7,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -120,7 +121,7 @@ internal fun SpeedDialHeader(title: String, onLongPress: (() -> Unit)?) {
             .then(
                 if (onLongPress != null) {
                     Modifier.pointerInput(onLongPress) {
-                        androidx.compose.foundation.gestures.detectTapGestures(onLongPress = { onLongPress() })
+                        detectTapGestures(onLongPress = { onLongPress() })
                     }
                 } else {
                     Modifier
