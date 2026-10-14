@@ -277,7 +277,7 @@ fun LazyListScope.feedSkeleton(shelves: Int = 3, firstIsHero: Boolean = true) {
  */
 fun LazyListScope.speedDialSkeleton(rows: Int = 4, maxShelfHeight: Dp? = null) {
     item(key = "skeleton:speed-dial") {
-        Column(Modifier.padding(bottom = 26.dp)) {
+        Column(Modifier.padding(bottom = 42.dp)) {
             Spacer(Modifier.height(com.music.bitchord.ui.screens.SPEED_DIAL_HEADER_HEIGHT))
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val metrics = com.music.bitchord.ui.screens.speedDialMetrics(
