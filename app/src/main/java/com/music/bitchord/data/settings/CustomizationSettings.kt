@@ -255,10 +255,10 @@ object CustomizationSettings {
         artistDial.value = value
         prefs?.edit()?.putBoolean(KEY_ARTIST_DIAL, value)?.apply()
         if (value) {
-            val artists = speedDialPins.value.filter(::isArtist)
+            val artists = speedDialPins.value.filter { isArtist(it) }
             if (artists.isNotEmpty()) {
                 setArtistDialPins(artistDialPins.value + artists)
-                setSpeedDialPins(speedDialPins.value.filterNot(::isArtist))
+                setSpeedDialPins(speedDialPins.value.filterNot { isArtist(it) })
             }
         } else if (artistDialPins.value.isNotEmpty()) {
             setSpeedDialPins(speedDialPins.value + artistDialPins.value)
