@@ -96,6 +96,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -130,6 +131,7 @@ import com.music.bitchord.ui.components.popupSurface
 import com.music.bitchord.ui.components.PopupLayer
 import com.music.bitchord.ui.screens.SpeedDialIntro
 import com.music.bitchord.ui.screens.ARTIST_DIAL_SHELF_TITLE
+import com.music.bitchord.ui.screens.SpeedDialLucky
 import com.music.bitchord.ui.screens.ARTIST_DIAL_PAGE_KEY
 import com.music.bitchord.ui.screens.speedDialArtRequest
 import com.music.bitchord.ui.theme.Metropolis
@@ -153,6 +155,7 @@ import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.innertube.InnertubeParser
 import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.SubscriptionState
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.PlaybackSourceType
@@ -268,6 +271,7 @@ import com.music.bitchord.ui.components.floatingtabbar.FloatingTabBarInlineBehav
 import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.FrostedTopBar
 import com.music.bitchord.ui.components.HomeStickyLogo
+import com.music.bitchord.ui.components.TopFadeBlur
 import com.music.bitchord.ui.components.LastfmLoginAlert
 import com.music.bitchord.ui.components.LocalAppBackdrop
 import com.music.bitchord.ui.components.LocalLiquidGlassEnabled
@@ -360,6 +364,9 @@ private const val TOP_FADE_START = 0.55f
 
 /** How much of the header's height the fade takes to reach full strength. */
 private const val TOP_FADE_RAMP = 0.3f
+
+/** How long the blur along Explore's top takes to come and go. */
+private const val EXPLORE_VEIL_MS = 360
 
 private const val INITIAL_RADIO_TRACKS = 24
 
@@ -748,6 +755,11 @@ private fun BitChordApp(
     var browseActions by remember { mutableStateOf<BrowseTarget?>(null) }
     /** The card held to open [browseActions] — see [songMenuOrigin]. */
     var browseMenuOrigin by remember { mutableStateOf<HeldItem?>(null) }
+    /**
+     * The dial tile the open menu was held on, or null when the menu came from
+     * anywhere else — what gives the menu its "Remove from dial" row.
+     */
+    var dialMenuItem by remember { mutableStateOf<ShelfItem?>(null) }
     /** Rename asked for from the popup, which hands it on to the sheet's form. */
     var browseRenameInSheet by remember { mutableStateOf(false) }
     /** The playlist being rearranged, or null when the reorder sheet is shut. */
@@ -792,6 +804,8 @@ private fun BitChordApp(
     val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val speedDialPins by CustomizationSettings.speedDialPins.collectAsStateWithLifecycle()
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
+    // Tiles taken off the dials by hand, kept off until pinned again.
+    val hiddenFromDial by CustomizationSettings.hiddenFromDial.collectAsStateWithLifecycle()
     var editingSpeedDial by remember { mutableStateOf(false) }
     val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
     val homeTitleText by CustomizationSettings.homeTitle.collectAsStateWithLifecycle()
@@ -851,7 +865,7 @@ private fun BitChordApp(
     val dialLeadsHome = homeSections.firstOrNull { it.enabled }?.item == CustomizationSettings.SPEED_DIAL_TITLE
     // The feed as Home draws it: the speed dial built in, then the sections in
     // the order Settings gives them, minus the hidden ones.
-    val baseHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial) {
+    val baseHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial, hiddenFromDial) {
         val savedDial = if (holdSavedDial) {
             CustomizationSettings.buildSpeedDial(
                 speedDialPins,
@@ -906,10 +920,11 @@ private fun BitChordApp(
                 }
         }.getOrDefault(emptyList())
     }
-    val arrangedHomeState = remember(baseHomeState, artistDialOn, artistDialPins, topArtists) {
+    val arrangedHomeState = remember(baseHomeState, artistDialOn, artistDialPins, topArtists, hiddenFromDial) {
         val base = baseHomeState
         val artists = (artistDialPins + topArtists)
             .distinctBy { it.speedDialId }
+            .filterNot { it.speedDialId in hiddenFromDial }
             .take(CustomizationSettings.SPEED_DIAL_SIZE)
         if (!artistDialOn || artists.isEmpty() || base !is UiState.Success ||
             base.data.firstOrNull()?.title != CustomizationSettings.SPEED_DIAL_TITLE
@@ -2079,6 +2094,58 @@ private fun BitChordApp(
     }
 
     /**
+     * Holding a tile on one of Home's dials: the same menus as anywhere else,
+     * plus a row to take the tile off the dial — and an artist gets a menu of
+     * their own (View artist, shuffle, radio, the star) rather than nothing.
+     */
+    val onDialLongPress: (ShelfItem, Boolean) -> Unit = { item, artistDial ->
+        val song = shelfSong(item)
+        val id = item.browseId
+        if (song != null) {
+            dialMenuItem = item
+            openSongMenu(song)
+        } else if (id != null) {
+            val type = if (artistDial || id.startsWith("UC")) {
+                BrowseType.ARTIST
+            } else {
+                viewModel.browseTypeOf(id) ?: BrowseType.OTHER
+            }
+            dialMenuItem = item
+            openBrowseMenu(
+                BrowseTarget(
+                    browseId = id,
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    thumbnailUrl = item.thumbnailUrl,
+                    type = type,
+                    downloadId = downloadIdFor(id),
+                ),
+            )
+        }
+    }
+
+    // "I'm Feeling Lucky": the die on the speed dial. Each roll starts a radio
+    // off a random seed from the session's pool — see MainViewModel.feelingLucky.
+    val feelingLuckyOn by CustomizationSettings.feelingLucky.collectAsStateWithLifecycle()
+    val luckyLabel = stringResource(R.string.feeling_lucky)
+    val latestStartRadio by rememberUpdatedState(startRadio)
+    val speedDialLucky = remember(feelingLuckyOn, luckyLabel) {
+        if (!feelingLuckyOn) {
+            null
+        } else {
+            SpeedDialLucky(luckyLabel) {
+                viewModel.feelingLucky { seed ->
+                    if (seed != null) {
+                        latestStartRadio(seed)
+                    } else {
+                        Toast.makeText(context, R.string.feeling_lucky_empty, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Hands [action] the target's whole track list.
      *
      * A card has no tracks behind it — its page was never opened — so the
@@ -2112,6 +2179,15 @@ private fun BitChordApp(
             target.songs.isNotEmpty() -> stamp(target.songs)
             target.browseId == null ->
                 Toast.makeText(context, context.getString(R.string.no_tracks_here), Toast.LENGTH_SHORT).show()
+            // An artist card: the songs their page plays, rather than the
+            // page read as if it were a playlist.
+            target.type == BrowseType.ARTIST -> viewModel.loadArtistSongs(target.browseId) { songs ->
+                if (songs.isEmpty()) {
+                    Toast.makeText(context, context.getString(R.string.couldnt_load_tracks), Toast.LENGTH_SHORT).show()
+                } else {
+                    stamp(songs)
+                }
+            }
             else -> viewModel.collectSongs(target.browseId, target.thumbnailUrl) { result ->
                 result.fold(
                     onSuccess = stamp,
@@ -3367,6 +3443,27 @@ private fun BitChordApp(
                             } else {
                                 null
                             },
+                            onStartRadio = startRadio,
+                            // Pinned to whichever dial an artist goes to.
+                            artistPinned = page.browseId in artistDialPinnedIds || page.browseId in speedDialPinnedIds,
+                            onToggleArtistPin = page.browseId.takeIf { it.startsWith("UC") }?.let { id ->
+                                {
+                                    val pinned = CustomizationSettings.toggleSpeedDial(
+                                        ShelfItem(
+                                            title = page.title,
+                                            subtitle = "",
+                                            thumbnailUrl = page.thumbnailUrl,
+                                            videoId = null,
+                                            browseId = id,
+                                        ),
+                                    )
+                                    showQueueNotice(
+                                        context.getString(
+                                            if (pinned) R.string.added_to_speed_dial else R.string.removed_from_speed_dial,
+                                        ),
+                                    )
+                                }
+                            },
                             releaseLibrary = releaseLibrary,
                             onLoadReleaseLibrary = viewModel::loadReleaseLibrary,
                             onToggleReleaseLibrary = if (signedIn) {
@@ -3390,6 +3487,7 @@ private fun BitChordApp(
                             onArtistDialReorder = { reordered ->
                                 CustomizationSettings.setArtistDialPins(reordered)
                             },
+                            speedDialLucky = speedDialLucky,
                             skeletonSpeedDialFirst = homeSections.firstOrNull { it.enabled }?.item ==
                                 CustomizationSettings.SPEED_DIAL_TITLE,
                             skeletonShowRecents = homeSections.none { it.item == "Recents" && !it.enabled },
@@ -3425,6 +3523,7 @@ private fun BitChordApp(
                                 }
                             },
                             onItemLongPress = onShelfLongPress,
+                            onDialItemLongPress = onDialLongPress,
                             onRetry = viewModel::loadHome,
                             refreshing = MainViewModel.Feed.HOME in refreshing,
                             onRefresh = { viewModel.refresh(MainViewModel.Feed.HOME) },
@@ -3880,6 +3979,26 @@ private fun BitChordApp(
                     libraryShowAll == null && !showSpotify && !showDiscord && !showHistory &&
                     !showSettings && !showAccountScrobbling && !showSources && !showListenTogether &&
                     !showEqualizer && !showReplay
+                // Explore scrolls under the bar and the mark beside it: a soft
+                // blur with a touch of shade along the top, eased in as the
+                // page comes up and out again on the way back to the dials.
+                val exploreVeil by animateFloatAsState(
+                    targetValue = if (homeRoot && homePage == HomePage.EXPLORE) 1f else 0f,
+                    animationSpec = tween(EXPLORE_VEIL_MS),
+                    label = "exploreVeil",
+                )
+                if (exploreVeil > 0f) {
+                    TopFadeBlur(
+                        hazeState = hazeState,
+                        pageColor = chromePageColor,
+                        scrimColor = Color.Black,
+                        scrimPeak = 0.16f,
+                        run = 56.dp,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .graphicsLayer { alpha = exploreVeil },
+                    )
+                }
                 FrostedTopBar(
                     title = when {
                         homeRoot -> ""
@@ -4732,6 +4851,13 @@ private fun BitChordApp(
                     null
                 },
                 inSpeedDial = song.videoId in speedDialPinnedIds,
+                onRemoveFromDial = dialMenuItem?.takeIf { it.videoId == song.videoId }?.let { item ->
+                    {
+                        songActions = null
+                        CustomizationSettings.removeFromDial(item)
+                        showQueueNotice(context.getString(R.string.removed_from_dial))
+                    }
+                },
                 // Stays open: the row it replaces itself with is the
                 // progress, and closing the sheet would hide the only
                 // answer to "did that work?".
@@ -5066,6 +5192,15 @@ private fun BitChordApp(
             val remote = target.browseId?.startsWith("local:") == false
             val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
             val pinnableId = target.browseId?.takeIf { target.type == BrowseType.PLAYLIST }
+            // The artist's star, asked for as the menu opens (signed in only:
+            // following is the account's).
+            val artistId = target.browseId?.takeIf { target.type == BrowseType.ARTIST && remote }
+            var artistFollow by remember(artistId) { mutableStateOf<SubscriptionState?>(null) }
+            LaunchedEffect(artistId, signedIn) {
+                if (artistId != null && signedIn) {
+                    viewModel.loadArtistSubscription(artistId) { artistFollow = it }
+                }
+            }
             BrowseActionsSheet(
                 // The live answer, not the one the target was built with.
                 target = target.copy(playlist = playlist),
@@ -5215,6 +5350,29 @@ private fun BitChordApp(
                         scope.launch { Downloads.deleteCollection(context, id) }
                     }
                 },
+                onStartRadio = act { songs ->
+                    songs.firstOrNull()?.let(startRadio)
+                }.takeIf { target.fromCard && remote },
+                favorite = artistFollow?.subscribed,
+                onToggleFavorite = artistId?.let { id ->
+                    artistFollow?.let { follow ->
+                        {
+                            // Shown at once, put back if YouTube says no.
+                            val next = !follow.subscribed
+                            artistFollow = follow.copy(subscribed = next)
+                            viewModel.setArtistSubscribed(id, follow, next) { ok ->
+                                if (!ok) artistFollow = follow
+                            }
+                        }
+                    }
+                },
+                onRemoveFromDial = dialMenuItem?.takeIf { it.browseId != null && it.browseId == target.browseId }?.let { item ->
+                    {
+                        browseActions = null
+                        CustomizationSettings.removeFromDial(item)
+                        showQueueNotice(context.getString(R.string.removed_from_dial))
+                    }
+                },
             )
         }
         browseActions?.takeIf { browseMenuOrigin == null }?.let { target ->
@@ -5252,6 +5410,10 @@ private fun BitChordApp(
                 browseMenuOrigin = null
                 browseRenameInSheet = false
             }
+        }
+        // Either menu shut: whatever opens next didn't come off a dial unless it says so.
+        LaunchedEffect(browseActions == null && songActions == null) {
+            if (browseActions == null && songActions == null) dialMenuItem = null
         }
 
         // ---- Reorder playlist ----

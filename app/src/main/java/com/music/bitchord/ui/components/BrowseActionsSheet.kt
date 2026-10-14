@@ -20,6 +20,10 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RemoveCircleOutline
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.HorizontalDivider
@@ -187,7 +191,17 @@ fun BrowseActionsSheet(
      */
     onRenameInSheet: (() -> Unit)? = null,
     startRenaming: Boolean = false,
+    /** Starts a radio off the target (an artist's top song). Null hides the row. */
+    onStartRadio: (() -> Unit)? = null,
+    /** An artist's star: whether the account follows them, null while unknown or not offered. */
+    favorite: Boolean? = null,
+    onToggleFavorite: (() -> Unit)? = null,
+    /** Opened off a Home dial: takes the tile off it. Null hides the row. */
+    onRemoveFromDial: (() -> Unit)? = null,
 ) {
+    // An artist's menu is about the artist, not a release: no queue rows,
+    // downloads or shares — it is opened to go to them, play them or star them.
+    val artistMenu = target.type == BrowseType.ARTIST
     val menu = presentation == SongActionsPresentation.Menu
     var renaming by remember { mutableStateOf(startRenaming) }
     var confirmingDelete by remember { mutableStateOf(false) }
@@ -215,8 +229,32 @@ fun BrowseActionsSheet(
                 HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
             }
 
+            if (artistMenu) {
+                onOpen?.let { ActionRow(BitChordIcons.ChevronRight, target.type.localizedOpenLabel(), onClick = it) }
+                onToggleSpeedDial?.let {
+                    ActionRow(
+                        BitChordIcons.Pin,
+                        stringResource(if (inSpeedDial) R.string.remove_from_speed_dial else R.string.add_to_speed_dial),
+                        onClick = it,
+                    )
+                }
+                onShuffle?.let { ActionRow(BitChordIcons.Shuffle, stringResource(R.string.shuffle), onClick = it) }
+                onStartRadio?.let { ActionRow(Icons.Rounded.Radio, stringResource(R.string.start_radio), onClick = it) }
+                if (favorite != null && onToggleFavorite != null) {
+                    ActionRow(
+                        if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                        stringResource(if (favorite) R.string.unfavorite_artist else R.string.favorite_artist),
+                        onClick = onToggleFavorite,
+                    )
+                }
+                onRemoveFromDial?.let {
+                    ActionRow(Icons.Rounded.RemoveCircleOutline, stringResource(R.string.remove_from_dial), onClick = it)
+                }
+                return@Column
+            }
             onPlay?.let { ActionRow(Icons.Rounded.PlayArrow, stringResource(R.string.play), onClick = it) }
             onShuffle?.let { ActionRow(BitChordIcons.Shuffle, stringResource(R.string.shuffle), onClick = it) }
+            onStartRadio?.let { ActionRow(Icons.Rounded.Radio, stringResource(R.string.start_radio), onClick = it) }
             ActionRow(
                 Icons.AutoMirrored.Rounded.PlaylistPlay,
                 stringResource(R.string.play_next),
@@ -227,6 +265,9 @@ fun BrowseActionsSheet(
                 stringResource(R.string.add_to_queue),
                 onClick = onAddToQueue,
             )
+            onRemoveFromDial?.let {
+                ActionRow(Icons.Rounded.RemoveCircleOutline, stringResource(R.string.remove_from_dial), onClick = it)
+            }
             onDownloadAll?.let { download ->
                 // Saying which of the three it is, rather than offering the same row
                 // whatever the state — this is where a release is asked for now that

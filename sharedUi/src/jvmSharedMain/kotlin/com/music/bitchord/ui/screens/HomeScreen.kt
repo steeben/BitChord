@@ -132,6 +132,12 @@ fun HomeScreen(
      * collection opens the album / playlist one.
      */
     onItemLongPress: ((ShelfItem) -> Unit)? = null,
+    /**
+     * Holding a tile on one of the dials: the dial's own menu, which can also
+     * take the tile off the dial. The flag is true on the artists' dial.
+     * Falls back to [onItemLongPress] when not given.
+     */
+    onDialItemLongPress: ((ShelfItem, Boolean) -> Unit)? = null,
     // Explore doesn't page — only Home has a continuation worth following.
     onLoadMore: (() -> Unit)? = null,
     loadingMore: Boolean = false,
@@ -156,6 +162,8 @@ fun HomeScreen(
     artistDialPinned: Set<String> = emptySet(),
     /** The artists' dial's pins in their new order, after one is dragged. */
     onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
+    /** "I'm Feeling Lucky"'s die on the speed dial, or null for none. */
+    speedDialLucky: SpeedDialLucky? = null,
     /**
      * The saved section layout, for the loading placeholders: whether the speed
      * dial leads Home, and whether Recents is shown at all.
@@ -296,6 +304,7 @@ fun HomeScreen(
                         },
                         onItemClick = onItemClick,
                         onItemLongPress = onItemLongPress,
+                        onDialItemLongPress = onDialItemLongPress,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
                         firstIsHero = leadHero && !recentlyPlayedLoading,
@@ -308,6 +317,7 @@ fun HomeScreen(
                         artistDialPageHeight = artistPageHeight,
                         artistDialPinned = artistDialPinned,
                         onArtistDialReorder = onArtistDialReorder,
+                        speedDialLucky = speedDialLucky,
                         afterLead = if (dialLeads && !holdSpeedDial) bannerItem else null,
                         onSpeedDialReorder = onSpeedDialReorder,
                         recentsViewType = recentsViewType,
@@ -371,6 +381,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     shelves: List<HomeShelf>,
     onItemClick: (ShelfItem, String) -> Unit,
     onItemLongPress: ((ShelfItem) -> Unit)?,
+    onDialItemLongPress: ((ShelfItem, Boolean) -> Unit)? = null,
     currentSong: Song?,
     isPlaying: Boolean,
     firstIsHero: Boolean = true,
@@ -384,6 +395,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     artistDialPageHeight: Dp? = null,
     artistDialPinned: Set<String> = emptySet(),
     onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
+    speedDialLucky: SpeedDialLucky? = null,
     /** Items to put straight after the lead page (or pages: the dials). */
     afterLead: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
     onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
@@ -406,7 +418,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                         maxShelfHeight = artistDialMaxHeight,
                         pageHeight = artistDialPageHeight,
                         onItemClick = openItem,
-                        onItemLongPress = onItemLongPress,
+                        onItemLongPress = onDialItemLongPress?.let { menu -> { item: ShelfItem -> menu(item, true) } }
+                            ?: onItemLongPress,
                         onReorder = onArtistDialReorder,
                         currentSong = null,
                         isPlaying = false,
@@ -420,10 +433,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                         maxShelfHeight = if (index == 0) speedDialMaxHeight else null,
                         pageHeight = if (index == 0) speedDialPageHeight else null,
                         onItemClick = openItem,
-                        onItemLongPress = onItemLongPress,
+                        onItemLongPress = onDialItemLongPress?.let { menu -> { item: ShelfItem -> menu(item, false) } }
+                            ?: onItemLongPress,
                         onReorder = onSpeedDialReorder,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
+                        lucky = speedDialLucky,
                     )
                 } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                     RecentShelf(

@@ -29,7 +29,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -220,13 +219,14 @@ fun HomeStickyLogo(
     refreshing: Boolean,
     pullFraction: () -> Float,
     modifier: Modifier = Modifier,
-    /** Drawn beside the mark and shrinking with it, e.g. the app's name. */
+    /** Drawn beside the mark and moving with it, e.g. the app's name. */
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     // Where the mark sits at rest, and where it ends up pinned: centred on the
     // top bar, whose content is 52dp high with TopBarContentGap (12dp) below it.
+    // It rides up there with the page but never shrinks.
     val restTop = topPadding - 20.dp
-    val pinnedTop = topPadding - 12.dp - 26.dp - HOME_LOGO_SMALL / 2
+    val pinnedTop = topPadding - 12.dp - 26.dp - HOME_LOGO_LARGE / 2
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -240,11 +240,6 @@ fun HomeStickyLogo(
                 } else {
                     travel
                 }
-                val t = (scrolled / travel).coerceIn(0f, 1f)
-                val scale = 1f + (HOME_LOGO_SMALL / HOME_LOGO_LARGE - 1f) * t
-                transformOrigin = TransformOrigin(0f, 0f)
-                scaleX = scale
-                scaleY = scale
                 translationY = restTop.toPx() - scrolled.coerceAtMost(travel)
             },
     ) {

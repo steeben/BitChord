@@ -56,4 +56,12 @@
     <string name="dial_page_explore">Explore</string>
     <string name="artist_dial">Give artists their own dial</string>
     <string name="artist_dial_subtitle">A page under the speed dial of the artists you pin, then the ones you play most</string>
+    <string name="favorite_artist">Favorite artist</string>
+    <string name="unfavorite_artist">Remove from favorite artists</string>
+    <string name="remove_from_dial">Remove from dial</string>
+    <string name="removed_from_dial">Removed from dial</string>
+    <string name="feeling_lucky">I\'m Feeling Lucky</string>
+    <string name="feeling_lucky_setting">I\'m Feeling Lucky</string>
+    <string name="feeling_lucky_setting_subtitle">A die on the speed dial: roll it for a radio off something you\'ve played, loved or liked lately</string>
+    <string name="feeling_lucky_empty">Play or like a few songs first, then roll again</string>
 </resources>

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Check
@@ -179,6 +180,8 @@ fun SongActionsSheet(
     /** Adds the song to the Home speed dial, or takes it off. Null hides the row. */
     onToggleSpeedDial: (() -> Unit)? = null,
     inSpeedDial: Boolean = false,
+    /** Opened off a Home dial: takes the tile off it. Null hides the row. */
+    onRemoveFromDial: (() -> Unit)? = null,
     /** Opens the timing control offered only by the main player's menu. */
     onLyricsOffset: (() -> Unit)? = null,
     /**
@@ -323,6 +326,14 @@ fun SongActionsSheet(
                 label = stringResource(
                     if (inSpeedDial) R.string.remove_from_speed_dial else R.string.add_to_speed_dial,
                 ),
+                accent = palette.accent,
+                onClick = it,
+            )
+        }
+        onRemoveFromDial?.let {
+            ActionRow(
+                icon = Icons.Rounded.RemoveCircleOutline,
+                label = stringResource(R.string.remove_from_dial),
                 accent = palette.accent,
                 onClick = it,
             )

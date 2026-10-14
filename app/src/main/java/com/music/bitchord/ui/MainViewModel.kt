@@ -32,6 +32,7 @@ import com.music.bitchord.auth.CapturedSession
 import com.music.bitchord.auth.WebSessionMode
 import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.model.AccountChannel
+import com.music.bitchord.data.model.ArtistPage
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.HomeShelf
@@ -801,8 +802,107 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Whether the account follows (stars) an artist, for a menu opened off a
+     * card: the page's answer if it is open, else the artist page fetched.
+     */
+    fun loadArtistSubscription(browseId: String, onResult: (SubscriptionState?) -> Unit) {
+        val known = _detailStack.value.firstOrNull { it.browseId == browseId }?.subscription
+        if (known != null) {
+            onResult(known)
+            return
+        }
+        viewModelScope.launch { onResult(artistCardPage(browseId)?.subscription) }
+    }
+
+    /**
+     * An artist's songs for a menu opened off their card — shuffle, radio —
+     * the same list their page plays, fetched once and kept for the session.
+     */
+    fun loadArtistSongs(browseId: String, onResult: (List<Song>) -> Unit) {
+        val open = (_detailStack.value.firstOrNull { it.browseId == browseId }?.songs as? UiState.Success<List<Song>>)?.data
+        if (!open.isNullOrEmpty()) {
+            onResult(open)
+            return
+        }
+        viewModelScope.launch { onResult(artistCardPage(browseId)?.songs.orEmpty()) }
+    }
+
+    /**
+     * "I'm Feeling Lucky"'s seeds for this session: about twenty songs drawn
+     * evenly from what was played lately, what has been in heavy rotation and
+     * what is liked — gathered on the first roll and re-rolled from after that.
+     */
+    private var luckyPool: List<Song>? = null
+    private var lastLucky: String? = null
+
+    /** A random seed from the pool (never the last one twice running), or null if there is none. */
+    fun feelingLucky(onSeed: (Song?) -> Unit) {
+        viewModelScope.launch {
+            val pool = luckyPool ?: gatherLuckySeeds().also { if (it.isNotEmpty()) luckyPool = it }
+            val seed = pool.filter { it.videoId != lastLucky }.ifEmpty { pool }.randomOrNull()
+            lastLucky = seed?.videoId
+            onSeed(seed)
+        }
+    }
+
+    private suspend fun gatherLuckySeeds(): List<Song> = coroutineScope {
+        val signedIn = _signedIn.value
+        val recent = async {
+            if (signedIn) YtMusicRepository.history().getOrNull().orEmpty().take(LUCKY_RECENT_REACH) else emptyList()
+        }
+        val liked = async {
+            if (signedIn) {
+                YtMusicRepository.browseSongs(YtMusicRepository.LIKED_MUSIC).getOrNull()?.songs.orEmpty()
+            } else {
+                emptyList()
+            }
+        }
+        val rotation = async {
+            runCatching {
+                val month = com.music.bitchord.data.stats.ListeningStats
+                    .summary(com.music.bitchord.data.stats.ReplayPeriod.THIS_MONTH).songs
+                val ever = com.music.bitchord.data.stats.ListeningStats
+                    .summary(com.music.bitchord.data.stats.ReplayPeriod.ALL_TIME).songs
+                (month.take(LUCKY_ROTATION_REACH) + ever.take(LUCKY_ROTATION_REACH)).map { it.song }
+            }.getOrDefault(emptyList())
+        }
+        val sources = listOf(recent.await(), rotation.await(), liked.await()).map { list ->
+            list.filter { it.videoId.isNotBlank() && it.localUri == null }.distinctBy { it.videoId }.shuffled()
+        }
+        // In turns, one from each, so no one source crowds out the others.
+        val pool = LinkedHashMap<String, Song>()
+        var i = 0
+        while (pool.size < LUCKY_POOL_SIZE && sources.any { i < it.size }) {
+            sources.forEach { source -> source.getOrNull(i)?.let { pool.putIfAbsent(it.videoId, it) } }
+            i++
+        }
+        pool.values.take(LUCKY_POOL_SIZE)
+    }
+
+    /** Artist pages fetched for card menus, so the menu's rows share one request. */
+    private val artistCardPages = HashMap<String, ArtistPage>()
+
+    private suspend fun artistCardPage(browseId: String): ArtistPage? =
+        artistCardPages[browseId] ?: YtMusicRepository.artistPage(browseId).getOrNull()
+            ?.also { artistCardPages[browseId] = it }
+
+    /** Stars or un-stars an artist from a menu; [onDone] gets whether it worked. */
+    fun setArtistSubscribed(browseId: String, state: SubscriptionState, subscribed: Boolean, onDone: (Boolean) -> Unit) {
+        if (!requireSignIn()) return
+        setSubscribedOnPage(browseId, subscribed)
+        viewModelScope.launch {
+            val ok = YtMusicRepository.setSubscribed(state.channelId, subscribed).isSuccess
+            if (ok) libraryStale = true else setSubscribedOnPage(browseId, state.subscribed)
+            onDone(ok)
+        }
+    }
+
     /** As [setSavedOnPage], for the artist header's subscribe button. */
     private fun setSubscribedOnPage(browseId: String, subscribed: Boolean) {
+        artistCardPages[browseId]?.let { card ->
+            card.subscription?.let { artistCardPages[browseId] = card.copy(subscription = it.copy(subscribed = subscribed)) }
+        }
         _detailStack.value = _detailStack.value.map { page ->
             val subscription = page.subscription
             if (page.browseId != browseId || subscription == null) {
@@ -980,7 +1080,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun addOne(playlist: UserPlaylist, song: Song): AddOutcome {
         val openSongs = (_detailStack.value.firstOrNull { it.browseId == playlist.browseId }
-            ?.songs as? UiState.Success)?.data
+            ?.songs as? UiState.Success<List<Song>>)?.data
         val known = openSongs
             ?: YtMusicRepository.allSongs(playlist.browseId).getOrNull()
         if (known?.any { it.videoId == song.videoId } == true) return AddOutcome.ALREADY_THERE
@@ -3440,3 +3540,10 @@ private const val HOME_CACHE_WRITE_DELAY_MS = 2_000L
 
 private const val DETAIL_CACHE_SIZE = 40
 private const val DETAIL_CACHE_TTL_MS = 30 * 60 * 1000L
+
+/** How many seeds "I'm Feeling Lucky" keeps per session. */
+private const val LUCKY_POOL_SIZE = 20
+
+/** How far back into history, and down the most-played lists, its seeds are drawn from. */
+private const val LUCKY_RECENT_REACH = 30
+private const val LUCKY_ROTATION_REACH = 15

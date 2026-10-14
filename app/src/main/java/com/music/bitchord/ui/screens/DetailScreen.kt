@@ -56,6 +56,11 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Radio
+import com.music.bitchord.ui.components.isGlassSupported
+import com.music.bitchord.ui.components.LocalLiquidGlassEnabled
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -211,6 +216,10 @@ private const val ARTIST_PLAY_ICON_SCALE = 0.56f
 private val ARTIST_SIDE_BUTTON = 52.dp
 private val ARTIST_ACTION_GAP = 24.dp
 
+/** With Start radio and the pin either side as well: five across. */
+private val ARTIST_SIDE_BUTTON_CROWDED = 46.dp
+private val ARTIST_ACTION_GAP_CROWDED = 12.dp
+
 /** The title logo's widest share of the page, and tallest share of the photo. */
 private const val ARTIST_LOGO_WIDTH = 0.82f
 private const val ARTIST_LOGO_MAX_HEIGHT = 0.30f
@@ -281,6 +290,11 @@ fun DetailScreen(
      * page whose header never offered the button.
      */
     onToggleSubscription: (() -> Unit)? = null,
+    /** Starts a radio off the artist's top song; null leaves the button off. */
+    onStartRadio: ((Song) -> Unit)? = null,
+    /** Whether the artist is pinned to a dial, and the pin button's toggle (null hides it). */
+    artistPinned: Boolean = false,
+    onToggleArtistPin: (() -> Unit)? = null,
     /** Library state of releases shown as cards on this page, by browse id. */
     releaseLibrary: Map<String, LibraryState> = emptyMap(),
     onLoadReleaseLibrary: ((String) -> Unit)? = null,
@@ -496,6 +510,9 @@ fun DetailScreen(
                         onShuffle = { onShuffle(songs) },
                         subscription = page.subscription?.takeIf { onToggleSubscription != null },
                         onToggleSubscription = onToggleSubscription,
+                        onStartRadio = onStartRadio?.let { radio -> songs.firstOrNull()?.let { first -> { radio(first) } } },
+                        pinned = artistPinned,
+                        onTogglePin = onToggleArtistPin,
                         bottomSpace = 22.dp,
                         playColor = appleArt?.keyColor?.let { Color(it) },
                     )
@@ -1260,21 +1277,43 @@ private fun ActionRow(
     onToggleSubscription: (() -> Unit)? = null,
     /** Apple's fill for the Play circle; null leaves it white. */
     playColor: Color? = null,
+    /** Left of Shuffle: a radio built off the artist. */
+    onStartRadio: (() -> Unit)? = null,
+    /** Right of the star: pins the artist to a Home dial. */
+    pinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
 ) {
+    // Five across is too wide for the three-button spacing on a narrow phone.
+    val crowded = onStartRadio != null || onTogglePin != null
+    val side = if (crowded) ARTIST_SIDE_BUTTON_CROWDED else ARTIST_SIDE_BUTTON
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = HEADER_GUTTER),
-        horizontalArrangement = Arrangement.spacedBy(ARTIST_ACTION_GAP, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(
+            if (crowded) ARTIST_ACTION_GAP_CROWDED else ARTIST_ACTION_GAP,
+            Alignment.CenterHorizontally,
+        ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onStartRadio != null) {
+            CircleIconButton(
+                icon = Icons.Rounded.Radio,
+                contentDescription = stringResource(R.string.start_radio),
+                palette = palette,
+                onClick = onStartRadio,
+                haptic = Haptic.Resume,
+                size = side,
+                lightFill = true,
+            )
+        }
         CircleIconButton(
             icon = BitChordIcons.Shuffle,
             contentDescription = stringResource(R.string.shuffle),
             palette = palette,
             onClick = onShuffle,
             haptic = Haptic.Resume,
-            size = ARTIST_SIDE_BUTTON,
+            size = side,
             lightFill = true,
         )
 
@@ -1296,11 +1335,22 @@ private fun ActionRow(
                 palette = palette,
                 onClick = { onToggleSubscription?.invoke() },
                 haptic = if (subscription.subscribed) Haptic.ToggleOff else Haptic.ToggleOn,
-                size = ARTIST_SIDE_BUTTON,
+                size = side,
                 lightFill = true,
             )
         } else {
-            Spacer(Modifier.size(ARTIST_SIDE_BUTTON))
+            Spacer(Modifier.size(side))
+        }
+        if (onTogglePin != null) {
+            CircleIconButton(
+                icon = if (pinned) Icons.Rounded.PushPin else Icons.Outlined.PushPin,
+                contentDescription = stringResource(if (pinned) R.string.remove_from_speed_dial else R.string.add_to_speed_dial),
+                palette = palette,
+                onClick = onTogglePin,
+                haptic = if (pinned) Haptic.ToggleOff else Haptic.ToggleOn,
+                size = side,
+                lightFill = true,
+            )
         }
     }
     Spacer(Modifier.height(bottomSpace))
@@ -1420,10 +1470,7 @@ private fun CircleIconButton(
             .size(size)
             .then(
                 if (lightFill) {
-                    Modifier
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = LIGHT_FILL_ALPHA), CircleShape)
-                        .border(1.dp, Color.White.copy(alpha = TOP_RELEASE_EDGE_ALPHA), CircleShape)
+                    Modifier.artistVeil(CircleShape)
                 } else {
                     Modifier.lightweightLiquidGlass(
                         shape = CircleShape,
@@ -1445,6 +1492,20 @@ private fun CircleIconButton(
         )
     }
 }
+
+/**
+ * The artist page's buttons and cards: liquid glass when that is on, else the
+ * light veil Apple uses there.
+ */
+@Composable
+private fun Modifier.artistVeil(shape: androidx.compose.foundation.shape.CornerBasedShape): Modifier =
+    if (LocalLiquidGlassEnabled.current && isGlassSupported()) {
+        lightweightLiquidGlass(shape = shape, fallbackColor = Color.White.copy(alpha = LIGHT_FILL_ALPHA))
+    } else {
+        clip(shape)
+            .background(Color.White.copy(alpha = LIGHT_FILL_ALPHA), shape)
+            .border(1.dp, Color.White.copy(alpha = TOP_RELEASE_EDGE_ALPHA), shape)
+    }
 
 /** "1.2M subscribers" and "3.4M monthly listeners", off the artist header. */
 @Composable
@@ -1804,9 +1865,7 @@ private fun TopReleaseCard(
             .padding(bottom = 22.dp)
             // A light veil rather than the dark glass: Apple's containers read
             // slightly white against the page, and a dark panel reads as a hole.
-            .clip(shape)
-            .background(Color.White.copy(alpha = LIGHT_FILL_ALPHA), shape)
-            .border(1.dp, Color.White.copy(alpha = TOP_RELEASE_EDGE_ALPHA), shape)
+            .artistVeil(shape)
             .clip(shape)
             .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(16.dp),
@@ -1850,9 +1909,7 @@ private fun TopReleaseCard(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = LIGHT_FILL_ALPHA), CircleShape)
-                    .border(1.dp, Color.White.copy(alpha = TOP_RELEASE_EDGE_ALPHA), CircleShape)
+                    .artistVeil(CircleShape)
                     .clickable {
                         haptics.play(if (saved) Haptic.ToggleOff else Haptic.ToggleOn)
                         onToggleSaved()

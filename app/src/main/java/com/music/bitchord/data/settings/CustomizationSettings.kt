@@ -63,8 +63,14 @@ object CustomizationSettings {
      */
     val artistDial = MutableStateFlow(true)
 
+    /** A die on the speed dial that starts a radio off a random personal pick. */
+    val feelingLucky = MutableStateFlow(true)
+
     /** Artists pinned to [artistDial]'s page, in their order there. */
     val artistDialPins = MutableStateFlow<List<ShelfItem>>(emptyList())
+
+    /** Ids taken off the dials with "Remove from dial", kept off until pinned again. */
+    val hiddenFromDial = MutableStateFlow<Set<String>>(emptySet())
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
     /** How many rows of three tiles the speed dial shows per page: 3 or 4. */
@@ -126,6 +132,7 @@ object CustomizationSettings {
         miniPlayerNextButton.value = p.getBoolean(KEY_MINI_PLAYER_NEXT, false)
         cropThumbnails.value = p.getBoolean(KEY_CROP_THUMBNAILS, true)
         artistDial.value = p.getBoolean(KEY_ARTIST_DIAL, true)
+        feelingLucky.value = p.getBoolean(KEY_FEELING_LUCKY, true)
         speedDialRows.value = p.getInt(KEY_SPEED_DIAL_ROWS, DEFAULT_SPEED_DIAL_ROWS).takeIf { it in 3..4 }
             ?: DEFAULT_SPEED_DIAL_ROWS
         homeTitle.value = p.getString(KEY_HOME_TITLE, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_HOME_TITLE
@@ -148,6 +155,7 @@ object CustomizationSettings {
         speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
         lastSpeedDial.value = readPins(p.getString(KEY_LAST_SPEED_DIAL, null))
         artistDialPins.value = readPins(p.getString(KEY_ARTIST_DIAL_PINS, null))
+        hiddenFromDial.value = p.getStringSet(KEY_HIDDEN_FROM_DIAL, emptySet())?.toSet().orEmpty()
     }
 
     // ── Home sections ───────────────────────────────────────────────────
@@ -217,6 +225,8 @@ object CustomizationSettings {
      */
     fun toggleSpeedDial(item: ShelfItem): Boolean {
         val id = item.speedDialId ?: return false
+        // Pinning something taken off the dial brings it back.
+        if (id in hiddenFromDial.value) setHiddenFromDial(hiddenFromDial.value - id)
         if (isArtist(item) && (artistDial.value || artistDialPins.value.any { it.speedDialId == id })) {
             val current = artistDialPins.value
             val pinned = current.none { it.speedDialId == id }
@@ -243,11 +253,33 @@ object CustomizationSettings {
         prefs?.edit()?.putString(KEY_SPEED_DIAL_PINS, writeItems(updated))?.apply()
     }
 
+    /**
+     * Takes [item] off whichever dial it is on: unpinned, and kept off even
+     * where YouTube's own speed dial, Recently played or the play counts would
+     * put it back — until it is pinned again.
+     */
+    fun removeFromDial(item: ShelfItem) {
+        val id = item.speedDialId ?: return
+        setSpeedDialPins(speedDialPins.value.filterNot { it.speedDialId == id })
+        setArtistDialPins(artistDialPins.value.filterNot { it.speedDialId == id })
+        setHiddenFromDial(hiddenFromDial.value + id)
+    }
+
+    private fun setHiddenFromDial(value: Set<String>) {
+        hiddenFromDial.value = value
+        prefs?.edit()?.putStringSet(KEY_HIDDEN_FROM_DIAL, value)?.apply()
+    }
+
     /** Replaces the artists' dial's pins, in the order given. */
     fun setArtistDialPins(value: List<ShelfItem>) {
         val updated = value.distinctBy { it.speedDialId }.take(SPEED_DIAL_SIZE)
         artistDialPins.value = updated
         prefs?.edit()?.putString(KEY_ARTIST_DIAL_PINS, writeItems(updated))?.apply()
+    }
+
+    fun setFeelingLucky(value: Boolean) {
+        feelingLucky.value = value
+        prefs?.edit()?.putBoolean(KEY_FEELING_LUCKY, value)?.apply()
     }
 
     /** Turning it on moves pinned artists onto their dial; off, back onto the speed dial. */
@@ -299,8 +331,9 @@ object CustomizationSettings {
         val rest = shelves
             .filterNot { it.title.equals(SPEED_DIAL_TITLE, true) || it.title.equals(RECENTS_TITLE, true) }
             .flatMap { it.items }
+        val hidden = hiddenFromDial.value
         return (pins + official + recents + rest)
-            .filter { it.speedDialId != null }
+            .filter { it.speedDialId != null && it.speedDialId !in hidden }
             .distinctBy { it.speedDialId }
             .take(SPEED_DIAL_SIZE)
     }
@@ -463,7 +496,9 @@ object CustomizationSettings {
     private const val KEY_MINI_PLAYER_NEXT = "custom_mini_player_next"
     private const val KEY_CROP_THUMBNAILS = "custom_crop_thumbnails"
     private const val KEY_ARTIST_DIAL = "custom_artist_dial"
+    private const val KEY_FEELING_LUCKY = "custom_feeling_lucky"
     private const val KEY_ARTIST_DIAL_PINS = "custom_artist_dial_pins"
+    private const val KEY_HIDDEN_FROM_DIAL = "custom_hidden_from_dial"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"

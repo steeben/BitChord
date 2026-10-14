@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.AppSettings
@@ -107,14 +108,16 @@ fun TopFadeBlur(
      * underneath would be painted over by the blurred content and do nothing.
      */
     scrimColor: Color,
+    /** How dark the scrim starts at the top edge. */
+    scrimPeak: Float = SCRIM_PEAK,
+    /** How far below the bar the fade runs out. */
+    run: Dp = FADE_RUN,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    // The bar fills itself solid instead when blur is reduced, so this has
-    // nothing left to do.
-    if (reduceDynamicBlur) return
-
-    val height = topBarHeight() + FADE_RUN
-    Box(
+    val height = topBarHeight() + run
+    // The bar fills itself solid instead when blur is reduced, so all that is
+    // left to lay down is the scrim.
+    if (!reduceDynamicBlur) Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
@@ -161,7 +164,7 @@ fun TopFadeBlur(
             },
     )
 
-    val scrim = remember(scrimColor) {
+    val scrim = remember(scrimColor, scrimPeak) {
         Brush.verticalGradient(
             // The same eased-out shape as the blur above it, so the two arrive
             // at nothing together. A scrim that outlasted the blur would leave
@@ -169,7 +172,7 @@ fun TopFadeBlur(
             // the one artefact this bar exists to avoid.
             colorStops = Array(SCRIM_STOPS) { i ->
                 val t = i / (SCRIM_STOPS - 1f)
-                t to scrimColor.copy(alpha = SCRIM_PEAK * (1f - EaseOutCubic.transform(t)))
+                t to scrimColor.copy(alpha = scrimPeak * (1f - EaseOutCubic.transform(t)))
             },
         )
     }

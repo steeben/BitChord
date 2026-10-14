@@ -50,12 +50,14 @@
 - **An A–Z index** down the side of library lists sorted by name: touch or drag a letter to jump there.
 
 ### Home
-- **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen, and hold at the edge to move it to another page. The tiles are always square.
+- **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen: the pins shrink a little and jiggle while the rest dim, and holding at the edge moves it to another page. The tiles are always square.
+- **Dial menus.** Hold any tile for its menu, which can also take it off the dial. An artist's menu has View artist, add to or remove from the speed dial, Shuffle, Start radio and Favorite artist (the star on their page).
+- **I'm Feeling Lucky.** A die on the speed dial: tap it and its lights chase round like a spinner, then land on a face from one to six as a radio starts off a random pick from what you've played lately, had on heavy rotation or liked. A pool of about twenty picks is gathered once per session and re-rolled on every tap. Can be turned off in Settings › Layout.
 - **An artists' dial.** A second page under the speed dial of the artists you pin, then the ones you play most; tap one for their page. The title beside the logo follows along: your dial's name, then "Artists", then "Explore" for the sections below. Can be turned off in Settings › Layout, which puts pinned artists back on the speed dial.
 - **Reorder the Home layout** and **hide sections** you don't use.
 - **A title you can rename.** "BitChord Dial" sits beside the logo in Metropolis; hold it to type your own.
 - **The dial is Home's first screen.** Everything else on Home sits below it, behind a faint chevron, and only loads once you swipe down to it.
-- **A logo made of squares.** It stays pinned in the top left as you scroll, and pulling down to refresh lights the squares up in a spin, then settles them back into the logo.
+- **A logo made of squares.** It stays pinned in the top left as you scroll, at full size, with a soft blur along the top of the screen under it once you're down in Explore, and pulling down to refresh lights the squares up in a spin, then settles them back into the logo.
 
 ### Navigation
 - **Customize the nav bar.** Reorder the tabs, or swap one out for a **Playlists** shortcut.
@@ -65,6 +67,9 @@
 
 ### Appearance
 - **Ambient background.** Soft, slowly drifting colour blobs sit behind the app, with frosted surfaces on top. The colour can **match the current song's album art**, or stay on a fixed colour (green in Spotify libraries, red in YouTube Music).
+
+### Artist pages
+- **Pin and radio buttons.** A pin beside the star puts the artist on your dial, and a Start radio button sits left of Shuffle. With liquid glass on, every button and box on the page is glass.
 
 ### Player
 - **Spotify Canvas with controls that stay.** When a Canvas video is playing, the player controls shrink and stay visible instead of fading out. You can turn this off again in the Canvas settings.

@@ -1,6 +1,19 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.lerp
+import kotlinx.coroutines.launch
+import kotlin.math.sin
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -123,6 +136,21 @@ internal fun speedDialMetrics(contentWidth: Dp, rows: Int, maxShelfHeight: Dp?):
 private fun ShelfItem.dialId(): String = videoId ?: browseId ?: title
 
 /**
+ * "I'm Feeling Lucky" on the speed dial: a die drawn as a tile, last on the
+ * first page. [onRoll] is called on every tap, as the die starts to roll.
+ */
+class SpeedDialLucky(val label: String, val onRoll: () -> Unit)
+
+/** The die's place in the dial's order: never a real item, only matched on. */
+private val LUCKY_TILE = ShelfItem(
+    title = "",
+    subtitle = "",
+    thumbnailUrl = null,
+    videoId = null,
+    browseId = "bitchord:feeling-lucky",
+)
+
+/**
  * YouTube Music's speed dial: a grid of tiles three across and [rows] down,
  * swiped sideways through further pages.
  *
@@ -149,12 +177,22 @@ internal fun SpeedDialShelf(
     onReorder: ((List<ShelfItem>) -> Unit)?,
     currentSong: Song?,
     isPlaying: Boolean,
+    /** The die, on the speed dial when it is switched on. */
+    lucky: SpeedDialLucky? = null,
 ) {
     if (shelf.items.isEmpty()) return
     val perPage = SPEED_DIAL_COLUMNS * rows
     // The order on screen: the shelf's, until a drag changes it.
     var order by remember(shelf.items) { mutableStateOf(shelf.items) }
-    val pageCount = ((order.size + perPage - 1) / perPage).coerceAtLeast(1)
+    // What is drawn: the order, with the die (when there is one) last on the
+    // first page, or after the last tile on a dial shorter than a page.
+    val luckyAt = if (lucky != null) minOf(perPage - 1, order.size) else -1
+    val display = remember(order, luckyAt) {
+        if (luckyAt < 0) order else order.toMutableList().apply { add(luckyAt, LUCKY_TILE) }
+    }
+    val latestLuckyAt by rememberUpdatedState(luckyAt)
+    val latestDisplaySize by rememberUpdatedState(display.size)
+    val pageCount = ((display.size + perPage - 1) / perPage).coerceAtLeast(1)
     val latestPageCount by rememberUpdatedState(pageCount)
     val pagerState = rememberPagerState { latestPageCount }
     val pinnedCount = remember(order, pinnedIds) { order.takeWhile { it.dialId() in pinnedIds }.size }
@@ -169,13 +207,29 @@ internal fun SpeedDialShelf(
     var grab by remember { mutableStateOf(Offset.Zero) }
     var edge by remember { mutableIntStateOf(0) }
 
+    // While a tile is held to be moved, the pinned ones shrink a little and
+    // jiggle, as a phone's home screen does, and the rest (which can't move)
+    // dim. The clock is read only when drawing, so the jiggle recomposes nothing.
+    val wiggling = dragId != null
+    val wiggleLevel by animateFloatAsState(
+        targetValue = if (wiggling) 1f else 0f,
+        animationSpec = tween(WIGGLE_FADE_MS),
+        label = "dialWiggle",
+    )
+    var wiggleClock by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(wiggling) {
+        if (!wiggling) return@LaunchedEffect
+        val start = withFrameMillis { it }
+        while (true) withFrameMillis { wiggleClock = (it - start) / 1000f }
+    }
+
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     // Tiles already shown, so that one arriving later (a fresh dial replacing
     // the saved one) fades in rather than popping, while the dial's first
     // appearance and every page swiped to stay instant.
     val shownIds = remember { HashSet<String>() }
-    SideEffect { order.forEach { shownIds += it.dialId() } }
+    SideEffect { display.forEach { shownIds += it.dialId() } }
     // The first dial of a launch comes in tile by tile; see [SpeedDialIntro].
     val intro = remember { !SpeedDialIntro.played }
     SideEffect { SpeedDialIntro.played = true }
@@ -211,14 +265,24 @@ internal fun SpeedDialShelf(
                 (cell / SPEED_DIAL_COLUMNS) * (tileHPx + gapPx),
             )
 
-            /** The index in the whole order under [pos], or null in a gap or past the last tile. */
+            /** The index in the order of the tile drawn at [shown], or null for the die. */
+            fun toOrder(shown: Int): Int? {
+                val at = latestLuckyAt
+                return when {
+                    at < 0 || shown < at -> shown
+                    shown == at -> null
+                    else -> shown - 1
+                }
+            }
+
+            /** The index among the tiles drawn under [pos], or null in a gap or past the last tile. */
             fun hit(pos: Offset, page: Int): Int? {
                 val x = pos.x - gutterPx - insetPx
                 val col = floor(x / (tileWPx + gapPx)).toInt()
                 val row = floor(pos.y / (tileHPx + gapPx)).toInt()
                 if (col !in 0 until SPEED_DIAL_COLUMNS || row !in 0 until rows) return null
                 if (x - col * (tileWPx + gapPx) > tileWPx || pos.y - row * (tileHPx + gapPx) > tileHPx) return null
-                return (page * perPage + row * SPEED_DIAL_COLUMNS + col).takeIf { it < latestOrder.size }
+                return (page * perPage + row * SPEED_DIAL_COLUMNS + col).takeIf { it < latestDisplaySize }
             }
 
             Box(
@@ -244,7 +308,9 @@ internal fun SpeedDialShelf(
                             if (ended != null) return@awaitEachGesture // not a hold
 
                             val page = pagerState.currentPage
-                            val index = hit(down.position, page) ?: return@awaitEachGesture
+                            val shown = hit(down.position, page) ?: return@awaitEachGesture
+                            // The die has no menu and no place to be dragged to.
+                            val index = toOrder(shown) ?: return@awaitEachGesture
                             val item = latestOrder[index]
                             // Tiles that are not pinned have no place to be dragged
                             // to; their own hold opens the menu as it always did.
@@ -254,7 +320,7 @@ internal fun SpeedDialShelf(
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             dragId = id
                             dragPos = down.position
-                            grab = down.position - cellOrigin(index - page * perPage) - Offset(gutterPx, 0f)
+                            grab = down.position - cellOrigin(shown - page * perPage) - Offset(gutterPx, 0f)
                             var moved = false
                             var finished = false
                             try {
@@ -286,7 +352,8 @@ internal fun SpeedDialShelf(
                                         val x = dragPos.x - gutterPx - insetPx
                                         val col = floor(x / (tileWPx + gapPx)).toInt().coerceIn(0, SPEED_DIAL_COLUMNS - 1)
                                         val row = floor(dragPos.y / (tileHPx + gapPx)).toInt().coerceIn(0, rows - 1)
-                                        val target = (pagerState.currentPage * perPage + row * SPEED_DIAL_COLUMNS + col)
+                                        val cell = pagerState.currentPage * perPage + row * SPEED_DIAL_COLUMNS + col
+                                        val target = (toOrder(cell) ?: cell)
                                             .coerceIn(0, (latestPinned - 1).coerceAtLeast(0))
                                         val current = latestOrder.indexOfFirst { it.dialId() == id }
                                         if (current >= 0 && target != current) {
@@ -318,7 +385,7 @@ internal fun SpeedDialShelf(
                     modifier = Modifier.fillMaxWidth(),
                 ) { page ->
                     Box(Modifier.fillMaxWidth().height(gridHeight)) {
-                        order.drop(page * perPage).take(perPage).forEachIndexed { cell, item ->
+                        display.drop(page * perPage).take(perPage).forEachIndexed { cell, item ->
                             key(item.dialId()) {
                                 val target = cellOrigin(cell).let { IntOffset(it.x.roundToInt(), it.y.roundToInt()) }
                                 val offset by animateIntOffsetAsState(
@@ -348,35 +415,61 @@ internal fun SpeedDialShelf(
                                         appear.animateTo(1f, tween(TILE_FADE_MS))
                                     }
                                 }
-                                SpeedDialTile(
-                                    item = item,
-                                    pinned = id in pinnedIds,
-                                    current = currentSong != null && item.videoId == currentSong.videoId,
-                                    isPlaying = isPlaying,
-                                    onClick = { onItemClick(item) },
-                                    // A pinned tile's hold belongs to the drag above.
-                                    onLongPress = if (onReorder != null && id in pinnedIds) {
-                                        null
-                                    } else {
-                                        onItemLongPress?.let { { it(item) } }
-                                    },
-                                    modifier = Modifier
-                                        .offset { offset }
-                                        .size(tileW, tileH)
-                                        .graphicsLayer {
-                                            val shown = appear.value
-                                            if (entering) {
-                                                // Grows from smaller, overshooting with
-                                                // the spring; opaque well before it lands.
-                                                val scale = INTRO_START_SCALE + (1f - INTRO_START_SCALE) * shown
-                                                scaleX = scale
-                                                scaleY = scale
-                                                alpha = if (dragId == id) 0f else (shown * 2.5f).coerceIn(0f, 1f)
-                                            } else {
-                                                alpha = if (dragId == id) 0f else shown.coerceIn(0f, 1f)
-                                            }
+                                val pinnedTile = id in pinnedIds
+                                // Each its own beat, so the jiggle isn't in step.
+                                val phase = (id.hashCode() and 0xFFFF) / 0xFFFF.toFloat() * WIGGLE_TAU
+                                val tileModifier = Modifier
+                                    .offset { offset }
+                                    .size(tileW, tileH)
+                                    .graphicsLayer {
+                                        val shown = appear.value
+                                        var scale = if (entering) {
+                                            // Grows from smaller, overshooting with
+                                            // the spring; opaque well before it lands.
+                                            INTRO_START_SCALE + (1f - INTRO_START_SCALE) * shown
+                                        } else {
+                                            1f
+                                        }
+                                        alpha = when {
+                                            dragId == id -> 0f
+                                            entering -> (shown * 2.5f).coerceIn(0f, 1f)
+                                            else -> shown.coerceIn(0f, 1f)
+                                        }
+                                        val w = wiggleLevel
+                                        if (w > 0f && pinnedTile) {
+                                            scale *= 1f - WIGGLE_SHRINK * w
+                                            rotationZ = sin(wiggleClock * WIGGLE_SPEED + phase) * WIGGLE_DEGREES * w
+                                        } else {
+                                            rotationZ = 0f
+                                        }
+                                        scaleX = scale
+                                        scaleY = scale
+                                    }
+                                val dim = { if (pinnedTile) 0f else WIGGLE_DIM * wiggleLevel }
+                                if (item === LUCKY_TILE && lucky != null) {
+                                    LuckyDiceTile(
+                                        label = lucky.label,
+                                        onRoll = lucky.onRoll,
+                                        dim = dim,
+                                        modifier = tileModifier,
+                                    )
+                                } else {
+                                    SpeedDialTile(
+                                        item = item,
+                                        pinned = pinnedTile,
+                                        current = currentSong != null && item.videoId == currentSong.videoId,
+                                        isPlaying = isPlaying,
+                                        onClick = { onItemClick(item) },
+                                        // A pinned tile's hold belongs to the drag above.
+                                        onLongPress = if (onReorder != null && pinnedTile) {
+                                            null
+                                        } else {
+                                            onItemLongPress?.let { { it(item) } }
                                         },
-                                )
+                                        dim = dim,
+                                        modifier = tileModifier,
+                                    )
+                                }
                             }
                         }
                     }
@@ -490,6 +583,8 @@ private fun SpeedDialTile(
     onClick: () -> Unit,
     onLongPress: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** How far it is shaded over, read when drawing: see the dial's jiggle. */
+    dim: () -> Float = { 0f },
 ) {
     val shape = RoundedCornerShape(10.dp)
     Box(
@@ -539,5 +634,140 @@ private fun SpeedDialTile(
             )
         }
         if (current && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
+        DimOverlay(dim)
     }
 }
+
+/** A black film over a tile, as deep as [dim] says when it is drawn. */
+@Composable
+private fun DimOverlay(dim: () -> Float) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .drawBehind {
+                val d = dim()
+                if (d > 0f) drawRect(Color.Black.copy(alpha = d))
+            },
+    )
+}
+
+/**
+ * The "I'm Feeling Lucky" tile: a die of nine squares, like the app's own mark,
+ * resting on three. Tapped, its lights chase round the edge like a spinner,
+ * then it lands on a face from one to six.
+ */
+@Composable
+private fun LuckyDiceTile(
+    label: String,
+    onRoll: () -> Unit,
+    dim: () -> Float,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    var face by remember { mutableIntStateOf(3) }
+    // The spinner's head, in squares round the edge, and how far the die has
+    // gone from the spinner back to a face (1 = all face).
+    val spin = remember { Animatable(0f) }
+    val settle = remember { Animatable(1f) }
+    var rolling by remember { mutableStateOf(false) }
+    val lit = MaterialTheme.colorScheme.onSurface
+    val unlit = lit.copy(alpha = 0.13f)
+    Box(
+        modifier
+            .clip(shape)
+            .thumbnailBorder(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClickLabel = label) {
+                if (rolling) return@clickable
+                rolling = true
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onRoll()
+                scope.launch {
+                    try {
+                        spin.snapTo(0f)
+                        settle.animateTo(0f, tween(DICE_FADE_MS))
+                        spin.animateTo(DICE_ROLL_STEPS, tween(DICE_ROLL_MS, easing = FastOutSlowInEasing))
+                        face = (1..6).random()
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        settle.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium))
+                    } finally {
+                        rolling = false
+                    }
+                }
+            },
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val gridSide = size.minDimension * 0.5f
+            val gap = gridSide * 0.1f
+            val cellSide = (gridSide - gap * 2) / 3f
+            val left = (size.width - gridSide) / 2f
+            val top = size.height * 0.42f - gridSide / 2f
+            val head = spin.value % DICE_RING.size
+            val toFace = settle.value
+            val pips = DICE_FACES[face - 1]
+            for (i in 0 until 9) {
+                val ring = DICE_RING.indexOf(i)
+                val spinner = if (ring < 0) {
+                    0f
+                } else {
+                    val behind = ((head - ring) % DICE_RING.size + DICE_RING.size) % DICE_RING.size
+                    (1f - behind / DICE_TAIL).coerceIn(0f, 1f)
+                }
+                val pip = if (i in pips) 1f else 0f
+                val level = (spinner + (pip - spinner) * toFace).coerceIn(0f, 1f)
+                // A lit square swells a touch with the landing's overshoot.
+                val pop = if (pip > 0f && toFace > 1f) 1f + (toFace - 1f) * 0.6f else 1f
+                val side = cellSide * pop
+                val x = left + (i % 3) * (cellSide + gap) - (side - cellSide) / 2f
+                val y = top + (i / 3) * (cellSide + gap) - (side - cellSide) / 2f
+                drawRoundRect(
+                    color = lerp(unlit, lit, level),
+                    topLeft = Offset(x, y),
+                    size = Size(side, side),
+                    cornerRadius = CornerRadius(side * 0.24f),
+                )
+            }
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        )
+        DimOverlay(dim)
+    }
+}
+
+/** The die's squares round its edge, clockwise from the top left (row by row, 0–8). */
+private val DICE_RING = intArrayOf(0, 1, 2, 5, 8, 7, 6, 3)
+
+/** Which squares each face from one to six lights. */
+private val DICE_FACES = listOf(
+    setOf(4),
+    setOf(2, 6),
+    setOf(0, 4, 8),
+    setOf(0, 2, 6, 8),
+    setOf(0, 2, 4, 6, 8),
+    setOf(0, 2, 3, 5, 6, 8),
+)
+
+/** Twice round, in this long, with a tail this many squares long. */
+private const val DICE_ROLL_STEPS = 16f
+private const val DICE_ROLL_MS = 950
+private const val DICE_TAIL = 3.2f
+private const val DICE_FADE_MS = 140
+
+/** The jiggle while a tile is moved: how far pinned tiles shrink, how far they rock and how fast. */
+private const val WIGGLE_SHRINK = 0.08f
+private const val WIGGLE_DEGREES = 1.8f
+private const val WIGGLE_SPEED = 22f
+private const val WIGGLE_TAU = 6.2831855f
+/** How dark the tiles that can't be moved go while one is. */
+private const val WIGGLE_DIM = 0.45f
+private const val WIGGLE_FADE_MS = 220

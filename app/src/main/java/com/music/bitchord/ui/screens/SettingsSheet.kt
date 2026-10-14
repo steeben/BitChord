@@ -70,6 +70,7 @@ import androidx.compose.material.icons.rounded.LocalOffer
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.MotionPhotosOff
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.SignalCellularAlt
@@ -249,6 +250,8 @@ fun SettingsScreen(
     val miniPlayerNextButton by CustomizationSettings.miniPlayerNextButton.collectAsStateWithLifecycle()
     val cropThumbnails by CustomizationSettings.cropThumbnails.collectAsStateWithLifecycle()
     val artistDial by CustomizationSettings.artistDial.collectAsStateWithLifecycle()
+
+    val feelingLucky by CustomizationSettings.feelingLucky.collectAsStateWithLifecycle()
     val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
     val ambientBackground by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
@@ -1291,6 +1294,25 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { CustomizationSettings.setArtistDial(!artistDial) },
+                )
+            }
+            val feelingLuckyTitle = stringResource(R.string.feeling_lucky_setting)
+            row(feelingLuckyTitle, "lucky", "random", "dice", "radio", "speed dial", "shuffle") {
+                SettingsRow(
+                    icon = Icons.Rounded.Casino,
+                    title = feelingLuckyTitle,
+                    subtitle = stringResource(R.string.feeling_lucky_setting_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = feelingLucky,
+                            onCheckedChange = CustomizationSettings::setFeelingLucky,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setFeelingLucky(!feelingLucky) },
                 )
             }
         }
