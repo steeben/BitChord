@@ -24,6 +24,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -128,6 +130,11 @@ internal fun SpeedDialShelf(
     rows: Int,
     /** What the shelf may take of the screen, heading to page dots; null for no limit. */
     maxShelfHeight: Dp?,
+    /**
+     * When the dial is Home's whole first screen: its height, with a chevron
+     * under the page dots for what is further down.
+     */
+    pageHeight: Dp? = null,
     onItemClick: (ShelfItem) -> Unit,
     onItemLongPress: ((ShelfItem) -> Unit)?,
     /** The pinned tiles in their new order, after a drag. */
@@ -168,7 +175,7 @@ internal fun SpeedDialShelf(
         }
     }
 
-    Column(Modifier.padding(bottom = 66.dp)) {
+    Column(if (pageHeight != null) Modifier.height(pageHeight) else Modifier.padding(bottom = 66.dp)) {
         Spacer(Modifier.height(SPEED_DIAL_HEADER_HEIGHT))
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val metrics = speedDialMetrics(maxWidth - PAGE_GUTTER * 2, rows, maxShelfHeight)
@@ -372,6 +379,20 @@ internal fun SpeedDialShelf(
                 }
             }
         }
+        if (pageHeight != null) SpeedDialMoreHint()
+    }
+}
+
+/** The faint chevron under the dial's page dots: there is more below. */
+@Composable
+internal fun SpeedDialMoreHint() {
+    Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+        Icon(
+            imageVector = Icons.Rounded.KeyboardArrowDown,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 

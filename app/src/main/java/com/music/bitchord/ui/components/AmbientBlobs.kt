@@ -1,14 +1,13 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.luminance
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.CustomizationSettings
@@ -58,15 +57,21 @@ private fun ambientTone(target: Color): Color {
 fun rememberAmbientBlobs(primary: Color, secondary: Color, animate: Boolean): AmbientBlobs {
     val first by animateColorAsState(ambientTone(primary), tween(AMBIENT_COLOR_FADE_MS), label = "ambientFirst")
     val second by animateColorAsState(ambientTone(secondary), tween(AMBIENT_COLOR_FADE_MS), label = "ambientSecond")
-    val phase: State<Float> = if (animate) {
-        rememberInfiniteTransition(label = "ambientBlobs").animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(AMBIENT_CYCLE_MS, easing = LinearEasing), RepeatMode.Restart),
-            label = "ambientPhase",
-        )
-    } else {
-        remember { object : State<Float> { override val value = 0.15f } }
+    // Stepped a few times a second rather than every frame. The blobs sit
+    // behind every page, inside the layer the frosted bars and glass sample,
+    // so each step redraws those blurs too; at 60 a second that was a steady
+    // load on every scroll. The blobs drift so slowly, and are so soft, that
+    // the steps don't show.
+    val phase = remember { mutableFloatStateOf(0.15f) }
+    if (animate) {
+        LaunchedEffect(Unit) {
+            val start = withFrameNanos { it } - (phase.floatValue * AMBIENT_CYCLE_MS * 1_000_000L).toLong()
+            while (true) {
+                delay(AMBIENT_STEP_MS)
+                val now = withFrameNanos { it }
+                phase.floatValue = ((now - start) / 1_000_000L % AMBIENT_CYCLE_MS) / AMBIENT_CYCLE_MS.toFloat()
+            }
+        }
     }
     return AmbientBlobs({ first }, { second }, phase)
 }
@@ -151,6 +156,9 @@ private const val AMBIENT_RADIUS_FRACTION = 0.48f
 private const val AMBIENT_CYCLE_MS = 36_000
 
 private const val AMBIENT_COLOR_FADE_MS = 900
+
+/** How often the blobs move, in ms. */
+private const val AMBIENT_STEP_MS = 80L
 
 /**
  * A surface colour for cards, fields and bars that sit on the page: a thin,

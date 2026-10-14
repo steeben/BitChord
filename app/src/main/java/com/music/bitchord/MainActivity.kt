@@ -122,6 +122,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.music.bitchord.ui.components.LaunchSplash
+import com.music.bitchord.ui.components.HOME_LOGO_LARGE
+import com.music.bitchord.ui.components.PAGE_GUTTER
+import androidx.compose.ui.unit.DpOffset
 import com.music.bitchord.ui.theme.Metropolis
 import com.music.bitchord.ui.components.HomeTitleAlert
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -364,6 +368,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The system splash is drawn to match the first frame of LaunchSplash,
+        // so it is dropped at once instead of fading out over it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { view -> view.remove() }
+        }
         // Before the composition, so a cold launch from a widget's artwork has
         // the request already standing by the time BitChordApp first reads it.
         PlayerDeepLink.consume(intent)
@@ -2600,6 +2609,15 @@ private fun BitChordApp(
 
     // How far the back swipe has taken a pushed page toward closing, 0 to 1.
     val detailBackProgress = remember { Animatable(0f) }
+    // The launch screen, until Home has something to show (or, starting on
+    // another page, for a moment). Saved, so turning the phone doesn't replay it.
+    var launchSplash by rememberSaveable { mutableStateOf(true) }
+    var splashTimedOut by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(SPLASH_MAX_MS)
+        splashTimedOut = true
+    }
+    val splashReady = startTab != TAB_HOME || homeState !is UiState.Loading || splashTimedOut
     Box(
         Modifier
             .fillMaxSize()
@@ -3985,6 +4003,9 @@ private fun BitChordApp(
                 ) {
                     HomeStickyLogo(
                         listState = homeListState,
+                        // The launch screen's mark lands here; until it has,
+                        // this one stays out of the way.
+                        showMark = !launchSplash,
                         topPadding = topBarContentPadding(),
                         refreshing = MainViewModel.Feed.HOME in refreshing,
                         pullFraction = { homePull.distanceFraction },
@@ -5536,6 +5557,20 @@ private fun BitChordApp(
             )
         }
 
+        // The launch screen, over everything: it carries on from the system
+        // splash and hands over to Home's own mark. See [LaunchSplash].
+        if (launchSplash) {
+            LaunchSplash(
+                ready = splashReady,
+                target = if (startTab == TAB_HOME && selectedTab == TAB_HOME && detail == null) {
+                    DpOffset(PAGE_GUTTER, topBarContentPadding() - HOME_LOGO_REST_LIFT)
+                } else {
+                    null
+                },
+                targetHeight = HOME_LOGO_LARGE,
+                onFinished = { launchSplash = false },
+            )
+        }
     }
 }
 
@@ -5753,6 +5788,12 @@ private object PlayerSheetShape : Shape {
 }
 
 private const val TAB_HOME = 0
+
+/** The longest the launch screen waits for Home before giving way anyway. */
+private const val SPLASH_MAX_MS = 5_000L
+
+/** How far Home's mark sits above the list's top padding at rest; see HomeStickyLogo. */
+private val HOME_LOGO_REST_LIFT = 20.dp
 private const val TAB_EXPLORE = 1
 private const val TAB_LIBRARY = 2
 private const val TAB_SEARCH = 3

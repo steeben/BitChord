@@ -52,6 +52,7 @@
 - **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen, and hold at the edge to move it to another page. The tiles are always square.
 - **Reorder the Home layout** and **hide sections** you don't use.
 - **A title you can rename.** "BitChord Dial" sits beside the logo in Metropolis; hold it to type your own.
+- **The dial is Home's first screen.** Everything else on Home sits below it, behind a faint chevron, and only loads once you swipe down to it.
 - **A logo made of squares.** It stays pinned in the top left as you scroll, and pulling down to refresh lights the squares up in a spin, then settles them back into the logo.
 
 ### Navigation
@@ -68,6 +69,7 @@
 - **Gestures.** Swipe up on the controls area to open the queue, and swipe down to close it. Swipe down on the player screen to minimize it. The system back gesture plays the same slide-down.
 
 ### Under the hood
+- A launch screen of the logo's squares spinning while the app loads, which then settle into the logo and glide into place on Home.
 - Album art loads a small copy first, and prefetches the next tracks, so the player and its blur keep up on mobile data.
 - The Home feed and library pages are cached on disk and in memory for a faster start.
 - Builds are optimized for speed.

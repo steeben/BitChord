@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.lazy.LazyListState
 import com.music.bitchord.ui.components.ShelfRow
 import androidx.compose.foundation.lazy.items
@@ -166,21 +167,53 @@ fun HomeScreen(
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
         // What the speed dial may take of the screen when it leads Home: down to
-        // just above the miniplayer, so the whole grid is in view. Measured from
-        // the list's own top, past the mark's reserved row (and the sign-in
-        // banner, when that is showing).
+        // just above the miniplayer and the chevron under it, so the whole grid
+        // is in view. Measured from the list's own top, past the mark's reserved
+        // row. The bottom is always measured as if the miniplayer were showing,
+        // and the sign-in banner is kept below the dial, so nothing that turns
+        // up while the app starts can resize the grid.
         val dialTop = (contentPadding.calculateTopPadding() - HOME_TITLE_LIFT).coerceAtLeast(0.dp) +
-            (if (title != null) HOME_LOGO_RESERVE else 0.dp) +
-            (if (!signedIn && onSignIn != null) SIGN_IN_BANNER_ALLOWANCE else 0.dp)
+            (if (title != null) HOME_LOGO_RESERVE else 0.dp)
         val dialMaxHeight: Dp? = if (title != null) {
-            (maxHeight - dialTop - (contentPadding.calculateBottomPadding() - DIAL_BOTTOM_TRIM))
-                .coerceAtLeast(0.dp)
+            (
+                maxHeight - dialTop - DIAL_CHEVRON_ROOM -
+                    (maxOf(contentPadding.calculateBottomPadding(), DIAL_BOTTOM_RESERVE) - DIAL_BOTTOM_TRIM)
+                ).coerceAtLeast(0.dp)
         } else {
             null
+        }
+        // The dial's whole first screen: from its top to the foot of the list's
+        // viewport, so nothing below it is composed, or loads its artwork, until
+        // the list is scrolled to it.
+        val dialPageHeight: Dp? = if (title != null) (maxHeight - dialTop).coerceAtLeast(0.dp) else null
+        val holdSpeedDial = state is UiState.Success && recentlyPlayedLoading && skeletonSpeedDialFirst
+        val dialLeads = title != null && when (state) {
+            is UiState.Success -> holdSpeedDial || state.data.firstOrNull()?.title == SPEED_DIAL_SHELF_TITLE
+            is UiState.Loading -> skeletonSpeedDialFirst
+            else -> false
+        }
+        val showBanner = !signedIn && onSignIn != null
+        val bannerItem: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
+            if (showBanner && onSignIn != null) {
+                item(key = "home-sign-in") {
+                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
+                }
+            }
+        }
+        val density = LocalDensity.current
+        val defaultFling = ScrollableDefaults.flingBehavior()
+        val dialFling = remember(listState, defaultFling, density) {
+            DialPageFling(
+                listState = listState,
+                fallback = defaultFling,
+                restOffsetPx = { with(density) { HOME_LOGO_RESERVE.roundToPx() } },
+                nextOffsetPx = { with(density) { HOME_TITLE_LIFT.roundToPx() } },
+            )
         }
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
+            flingBehavior = if (dialLeads) dialFling else defaultFling,
             // The heading sits higher than the other tabs' first row: pull the
             // whole feed up by [HOME_TITLE_LIFT] with it.
             contentPadding = if (title != null) {
@@ -197,14 +230,14 @@ fun HomeScreen(
                 // is only the room it leaves in the list.
                 item(key = "home-logo-space") { Spacer(Modifier.height(HOME_LOGO_RESERVE)) }
             }
-            if (!signedIn && onSignIn != null) {
-                item {
-                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
-                }
-            }
+            // Under the dial when it leads, so it never pushes the dial about.
+            if (!dialLeads) bannerItem()
             when (state) {
                 is UiState.Loading -> {
-                    if (skeletonSpeedDialFirst) speedDialSkeleton(speedDialRows, dialMaxHeight)
+                    if (skeletonSpeedDialFirst) {
+                        speedDialSkeleton(speedDialRows, dialMaxHeight, dialPageHeight)
+                        bannerItem()
+                    }
                     if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                         // Recents owns the leading layout while its request is
@@ -222,9 +255,9 @@ fun HomeScreen(
                     // The speed dial is built partly from Recently played, so
                     // until that arrives its placeholder holds the top spot,
                     // rather than swapping to the Recents one and back.
-                    val holdSpeedDial = recentlyPlayedLoading && skeletonSpeedDialFirst
                     if (holdSpeedDial) {
-                        speedDialSkeleton(speedDialRows, dialMaxHeight)
+                        speedDialSkeleton(speedDialRows, dialMaxHeight, dialPageHeight)
+                        bannerItem()
                     } else if (recentlyPlayedLoading && skeletonShowRecents) {
                         recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
                     }
@@ -246,6 +279,8 @@ fun HomeScreen(
                         onSpeedDialHeaderLongPress = onSpeedDialHeaderLongPress,
                         speedDialRows = speedDialRows,
                         speedDialMaxHeight = dialMaxHeight,
+                        speedDialPageHeight = dialPageHeight,
+                        afterLead = if (dialLeads && !holdSpeedDial) bannerItem else null,
                         onSpeedDialReorder = onSpeedDialReorder,
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
@@ -300,11 +335,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     onSpeedDialHeaderLongPress: (() -> Unit)? = null,
     speedDialRows: Int = 4,
     speedDialMaxHeight: Dp? = null,
+    /** The dial's whole first screen, when it leads Home. */
+    speedDialPageHeight: Dp? = null,
+    /** Items to put straight after the first shelf. */
+    afterLead: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
     onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
 ) {
     shelves.forEachIndexed { index, shelf ->
+        if (index == 1) afterLead?.invoke(this)
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
             if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
@@ -314,6 +354,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     rows = speedDialRows,
                     // Only worth fitting when it is what Home opens on.
                     maxShelfHeight = if (index == 0) speedDialMaxHeight else null,
+                    pageHeight = if (index == 0) speedDialPageHeight else null,
                     onItemClick = openItem,
                     onItemLongPress = onItemLongPress,
                     onReorder = onSpeedDialReorder,
@@ -349,6 +390,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
             }
         }
     }
+    if (shelves.size == 1) afterLead?.invoke(this)
 }
 
 /** The same four-rows-per-page treatment used by an artist's Top songs. */
@@ -551,11 +593,14 @@ fun CompactTrackRow(
     }
 }
 
-/** Room allowed for the sign-in banner above the speed dial, when it is showing. */
-private val SIGN_IN_BANNER_ALLOWANCE = 72.dp
+/** The list's bottom padding with the miniplayer showing, which the dial always leaves room for. */
+private val DIAL_BOTTOM_RESERVE = 210.dp
 
 /** The part of the list's bottom padding that is margin, not miniplayer. */
 private val DIAL_BOTTOM_TRIM = 40.dp
+
+/** Room under the page dots for the chevron that says there is more below. */
+private val DIAL_CHEVRON_ROOM = 12.dp
 
 /**
  * Shared by the home feed, Explore and Library so headings line up across tabs.

@@ -275,9 +275,9 @@ fun LazyListScope.feedSkeleton(shelves: Int = 3, firstIsHero: Boolean = true) {
  * The speed dial's grid of tiles while Home loads, built from the same metrics
  * as the real shelf so the tiles land exactly where the placeholders were.
  */
-fun LazyListScope.speedDialSkeleton(rows: Int = 4, maxShelfHeight: Dp? = null) {
+fun LazyListScope.speedDialSkeleton(rows: Int = 4, maxShelfHeight: Dp? = null, pageHeight: Dp? = null) {
     item(key = "skeleton:speed-dial") {
-        Column(Modifier.padding(bottom = 66.dp)) {
+        Column(if (pageHeight != null) Modifier.height(pageHeight) else Modifier.padding(bottom = 66.dp)) {
             Spacer(Modifier.height(com.music.bitchord.ui.screens.SPEED_DIAL_HEADER_HEIGHT))
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val metrics = com.music.bitchord.ui.screens.speedDialMetrics(
@@ -303,6 +303,7 @@ fun LazyListScope.speedDialSkeleton(rows: Int = 4, maxShelfHeight: Dp? = null) {
             }
             // The real shelf's page-dots row, empty here, keeps the height equal.
             Spacer(Modifier.height(16.dp))
+            if (pageHeight != null) com.music.bitchord.ui.screens.SpeedDialMoreHint()
         }
     }
 }

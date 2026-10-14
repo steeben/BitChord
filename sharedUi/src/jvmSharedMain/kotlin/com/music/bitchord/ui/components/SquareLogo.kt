@@ -173,6 +173,8 @@ fun HomeStickyLogo(
     refreshing: Boolean,
     pullFraction: () -> Float,
     modifier: Modifier = Modifier,
+    /** False hides the mark itself (not [trailing]), while the launch screen's is on its way here. */
+    showMark: Boolean = true,
     /** Drawn beside the mark and shrinking with it, e.g. the app's name. */
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
@@ -204,7 +206,9 @@ fun HomeStickyLogo(
         SquareLogo(
             refreshing = refreshing,
             pullFraction = pullFraction,
-            modifier = Modifier.fillMaxHeight(),
+            modifier = Modifier
+                .fillMaxHeight()
+                .graphicsLayer { alpha = if (showMark) 1f else 0f },
         )
         trailing()
     }
