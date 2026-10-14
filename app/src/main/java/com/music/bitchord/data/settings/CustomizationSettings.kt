@@ -55,6 +55,9 @@ object CustomizationSettings {
     /** How many rows of three tiles the speed dial shows per page: 3 or 4. */
     val speedDialRows = MutableStateFlow(DEFAULT_SPEED_DIAL_ROWS)
 
+    /** The words beside the logo on Home; whatever the user typed there. */
+    val homeTitle = MutableStateFlow(DEFAULT_HOME_TITLE)
+
     /**
      * Over a Spotify Canvas, shrink the controls to the foot of the screen
      * instead of hiding them: title, live lyrics and transport stay.
@@ -100,6 +103,7 @@ object CustomizationSettings {
         keepNavBarExpanded.value = p.getBoolean(KEY_KEEP_NAV_EXPANDED, false)
         speedDialRows.value = p.getInt(KEY_SPEED_DIAL_ROWS, DEFAULT_SPEED_DIAL_ROWS).takeIf { it in 3..4 }
             ?: DEFAULT_SPEED_DIAL_ROWS
+        homeTitle.value = p.getString(KEY_HOME_TITLE, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_HOME_TITLE
         miniPlayerShape.value = MiniPlayerShape.entries
             .firstOrNull { it.name == p.getString(KEY_MINI_PLAYER_SHAPE, null) } ?: MiniPlayerShape.CIRCULAR
         compactCanvasControls.value = p.getBoolean(KEY_COMPACT_CANVAS_CONTROLS, true)
@@ -305,6 +309,13 @@ object CustomizationSettings {
         prefs?.edit()?.putString(KEY_MINI_PLAYER_SHAPE, value.name)?.apply()
     }
 
+    /** Saves the Home title. Blank puts the default back. */
+    fun setHomeTitle(value: String) {
+        val title = value.trim().take(HOME_TITLE_MAX).ifEmpty { DEFAULT_HOME_TITLE }
+        homeTitle.value = title
+        prefs?.edit()?.apply { if (title == DEFAULT_HOME_TITLE) remove(KEY_HOME_TITLE) else putString(KEY_HOME_TITLE, title) }?.apply()
+    }
+
     fun setSpeedDialRows(value: Int) {
         val rows = value.coerceIn(3, 4)
         speedDialRows.value = rows
@@ -347,6 +358,8 @@ object CustomizationSettings {
     private const val RECENTS_TITLE = "Recents"
     const val SPEED_DIAL_SIZE = 36
     const val DEFAULT_SPEED_DIAL_ROWS = 4
+    const val DEFAULT_HOME_TITLE = "BitChord Dial"
+    const val HOME_TITLE_MAX = 24
     private const val MAX_HOME_SECTIONS = 60
 
     private const val KEY_NAV_TABS = "custom_nav_tabs"
@@ -363,6 +376,7 @@ object CustomizationSettings {
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"
     private const val KEY_SPEED_DIAL_ROWS = "custom_speed_dial_rows"
+    private const val KEY_HOME_TITLE = "custom_home_title"
 }
 
 /** What identifies an item on the speed dial: its track, or the page it opens. */

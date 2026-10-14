@@ -7,13 +7,13 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,8 +79,8 @@ internal const val SPEED_DIAL_SHELF_TITLE = "Speed dial"
 private const val SPEED_DIAL_COLUMNS = 3
 private val TILE_GAP = 8.dp
 
-/** The heading's fixed height, so the loading placeholder and the shelf agree to the pixel. */
-internal val SPEED_DIAL_HEADER_HEIGHT = 64.dp
+/** A little air above the grid; the shelf has no heading of its own any more. */
+internal val SPEED_DIAL_HEADER_HEIGHT = 4.dp
 
 /** The page dots' row. Reserved even with a single page, for the same reason. */
 private val SPEED_DIAL_DOTS_HEIGHT = 16.dp
@@ -88,56 +88,29 @@ private val SPEED_DIAL_DOTS_HEIGHT = 16.dp
 /** How close to a side the finger has to be, mid-drag, to turn the page. */
 private val EDGE_PAGE_ZONE = 36.dp
 
-internal data class SpeedDialMetrics(val tileWidth: Dp, val tileHeight: Dp)
+/** [inset] is the space either side of a grid that had to shrink to fit. */
+internal data class SpeedDialMetrics(val tileWidth: Dp, val tileHeight: Dp, val inset: Dp)
 
 /**
  * The tiles' size for a grid [contentWidth] wide with [rows] rows.
  *
- * Tiles are square unless [maxShelfHeight] — everything the shelf may take
- * from its heading to its page dots — is too short for that, in which case
- * they give up height, never below 70% of their width, so the whole grid sits
- * above the miniplayer instead of running under it.
+ * Tiles are always square. When [maxShelfHeight] — everything the shelf may
+ * take, down to its page dots — is too short for the full-width squares, they
+ * shrink (never below 80% of full size) and the grid centres, so the whole
+ * grid sits above the miniplayer instead of running under it.
  */
 internal fun speedDialMetrics(contentWidth: Dp, rows: Int, maxShelfHeight: Dp?): SpeedDialMetrics {
-    val width = (contentWidth - TILE_GAP * (SPEED_DIAL_COLUMNS - 1)) / SPEED_DIAL_COLUMNS
-    var height = width
+    val full = (contentWidth - TILE_GAP * (SPEED_DIAL_COLUMNS - 1)) / SPEED_DIAL_COLUMNS
+    var side = full
     if (maxShelfHeight != null) {
         val fit = (maxShelfHeight - SPEED_DIAL_HEADER_HEIGHT - SPEED_DIAL_DOTS_HEIGHT - TILE_GAP * (rows - 1)) / rows
-        height = minOf(width, maxOf(fit, width * 0.7f))
+        side = minOf(full, maxOf(fit, full * 0.8f))
     }
-    return SpeedDialMetrics(width, height)
+    val inset = (contentWidth - (side * SPEED_DIAL_COLUMNS + TILE_GAP * (SPEED_DIAL_COLUMNS - 1))) / 2
+    return SpeedDialMetrics(side, side, inset)
 }
 
 private fun ShelfItem.dialId(): String = videoId ?: browseId ?: title
-
-/** The big heading the speed dial leads Home with. */
-@Composable
-internal fun SpeedDialHeader(title: String, onLongPress: (() -> Unit)?) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(SPEED_DIAL_HEADER_HEIGHT)
-            .padding(horizontal = PAGE_GUTTER)
-            .then(
-                if (onLongPress != null) {
-                    Modifier.pointerInput(onLongPress) {
-                        detectTapGestures(onLongPress = { onLongPress() })
-                    }
-                } else {
-                    Modifier
-                },
-            ),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.displaySmall.copy(fontSize = 38.sp, lineHeight = 44.sp),
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
 
 /**
  * YouTube Music's speed dial: a grid of tiles three across and [rows] down,
@@ -161,8 +134,6 @@ internal fun SpeedDialShelf(
     onReorder: ((List<ShelfItem>) -> Unit)?,
     currentSong: Song?,
     isPlaying: Boolean,
-    /** Holding the heading, to rearrange the pins in a list. */
-    onHeaderLongPress: (() -> Unit)? = null,
 ) {
     if (shelf.items.isEmpty()) return
     val perPage = SPEED_DIAL_COLUMNS * rows
@@ -198,10 +169,7 @@ internal fun SpeedDialShelf(
     }
 
     Column(Modifier.padding(bottom = 26.dp)) {
-        SpeedDialHeader(
-            title = localizeShelfTitle(shelf.title),
-            onLongPress = onHeaderLongPress,
-        )
+        Spacer(Modifier.height(SPEED_DIAL_HEADER_HEIGHT))
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val metrics = speedDialMetrics(maxWidth - PAGE_GUTTER * 2, rows, maxShelfHeight)
             val tileW = metrics.tileWidth
@@ -211,17 +179,18 @@ internal fun SpeedDialShelf(
             val tileHPx = with(density) { tileH.toPx() }
             val gapPx = with(density) { TILE_GAP.toPx() }
             val gutterPx = with(density) { PAGE_GUTTER.toPx() }
+            val insetPx = with(density) { metrics.inset.toPx() }
             val widthPx = with(density) { maxWidth.toPx() }
             val edgePx = with(density) { EDGE_PAGE_ZONE.toPx() }
 
             fun cellOrigin(cell: Int) = Offset(
-                (cell % SPEED_DIAL_COLUMNS) * (tileWPx + gapPx),
+                insetPx + (cell % SPEED_DIAL_COLUMNS) * (tileWPx + gapPx),
                 (cell / SPEED_DIAL_COLUMNS) * (tileHPx + gapPx),
             )
 
             /** The index in the whole order under [pos], or null in a gap or past the last tile. */
             fun hit(pos: Offset, page: Int): Int? {
-                val x = pos.x - gutterPx
+                val x = pos.x - gutterPx - insetPx
                 val col = floor(x / (tileWPx + gapPx)).toInt()
                 val row = floor(pos.y / (tileHPx + gapPx)).toInt()
                 if (col !in 0 until SPEED_DIAL_COLUMNS || row !in 0 until rows) return null
@@ -232,7 +201,7 @@ internal fun SpeedDialShelf(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .pointerInput(rows, tileWPx, tileHPx) {
+                    .pointerInput(rows, tileWPx, tileHPx, insetPx) {
                         awaitEachGesture {
                             // Watched from the first pass, ahead of the tiles and the
                             // pager, so that once a hold has landed the drag is ours
@@ -286,7 +255,7 @@ internal fun SpeedDialShelf(
                                         moved = true
                                     }
                                     if (moved && !pagerState.isScrollInProgress) {
-                                        val x = dragPos.x - gutterPx
+                                        val x = dragPos.x - gutterPx - insetPx
                                         val col = floor(x / (tileWPx + gapPx)).toInt().coerceIn(0, SPEED_DIAL_COLUMNS - 1)
                                         val row = floor(dragPos.y / (tileHPx + gapPx)).toInt().coerceIn(0, rows - 1)
                                         val target = (pagerState.currentPage * perPage + row * SPEED_DIAL_COLUMNS + col)

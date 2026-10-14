@@ -49,8 +49,9 @@
 - **List or grid per library tab**, and a **Last played** sort.
 
 ### Home
-- **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen, and hold at the edge to move it to another page. Hold the "Speed Dial" heading to reorder pins from a list.
+- **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen, and hold at the edge to move it to another page. The tiles are always square.
 - **Reorder the Home layout** and **hide sections** you don't use.
+- **A title you can rename.** "BitChord Dial" sits beside the logo in Metropolis; hold it to type your own.
 - **A logo made of squares.** It stays pinned in the top left as you scroll, and pulling down to refresh lights the squares up in a spin, then settles them back into the logo.
 
 ### Navigation

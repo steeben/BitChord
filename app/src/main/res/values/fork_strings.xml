@@ -45,4 +45,7 @@
     <string name="youtube_music">YouTube Music</string>
     <string name="youtube_music_library_subtitle">Everything in your YouTube Music library</string>
     <string name="speed_dial_grid">Speed dial grid</string>
+    <string name="home_title_edit">Home title</string>
+    <string name="home_title_edit_desc">The text beside the logo on Home</string>
+    <string name="home_title_reset">Reset to BitChord Dial</string>
 </resources>

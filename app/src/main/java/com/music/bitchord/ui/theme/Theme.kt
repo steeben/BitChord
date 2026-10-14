@@ -59,6 +59,11 @@ val SFProDisplay = FontFamily(
     Font(R.font.sf_pro_display_heavy, FontWeight.W800),
 )
 
+/** Metropolis ExtraBold, the face of the "BitChord Dial" title beside the Home logo. */
+val Metropolis = FontFamily(
+    Font(R.font.metropolis_extrabold, FontWeight.W800),
+)
+
 // Heavy, tight typography — the backbone of the Apple Music look.
 private val BitChordTypography = Typography(
     displayLarge = TextStyle(fontWeight = FontWeight.W800, fontSize = 34.sp, letterSpacing = (-0.8).sp),

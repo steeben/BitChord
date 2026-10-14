@@ -319,7 +319,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     onReorder = onSpeedDialReorder,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
-                    onHeaderLongPress = onSpeedDialHeaderLongPress,
                 )
             } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                 RecentShelf(

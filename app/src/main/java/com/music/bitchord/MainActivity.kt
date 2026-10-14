@@ -118,6 +118,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.music.bitchord.ui.theme.Metropolis
+import com.music.bitchord.ui.components.HomeTitleAlert
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.music.bitchord.auth.DiscordLoginScreen
@@ -724,6 +731,8 @@ private fun BitChordApp(
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
     var editingSpeedDial by remember { mutableStateOf(false) }
     val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
+    val homeTitleText by CustomizationSettings.homeTitle.collectAsStateWithLifecycle()
+    var editingHomeTitle by remember { mutableStateOf(false) }
     val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
     val defaultLibraryPage by CustomizationSettings.defaultLibraryPage.collectAsStateWithLifecycle()
     // The library folder whose options are up, from a long press on the Library page.
@@ -3947,6 +3956,23 @@ private fun BitChordApp(
                         topPadding = topBarContentPadding(),
                         refreshing = MainViewModel.Feed.HOME in refreshing,
                         pullFraction = { homePull.distanceFraction },
+                        trailing = {
+                            Text(
+                                text = homeTitleText,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontFamily = Metropolis,
+                                fontWeight = FontWeight.W800,
+                                fontSize = 26.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .padding(start = 14.dp)
+                                    .weight(1f, fill = false)
+                                    .pointerInput(Unit) {
+                                        detectTapGestures(onLongPress = { editingHomeTitle = true })
+                                    },
+                            )
+                        },
                     )
                 }
 
@@ -5208,6 +5234,18 @@ private fun BitChordApp(
                     showListenBrainzLogin = false
                 },
                 onDismiss = { showListenBrainzLogin = false },
+            )
+        }
+
+        if (editingHomeTitle) {
+            HomeTitleAlert(
+                hazeState = hazeState,
+                current = homeTitleText,
+                onSave = {
+                    CustomizationSettings.setHomeTitle(it)
+                    editingHomeTitle = false
+                },
+                onDismiss = { editingHomeTitle = false },
             )
         }
 
