@@ -304,7 +304,7 @@ private fun NewPlaylistForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 22.dp, vertical = 16.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+                .background(com.music.bitchord.ui.components.fieldFill(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -438,7 +438,7 @@ internal fun RenamePlaylistForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 22.dp, vertical = 16.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+                .background(com.music.bitchord.ui.components.fieldFill(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

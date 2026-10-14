@@ -331,7 +331,7 @@ internal fun CreatePartySheet(
                 value = nickname,
                 onValueChange = onNicknameChange,
                 placeholder = stringResource(R.string.listen_together_nickname_hint),
-                container = MaterialTheme.colorScheme.surfaceVariant,
+                container = com.music.bitchord.ui.components.fieldFill(MaterialTheme.colorScheme.surfaceVariant),
                 enabled = enabled,
                 keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
             )
@@ -606,7 +606,7 @@ internal fun JoinConfirmSheet(
                 value = nickname,
                 onValueChange = onNicknameChange,
                 placeholder = stringResource(R.string.listen_together_nickname_hint),
-                container = MaterialTheme.colorScheme.surfaceVariant,
+                container = com.music.bitchord.ui.components.fieldFill(MaterialTheme.colorScheme.surfaceVariant),
                 enabled = !busy,
                 keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
             )

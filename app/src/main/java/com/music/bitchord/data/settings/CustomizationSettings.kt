@@ -56,6 +56,15 @@ object CustomizationSettings {
 
     /** Fill thumbnails that aren't square, trimming any bars baked into them, instead of fitting them. */
     val cropThumbnails = MutableStateFlow(true)
+
+    /**
+     * A second dial under the speed dial, of artists: the ones pinned to it,
+     * then the most played. Off, artists are pinned to the speed dial itself.
+     */
+    val artistDial = MutableStateFlow(true)
+
+    /** Artists pinned to [artistDial]'s page, in their order there. */
+    val artistDialPins = MutableStateFlow<List<ShelfItem>>(emptyList())
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
     /** How many rows of three tiles the speed dial shows per page: 3 or 4. */
@@ -116,6 +125,7 @@ object CustomizationSettings {
         keepNavBarExpanded.value = p.getBoolean(KEY_KEEP_NAV_EXPANDED, false)
         miniPlayerNextButton.value = p.getBoolean(KEY_MINI_PLAYER_NEXT, false)
         cropThumbnails.value = p.getBoolean(KEY_CROP_THUMBNAILS, true)
+        artistDial.value = p.getBoolean(KEY_ARTIST_DIAL, true)
         speedDialRows.value = p.getInt(KEY_SPEED_DIAL_ROWS, DEFAULT_SPEED_DIAL_ROWS).takeIf { it in 3..4 }
             ?: DEFAULT_SPEED_DIAL_ROWS
         homeTitle.value = p.getString(KEY_HOME_TITLE, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_HOME_TITLE
@@ -137,6 +147,7 @@ object CustomizationSettings {
         homeSections.value = readHomeSections(p.getString(KEY_HOME_SECTIONS, null))
         speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
         lastSpeedDial.value = readPins(p.getString(KEY_LAST_SPEED_DIAL, null))
+        artistDialPins.value = readPins(p.getString(KEY_ARTIST_DIAL_PINS, null))
     }
 
     // ── Home sections ───────────────────────────────────────────────────
@@ -195,11 +206,25 @@ object CustomizationSettings {
     // ── Speed dial ──────────────────────────────────────────────────────
 
     fun isPinnedToSpeedDial(id: String?): Boolean =
-        id != null && speedDialPins.value.any { it.speedDialId == id }
+        id != null && (speedDialPins.value.any { it.speedDialId == id } || artistDialPins.value.any { it.speedDialId == id })
 
-    /** Pins [item], or unpins it if it is already pinned. Returns whether it is pinned now. */
+    /** Whether [item] is an artist (a YouTube channel), which may have a dial of its own. */
+    fun isArtist(item: ShelfItem): Boolean = item.videoId == null && item.browseId?.startsWith("UC") == true
+
+    /**
+     * Pins [item], or unpins it if it is already pinned. Returns whether it is
+     * pinned now. An artist goes to the artists' own dial while that is on.
+     */
     fun toggleSpeedDial(item: ShelfItem): Boolean {
         val id = item.speedDialId ?: return false
+        if (isArtist(item) && (artistDial.value || artistDialPins.value.any { it.speedDialId == id })) {
+            val current = artistDialPins.value
+            val pinned = current.none { it.speedDialId == id }
+            setArtistDialPins(if (pinned) (current + item).takeLast(SPEED_DIAL_SIZE) else current.filterNot { it.speedDialId == id })
+            // Not on both dials at once.
+            if (pinned) setSpeedDialPins(speedDialPins.value.filterNot { it.speedDialId == id })
+            return pinned
+        }
         val current = speedDialPins.value
         val pinned = current.none { it.speedDialId == id }
         val updated = if (pinned) {
@@ -216,6 +241,29 @@ object CustomizationSettings {
         val updated = value.distinctBy { it.speedDialId }.take(SPEED_DIAL_SIZE)
         speedDialPins.value = updated
         prefs?.edit()?.putString(KEY_SPEED_DIAL_PINS, writeItems(updated))?.apply()
+    }
+
+    /** Replaces the artists' dial's pins, in the order given. */
+    fun setArtistDialPins(value: List<ShelfItem>) {
+        val updated = value.distinctBy { it.speedDialId }.take(SPEED_DIAL_SIZE)
+        artistDialPins.value = updated
+        prefs?.edit()?.putString(KEY_ARTIST_DIAL_PINS, writeItems(updated))?.apply()
+    }
+
+    /** Turning it on moves pinned artists onto their dial; off, back onto the speed dial. */
+    fun setArtistDial(value: Boolean) {
+        artistDial.value = value
+        prefs?.edit()?.putBoolean(KEY_ARTIST_DIAL, value)?.apply()
+        if (value) {
+            val artists = speedDialPins.value.filter(::isArtist)
+            if (artists.isNotEmpty()) {
+                setArtistDialPins(artistDialPins.value + artists)
+                setSpeedDialPins(speedDialPins.value.filterNot(::isArtist))
+            }
+        } else if (artistDialPins.value.isNotEmpty()) {
+            setSpeedDialPins(speedDialPins.value + artistDialPins.value)
+            setArtistDialPins(emptyList())
+        }
     }
 
     /** Saves the dial Home is showing, for the next launch to open on. */
@@ -414,6 +462,8 @@ object CustomizationSettings {
     private const val KEY_LAST_SPEED_DIAL = "custom_last_speed_dial"
     private const val KEY_MINI_PLAYER_NEXT = "custom_mini_player_next"
     private const val KEY_CROP_THUMBNAILS = "custom_crop_thumbnails"
+    private const val KEY_ARTIST_DIAL = "custom_artist_dial"
+    private const val KEY_ARTIST_DIAL_PINS = "custom_artist_dial_pins"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"

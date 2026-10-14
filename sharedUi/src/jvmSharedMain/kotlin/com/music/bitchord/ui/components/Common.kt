@@ -293,6 +293,8 @@ fun SongRow(
     onMore: (() -> Unit)? = null,
     /** False leaves the ⋮ off; the long-press still opens the same sheet. */
     showMore: Boolean = true,
+    /** False leaves the track's length off the end of the row. */
+    showDuration: Boolean = true,
     onSwipeToQueue: (() -> Unit)? = null,
     /**
      * What the row paints over the swipe reveal as it slides back.
@@ -365,6 +367,7 @@ fun SongRow(
             onClick = onClick,
             onLongPress = onLongPress,
             onMore = if (showMore) onMore ?: onLongPress else null,
+            showDuration = showDuration,
             modifier = modifier,
             trackNumber = trackNumber,
             subtitleColor = subtitleColor,
@@ -412,6 +415,7 @@ fun SongRow(
             onClick = onClick,
             onLongPress = onLongPress,
             onMore = if (showMore) onMore ?: onLongPress else null,
+            showDuration = showDuration,
             modifier = Modifier.background(rowBackground),
             trackNumber = trackNumber,
             subtitleColor = subtitleColor,
@@ -479,6 +483,7 @@ private fun SongRowContent(
     onClick: () -> Unit,
     onLongPress: (() -> Unit)?,
     onMore: (() -> Unit)?,
+    showDuration: Boolean = true,
     modifier: Modifier = Modifier,
     trackNumber: Int? = null,
     subtitleColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -605,7 +610,7 @@ private fun SongRowContent(
                 color = subtitleColor,
             )
         } else {
-            song.durationText?.let {
+            song.durationText?.takeIf { showDuration }?.let {
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = it,
@@ -858,7 +863,7 @@ fun PillTextField(
      * (see `SettingsGroup`), and a field the colour of the card it is in is a
      * field nobody can see.
      */
-    container: Color = MaterialTheme.colorScheme.surfaceVariant,
+    container: Color = fieldFill(MaterialTheme.colorScheme.surfaceVariant),
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {

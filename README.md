@@ -51,6 +51,7 @@
 
 ### Home
 - **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen, and hold at the edge to move it to another page. The tiles are always square.
+- **An artists' dial.** A second page under the speed dial of the artists you pin, then the ones you play most; tap one for their page. The title beside the logo follows along: your dial's name, then "Artists", then "Explore" for the sections below. Can be turned off in Settings › Layout, which puts pinned artists back on the speed dial.
 - **Reorder the Home layout** and **hide sections** you don't use.
 - **A title you can rename.** "BitChord Dial" sits beside the logo in Metropolis; hold it to type your own.
 - **The dial is Home's first screen.** Everything else on Home sits below it, behind a faint chevron, and only loads once you swipe down to it.

@@ -248,6 +248,7 @@ fun SettingsScreen(
     val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
     val miniPlayerNextButton by CustomizationSettings.miniPlayerNextButton.collectAsStateWithLifecycle()
     val cropThumbnails by CustomizationSettings.cropThumbnails.collectAsStateWithLifecycle()
+    val artistDial by CustomizationSettings.artistDial.collectAsStateWithLifecycle()
     val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
     val ambientBackground by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
@@ -1271,6 +1272,25 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { CustomizationSettings.setCropThumbnails(!cropThumbnails) },
+                )
+            }
+            val artistDialTitle = stringResource(R.string.artist_dial)
+            row(artistDialTitle, "artists", "speed dial", "dial", "favorite", "most played") {
+                SettingsRow(
+                    icon = Icons.Rounded.Person,
+                    title = artistDialTitle,
+                    subtitle = stringResource(R.string.artist_dial_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = artistDial,
+                            onCheckedChange = CustomizationSettings::setArtistDial,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setArtistDial(!artistDial) },
                 )
             }
         }

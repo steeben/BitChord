@@ -932,7 +932,7 @@ private fun DetailSearchField(
             .padding(bottom = 10.dp)
             .height(46.dp)
             .clip(PILL_SHAPE)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+            .background(com.music.bitchord.ui.components.fieldFill(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)))
             .border(0.5.dp, Color.White.copy(alpha = 0.10f), PILL_SHAPE)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

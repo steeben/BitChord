@@ -129,6 +129,8 @@ import com.music.bitchord.ui.components.popupContentColor
 import com.music.bitchord.ui.components.popupSurface
 import com.music.bitchord.ui.components.PopupLayer
 import com.music.bitchord.ui.screens.SpeedDialIntro
+import com.music.bitchord.ui.screens.ARTIST_DIAL_SHELF_TITLE
+import com.music.bitchord.ui.screens.ARTIST_DIAL_PAGE_KEY
 import com.music.bitchord.ui.screens.speedDialArtRequest
 import com.music.bitchord.ui.theme.Metropolis
 import com.music.bitchord.ui.components.HomeTitleAlert
@@ -458,8 +460,17 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Color.Black.copy(alpha = 0.05f)
                 }
+                // Text fields go frosted under liquid glass too, not only over
+                // the coloured background: a solid grey field on glass looked
+                // like a hole in it.
+                val frostedFields = frosted ?: if (liquidGlassEnabled && isGlassSupported()) {
+                    if (darkTheme) Color.White.copy(alpha = 0.09f) else Color.Black.copy(alpha = 0.06f)
+                } else {
+                    null
+                }
                 CompositionLocalProvider(
                     com.music.bitchord.ui.components.LocalFrostedSurface provides frosted,
+                    com.music.bitchord.ui.components.LocalFrostedFields provides frostedFields,
                     LocalOverscrollFactory provides iosOverscrollFactory,
                     LocalLiquidGlassEnabled provides liquidGlassEnabled,
                     LocalAppBackdrop provides appBackdrop,
@@ -840,7 +851,7 @@ private fun BitChordApp(
     val dialLeadsHome = homeSections.firstOrNull { it.enabled }?.item == CustomizationSettings.SPEED_DIAL_TITLE
     // The feed as Home draws it: the speed dial built in, then the sections in
     // the order Settings gives them, minus the hidden ones.
-    val arrangedHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial) {
+    val baseHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial) {
         val savedDial = if (holdSavedDial) {
             CustomizationSettings.buildSpeedDial(
                 speedDialPins,
@@ -869,6 +880,46 @@ private fun BitChordApp(
                 UiState.Success(CustomizationSettings.arrangeHome(shelves, homeSections))
             }
             else -> state
+        }
+    }
+    // The artists' dial: a page of its own under the speed dial, of the
+    // artists pinned there and then the ones played most (from the app's own
+    // listening stats). Only while it is on in Settings › Layout.
+    val artistDialOn by CustomizationSettings.artistDial.collectAsStateWithLifecycle()
+    val artistDialPins by CustomizationSettings.artistDialPins.collectAsStateWithLifecycle()
+    val artistDialPinnedIds = remember(artistDialPins) { artistDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
+    var topArtists by remember { mutableStateOf<List<ShelfItem>>(emptyList()) }
+    LaunchedEffect(artistDialOn, homeFresh) {
+        if (!artistDialOn) return@LaunchedEffect
+        topArtists = runCatching {
+            com.music.bitchord.data.stats.ListeningStats.summary(com.music.bitchord.data.stats.ReplayPeriod.ALL_TIME)
+                .artists
+                .mapNotNull { entry ->
+                    val id = entry.browseId ?: return@mapNotNull null
+                    ShelfItem(
+                        title = entry.title,
+                        subtitle = "",
+                        thumbnailUrl = entry.artworkUrl,
+                        videoId = null,
+                        browseId = id,
+                    )
+                }
+        }.getOrDefault(emptyList())
+    }
+    val arrangedHomeState = remember(baseHomeState, artistDialOn, artistDialPins, topArtists) {
+        val base = baseHomeState
+        val artists = (artistDialPins + topArtists)
+            .distinctBy { it.speedDialId }
+            .take(CustomizationSettings.SPEED_DIAL_SIZE)
+        if (!artistDialOn || artists.isEmpty() || base !is UiState.Success ||
+            base.data.firstOrNull()?.title != CustomizationSettings.SPEED_DIAL_TITLE
+        ) {
+            base
+        } else {
+            // Straight after the speed dial, as Home's second page.
+            UiState.Success(
+                listOf(base.data.first(), HomeShelf(ARTIST_DIAL_SHELF_TITLE, artists)) + base.data.drop(1),
+            )
         }
     }
     // Saved once the fresh dial is what's showing, for the next launch.
@@ -2677,13 +2728,26 @@ private fun BitChordApp(
 
     // How far the back swipe has taken a pushed page toward closing, 0 to 1.
     val detailBackProgress = remember { Animatable(0f) }
-    // On Home's speed dial the miniplayer stays in full view: the bar doesn't
-    // fold away until the list is scrolled on past the dial.
-    val onDial by remember {
-        derivedStateOf { homeListState.firstVisibleItemIndex <= 1 }
+    // Which of Home's pages holds the middle of the screen: the speed dial,
+    // the artists' dial, or the sections below them. It names the title beside
+    // the logo, and on either dial the miniplayer stays in full view (the bar
+    // doesn't fold away until the list is scrolled on past them).
+    val homePage by remember {
+        derivedStateOf {
+            val layout = homeListState.layoutInfo
+            val middle = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+            val artists = layout.visibleItemsInfo.firstOrNull { it.key == ARTIST_DIAL_PAGE_KEY }
+            when {
+                artists != null && artists.offset <= middle && artists.offset + artists.size > middle ->
+                    HomePage.ARTISTS
+                homeListState.firstVisibleItemIndex <= 1 && (artists == null || artists.offset > middle) ->
+                    HomePage.DIAL
+                else -> HomePage.EXPLORE
+            }
+        }
     }
-    val dialShowing = onDial && selectedTab == TAB_HOME && detail == null && selectedMoodGenre == null &&
-        libraryShowAll == null && !showSettings
+    val dialShowing = homePage != HomePage.EXPLORE && selectedTab == TAB_HOME && detail == null &&
+        selectedMoodGenre == null && libraryShowAll == null && !showSettings
     LaunchedEffect(dialShowing, navBarScroll) { navBarScroll.holdExpanded = dialShowing }
     // The system splash stays up until Home has something to show (or,
     // starting on another page, for a moment). See LaunchGate.
@@ -3322,6 +3386,10 @@ private fun BitChordApp(
                             onSpeedDialReorder = { reordered ->
                                 CustomizationSettings.setSpeedDialPins(reordered)
                             },
+                            artistDialPinned = artistDialPinnedIds,
+                            onArtistDialReorder = { reordered ->
+                                CustomizationSettings.setArtistDialPins(reordered)
+                            },
                             skeletonSpeedDialFirst = homeSections.firstOrNull { it.enabled }?.item ==
                                 CustomizationSettings.SPEED_DIAL_TITLE,
                             skeletonShowRecents = homeSections.none { it.item == "Recents" && !it.enabled },
@@ -3347,6 +3415,12 @@ private fun BitChordApp(
                                         title = item.title,
                                         subtitle = item.subtitle,
                                         thumbnailUrl = item.thumbnailUrl,
+                                        // The artists' dial opens each one's page.
+                                        type = if (shelfTitle == ARTIST_DIAL_SHELF_TITLE) {
+                                            BrowseType.ARTIST
+                                        } else {
+                                            BrowseType.OTHER
+                                        },
                                     )
                                 }
                             },
@@ -4119,21 +4193,42 @@ private fun BitChordApp(
                         refreshing = MainViewModel.Feed.HOME in refreshing,
                         pullFraction = { homePull.distanceFraction },
                         trailing = {
-                            Text(
-                                text = homeTitleText,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                fontFamily = Metropolis,
-                                fontWeight = FontWeight.W800,
-                                fontSize = 28.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                            // Says which page is up: the dial's own title (the
+                            // one holding it renames), then Artists, then Explore.
+                            androidx.compose.animation.AnimatedContent(
+                                targetState = homePage,
+                                transitionSpec = {
+                                    (fadeIn(tween(220, delayMillis = 60)) +
+                                        androidx.compose.animation.slideInVertically(tween(280)) { it / 3 }) togetherWith
+                                        (fadeOut(tween(160)) +
+                                            androidx.compose.animation.slideOutVertically(tween(220)) { -it / 3 })
+                                },
+                                label = "homeTitle",
                                 modifier = Modifier
                                     .padding(start = 14.dp)
-                                    .weight(1f, fill = false)
-                                    .pointerInput(Unit) {
-                                        detectTapGestures(onLongPress = { editingHomeTitle = true })
+                                    .weight(1f, fill = false),
+                            ) { page ->
+                                Text(
+                                    text = when (page) {
+                                        HomePage.DIAL -> homeTitleText
+                                        HomePage.ARTISTS -> stringResource(R.string.dial_page_artists)
+                                        HomePage.EXPLORE -> stringResource(R.string.dial_page_explore)
                                     },
-                            )
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    fontFamily = Metropolis,
+                                    fontWeight = FontWeight.W800,
+                                    fontSize = 28.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = if (page == HomePage.DIAL) {
+                                        Modifier.pointerInput(Unit) {
+                                            detectTapGestures(onLongPress = { editingHomeTitle = true })
+                                        }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                            }
                         },
                     )
                 }
@@ -5050,7 +5145,7 @@ private fun BitChordApp(
                             browseActions = null
                         }
                     },
-                inSpeedDial = target.browseId in speedDialPinnedIds,
+                inSpeedDial = target.browseId in speedDialPinnedIds || target.browseId in artistDialPinnedIds,
                 onToggleSpeedDial = target.browseId?.takeIf { remote }?.let { id ->
                     {
                         val pinned = CustomizationSettings.toggleSpeedDial(
@@ -5893,6 +5988,9 @@ private object PlayerSheetShape : Shape {
 }
 
 private const val TAB_HOME = 0
+
+/** Home's pages, top to bottom, for the title beside the logo. */
+private enum class HomePage { DIAL, ARTISTS, EXPLORE }
 
 /** The longest the launch screen waits for Home before giving way anyway. */
 private const val SPLASH_MAX_MS = 5_000L

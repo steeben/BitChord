@@ -595,6 +595,8 @@ private fun SongsTab(
                         onLongPress = { onSongLongPress(song) },
                         onMore = onSongMore?.let { more -> { more(song) } },
                         showMore = onSongMore != null,
+                        // Off for the A–Z index's room along the edge.
+                        showDuration = false,
                         onSwipeToQueue = { onSongSwipe(song) },
                     )
                     if (index < songs.lastIndex) {
@@ -1590,7 +1592,7 @@ private fun LocalSearchField(
         modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
-            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
+            .background(com.music.bitchord.ui.components.fieldFill(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)), RoundedCornerShape(11.dp))
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1726,7 +1728,7 @@ private fun DownloadSelectionBar(
         modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
-            .background(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant), RoundedCornerShape(11.dp))
+            .background(com.music.bitchord.ui.components.fieldFill(frostedSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)), RoundedCornerShape(11.dp))
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

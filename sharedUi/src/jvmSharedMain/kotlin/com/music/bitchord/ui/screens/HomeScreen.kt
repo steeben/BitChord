@@ -152,6 +152,10 @@ fun HomeScreen(
     speedDialRows: Int = 4,
     /** The pinned tiles in their new order, after one is dragged. */
     onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
+    /** Ids pinned to the artists' dial (Home's second page, when it has one). */
+    artistDialPinned: Set<String> = emptySet(),
+    /** The artists' dial's pins in their new order, after one is dragged. */
+    onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     /**
      * The saved section layout, for the loading placeholders: whether the speed
      * dial leads Home, and whether Recents is shown at all.
@@ -194,6 +198,18 @@ fun HomeScreen(
         // viewport, so nothing below it is composed, or loads its artwork, until
         // the list is scrolled to it.
         val dialPageHeight: Dp? = if (title != null) (maxHeight - dialTop).coerceAtLeast(0.dp) else null
+        // The artists' dial below it: a page that rests just under the top bar,
+        // running to the foot of the screen, fitted above the miniplayer the
+        // same way.
+        val artistPageHeight: Dp? = if (title != null) {
+            (maxHeight - contentPadding.calculateTopPadding()).coerceAtLeast(0.dp)
+        } else {
+            null
+        }
+        val artistMaxHeight: Dp? = artistPageHeight?.let { page ->
+            (page - DIAL_CHEVRON_ROOM - (maxOf(contentPadding.calculateBottomPadding(), DIAL_BOTTOM_RESERVE) - DIAL_BOTTOM_TRIM))
+                .coerceAtLeast(0.dp)
+        }
         val holdSpeedDial = state is UiState.Success && recentlyPlayedLoading && skeletonSpeedDialFirst
         val dialLeads = title != null && when (state) {
             is UiState.Success -> holdSpeedDial || state.data.firstOrNull()?.title == SPEED_DIAL_SHELF_TITLE
@@ -288,6 +304,10 @@ fun HomeScreen(
                         speedDialRows = speedDialRows,
                         speedDialMaxHeight = dialMaxHeight,
                         speedDialPageHeight = dialPageHeight,
+                        artistDialMaxHeight = artistMaxHeight,
+                        artistDialPageHeight = artistPageHeight,
+                        artistDialPinned = artistDialPinned,
+                        onArtistDialReorder = onArtistDialReorder,
                         afterLead = if (dialLeads && !holdSpeedDial) bannerItem else null,
                         onSpeedDialReorder = onSpeedDialReorder,
                         recentsViewType = recentsViewType,
@@ -360,19 +380,38 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     speedDialMaxHeight: Dp? = null,
     /** The dial's whole first screen, when it leads Home. */
     speedDialPageHeight: Dp? = null,
-    /** Items to put straight after the first shelf. */
+    artistDialMaxHeight: Dp? = null,
+    artistDialPageHeight: Dp? = null,
+    artistDialPinned: Set<String> = emptySet(),
+    onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
+    /** Items to put straight after the lead page (or pages: the dials). */
     afterLead: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
     onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
 ) {
+    // The dials lead together; anything put after the lead goes after both.
+    val leadCount = if (shelves.getOrNull(1)?.title == ARTIST_DIAL_SHELF_TITLE) 2 else 1
     shelves.forEachIndexed { index, shelf ->
-        if (index == 1) afterLead?.invoke(this)
+        if (index == leadCount) afterLead?.invoke(this)
         item(key = shelf.title + index) {
             // Shelves that arrive after the page is up fade in rather than pop.
             Box(Modifier.animateItem(fadeInSpec = tween(SHELF_FADE_MS), fadeOutSpec = tween(SHELF_FADE_MS / 2))) {
                 val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-                if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
+                if (shelf.title == ARTIST_DIAL_SHELF_TITLE) {
+                    SpeedDialShelf(
+                        shelf = shelf,
+                        pinnedIds = artistDialPinned,
+                        rows = speedDialRows,
+                        maxShelfHeight = artistDialMaxHeight,
+                        pageHeight = artistDialPageHeight,
+                        onItemClick = openItem,
+                        onItemLongPress = onItemLongPress,
+                        onReorder = onArtistDialReorder,
+                        currentSong = null,
+                        isPlaying = false,
+                    )
+                } else if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
                     SpeedDialShelf(
                         shelf = shelf,
                         pinnedIds = speedDialPinned,
@@ -416,7 +455,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
             }
         }
     }
-    if (shelves.size == 1) afterLead?.invoke(this)
+    if (shelves.size == leadCount) afterLead?.invoke(this)
 }
 
 /** The same four-rows-per-page treatment used by an artist's Top songs. */

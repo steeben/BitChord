@@ -52,4 +52,8 @@
     <string name="mini_player_next_button_subtitle">Swiping the miniplayer sideways skips either way</string>
     <string name="crop_thumbnails">Crop thumbnails</string>
     <string name="crop_thumbnails_subtitle">Fill artwork that isn\'t square instead of showing bars</string>
+    <string name="dial_page_artists">Artists</string>
+    <string name="dial_page_explore">Explore</string>
+    <string name="artist_dial">Give artists their own dial</string>
+    <string name="artist_dial_subtitle">A page under the speed dial of the artists you pin, then the ones you play most</string>
 </resources>
