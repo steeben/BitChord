@@ -805,6 +805,7 @@ private fun InlineQueueRow(
                 .clip(RoundedCornerShape(6.dp))
                 .thumbnailBorder(RoundedCornerShape(6.dp))
                 .background(Color.White.copy(alpha = 0.08f)),
+                contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {

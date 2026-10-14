@@ -6,7 +6,7 @@
   The system runs it off the app's main thread, so it plays smoothly while the
   app starts. 288dp is the splash icon's box without an icon background; the
   grid is 110dp high, well inside the 192dp circle the system keeps clear.
-  Runs 880ms: LaunchGate.ANIMATION_MS and windowSplashScreenAnimationDuration.
+  Runs 1600ms: LaunchGate.ANIMATION_MS and windowSplashScreenAnimationDuration.
 -->
 <animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt">
@@ -63,7 +63,7 @@
     <target android:name="A3">
         <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="220"
+                android:duration="400"
                 android:startOffset="0"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:propertyName="fillAlpha"
@@ -75,8 +75,8 @@
     <target android:name="A4">
         <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="220"
-                android:startOffset="110"
+                android:duration="400"
+                android:startOffset="200"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:propertyName="fillAlpha"
                 android:valueFrom="0"
@@ -87,8 +87,8 @@
     <target android:name="B4">
         <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="220"
-                android:startOffset="220"
+                android:duration="400"
+                android:startOffset="400"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:propertyName="fillAlpha"
                 android:valueFrom="0"
@@ -99,8 +99,8 @@
     <target android:name="B3">
         <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="220"
-                android:startOffset="330"
+                android:duration="400"
+                android:startOffset="600"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:propertyName="fillAlpha"
                 android:valueFrom="0"
@@ -111,8 +111,8 @@
     <target android:name="B2">
         <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="220"
-                android:startOffset="440"
+                android:duration="400"
+                android:startOffset="800"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:propertyName="fillAlpha"
                 android:valueFrom="0"
@@ -123,8 +123,8 @@
     <target android:name="B1">
         <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="220"
-                android:startOffset="550"
+                android:duration="400"
+                android:startOffset="1000"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:propertyName="fillAlpha"
                 android:valueFrom="0"
@@ -135,8 +135,8 @@
     <target android:name="C1">
         <aapt:attr name="android:animation">
             <objectAnimator
-                android:duration="220"
-                android:startOffset="660"
+                android:duration="400"
+                android:startOffset="1200"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:propertyName="fillAlpha"
                 android:valueFrom="0"

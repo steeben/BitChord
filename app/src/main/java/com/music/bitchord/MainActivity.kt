@@ -420,6 +420,7 @@ class MainActivity : AppCompatActivity() {
             val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
             val highPerformance by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
             val liquidGlassEnabled by AppSettings.liquidGlass.collectAsStateWithLifecycle()
+            val cropThumbnails by CustomizationSettings.cropThumbnails.collectAsStateWithLifecycle()
             val iosOverscrollFactory = rememberIosOverscrollFactory()
             val performanceRefreshRate by AppSettings.performanceRefreshRate.collectAsStateWithLifecycle()
             val composeView = LocalView.current
@@ -462,6 +463,7 @@ class MainActivity : AppCompatActivity() {
                     LocalOverscrollFactory provides iosOverscrollFactory,
                     LocalLiquidGlassEnabled provides liquidGlassEnabled,
                     LocalAppBackdrop provides appBackdrop,
+                    com.music.bitchord.ui.components.LocalCropThumbnails provides cropThumbnails,
                 ) {
                 // The window's width, measured rather than asked for.
                 //
@@ -4212,6 +4214,8 @@ private fun BitChordApp(
                         onBlockedControl = showHostOnlyNotice,
                         dock = activeDock,
                         pull = playerSheetMotion.takeIf { !reducePlayerMotion },
+                        position = player.position,
+                        durationMs = player.durationMs,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else Column(
@@ -4249,6 +4253,8 @@ private fun BitChordApp(
                             onBlockedControl = showHostOnlyNotice,
                             dock = activeDock,
                             pull = playerSheetMotion.takeIf { !reducePlayerMotion },
+                            position = player.position,
+                            durationMs = player.durationMs,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(8.dp))

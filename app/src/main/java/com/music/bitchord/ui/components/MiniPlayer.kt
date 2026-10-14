@@ -65,6 +65,7 @@ import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import com.music.bitchord.ui.player.PlayerDock
+import com.music.bitchord.playback.PlaybackPosition
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
@@ -214,6 +215,8 @@ internal fun Modifier.miniPlayerGestures(
     /** Listening in a party whose host holds the controls. Swipes say so instead of skipping. */
     locked: Boolean = false,
     onBlocked: () -> Unit = {},
+    /** The content's slide under a sideways swipe; null cuts straight to the next song as before. */
+    swipe: MiniPlayerSwipe? = null,
 ): Modifier {
     // Playback state updates can recompose the bar while a finger is down.
     // Keep the gesture coroutine alive through those updates while still
@@ -258,18 +261,36 @@ internal fun Modifier.miniPlayerGestures(
 
             if (!vertical) {
                 var dragged = slopped.position.x - down.position.x
+                swipe?.follow(dragged)
                 // Read before consuming: a consumed change reports no movement.
                 val finished = drag(pointer) { change ->
                     dragged += change.positionChange().x
                     change.consume()
+                    swipe?.follow(dragged)
                 }
-                if (!finished) return@awaitEachGesture
                 val crossed = dragged <= -trackThreshold || dragged >= trackThreshold
-                when {
-                    currentLocked -> if (crossed) currentOnBlocked()
-                    dragged <= -trackThreshold -> currentOnNext()
-                    dragged >= trackThreshold -> currentOnPrevious()
+                if (!finished) {
+                    swipe?.settle(scope, 0, null)
+                    return@awaitEachGesture
                 }
+                if (currentLocked) {
+                    if (crossed) currentOnBlocked()
+                    swipe?.settle(scope, 0, null)
+                    return@awaitEachGesture
+                }
+                val direction = when {
+                    dragged <= -trackThreshold -> -1
+                    dragged >= trackThreshold -> 1
+                    else -> 0
+                }
+                val change: (() -> Unit)? = when (direction) {
+                    -1 -> currentOnNext
+                    1 -> currentOnPrevious
+                    else -> null
+                }
+                // With a swipe to animate, the song changes once the old one has
+                // slid off, so the new one is what slides in.
+                if (swipe != null) swipe.settle(scope, direction, change) else change?.invoke()
                 return@awaitEachGesture
             }
 
@@ -359,10 +380,20 @@ fun MiniPlayer(
     dock: PlayerDock? = null,
     /** Dragging the bar up into the player. */
     pull: MiniPlayerPull? = null,
+    /** The playhead, drawn along the bar's bottom edge; read only when drawing. */
+    position: PlaybackPosition? = null,
+    durationMs: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val showNext by CustomizationSettings.miniPlayerNextButton.collectAsStateWithLifecycle()
     val haptics = rememberHaptics()
+    val swipe = rememberMiniPlayerSwipe()
+    val artUrl = rememberRemoteArtworkUrl(song)
+    val progressColor = progressTint(
+        com.music.bitchord.ui.player.rememberArtworkColors(artUrl?.artworkAt(ROW_ART_PX)).colors.firstOrNull()
+            ?: MaterialTheme.colorScheme.primary,
+    )
     // percent rather than a dp figure, so the corner stays exactly half the
     // height if the row's contents ever change it — which is what keeps a pill
     // a pill instead of a rounded rectangle. Same idiom as [FloatingBottomBar]
@@ -391,6 +422,7 @@ fun MiniPlayer(
                 },
                 locked = controlsLocked,
                 onBlocked = onBlockedControl,
+                swipe = swipe,
             )
             .clip(shape)
             .then(
@@ -404,6 +436,15 @@ fun MiniPlayer(
                 },
             )
             .border(0.5.dp, Color.White.copy(alpha = 0.10f), shape)
+            // A thin line in the cover's colour along the bottom, inside the bar.
+            .miniPlayerProgress(
+                position = position,
+                durationMs = durationMs,
+                color = progressColor,
+                glow = false,
+                shape = shape,
+                corner = { 0f },
+            )
             // Deliberately silent: the whole bar is the target, so it catches
             // stray taps meant for the page behind it, and the sheet rising is
             // its own confirmation. The glyphs on it still buzz.
@@ -412,6 +453,7 @@ fun MiniPlayer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .miniPlayerSwipeContent(swipe)
                 .padding(
                     horizontal = ROW_PADDING_HORIZONTAL,
                     vertical = ROW_PADDING_VERTICAL,
@@ -419,7 +461,7 @@ fun MiniPlayer(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AsyncImage(
-                model = rememberRemoteArtworkUrl(song)?.artworkAt(ROW_ART_PX),
+                model = artUrl?.artworkAt(ROW_ART_PX),
                 contentDescription = null,
                 modifier = Modifier
                     .size(40.dp)
@@ -427,6 +469,7 @@ fun MiniPlayer(
                     .clip(RoundedCornerShape(ART_CORNER))
                     .thumbnailBorder(RoundedCornerShape(ART_CORNER))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -467,21 +510,24 @@ fun MiniPlayer(
                     )
                 }
             }
-            Spacer(Modifier.width(TRANSPORT_GAP))
-            // Faded and inert rather than removed while the host holds the
-            // controls, so the bar keeps its shape — see [controlsLocked].
-            IconButton(
-                onClick = {
-                    haptics.play(Haptic.SkipNext)
-                    onNext()
-                },
-                enabled = !controlsLocked,
-                modifier = Modifier.size(GLYPH_SLOT),
-            ) {
-                MiniPlayerNextGlyph(
-                    tint = MaterialTheme.colorScheme.onBackground
-                        .copy(alpha = if (controlsLocked) 0.3f else 1f),
-                )
+            // Only when Settings asks for it; a sideways swipe skips either way.
+            if (showNext) {
+                Spacer(Modifier.width(TRANSPORT_GAP))
+                // Faded and inert rather than removed while the host holds the
+                // controls, so the bar keeps its shape — see [controlsLocked].
+                IconButton(
+                    onClick = {
+                        haptics.play(Haptic.SkipNext)
+                        onNext()
+                    },
+                    enabled = !controlsLocked,
+                    modifier = Modifier.size(GLYPH_SLOT),
+                ) {
+                    MiniPlayerNextGlyph(
+                        tint = MaterialTheme.colorScheme.onBackground
+                            .copy(alpha = if (controlsLocked) 0.3f else 1f),
+                    )
+                }
             }
         }
     }

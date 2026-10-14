@@ -476,6 +476,7 @@ private fun TopResultCard(
                 model = song.thumbnailUrl?.artworkAt(ROW_ART_PX),
                 contentDescription = null,
                 modifier = Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)),
+                contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
@@ -708,6 +709,7 @@ private fun TypeaheadSongRow(
                     .clip(RoundedCornerShape(8.dp))
                     .thumbnailBorder(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
         }
@@ -808,6 +810,7 @@ private fun RecentSearchEntityRow(
                     .clip(RoundedCornerShape(8.dp))
                     .thumbnailBorder(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             if (isCurrent && isPlaying) {
                 SearchPlayingBars(Modifier.align(Alignment.Center))
@@ -873,6 +876,7 @@ private fun BrowseRow(item: BrowseItem, onClick: () -> Unit, onLongPress: (() ->
                     else RoundedCornerShape(8.dp),
                 )
                 .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
         )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {

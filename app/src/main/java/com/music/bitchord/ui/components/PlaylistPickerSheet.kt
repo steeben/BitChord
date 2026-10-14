@@ -206,6 +206,7 @@ private fun PlaylistRow(playlist: UserPlaylist, selected: Boolean, onClick: () -
                 .clip(RoundedCornerShape(7.dp))
                 .thumbnailBorder(RoundedCornerShape(7.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
         )
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {

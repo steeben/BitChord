@@ -40,6 +40,8 @@ import androidx.compose.material.icons.rounded.Brightness4
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CropSquare
+import androidx.compose.material.icons.rounded.Crop
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Palette
@@ -244,6 +246,8 @@ fun SettingsScreen(
     val startPage by CustomizationSettings.startPage.collectAsStateWithLifecycle()
     val navTabs by CustomizationSettings.navTabs.collectAsStateWithLifecycle()
     val keepNavBarExpanded by CustomizationSettings.keepNavBarExpanded.collectAsStateWithLifecycle()
+    val miniPlayerNextButton by CustomizationSettings.miniPlayerNextButton.collectAsStateWithLifecycle()
+    val cropThumbnails by CustomizationSettings.cropThumbnails.collectAsStateWithLifecycle()
     val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
     val ambientBackground by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
@@ -1228,6 +1232,44 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { CustomizationSettings.setKeepNavBarExpanded(!keepNavBarExpanded) },
+                )
+            }
+            val miniNextTitle = stringResource(R.string.mini_player_next_button)
+            row(miniNextTitle, "mini player", "skip", "next", "button") {
+                SettingsRow(
+                    icon = Icons.Rounded.SkipNext,
+                    title = miniNextTitle,
+                    subtitle = stringResource(R.string.mini_player_next_button_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = miniPlayerNextButton,
+                            onCheckedChange = CustomizationSettings::setMiniPlayerNextButton,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setMiniPlayerNextButton(!miniPlayerNextButton) },
+                )
+            }
+            val cropThumbnailsTitle = stringResource(R.string.crop_thumbnails)
+            row(cropThumbnailsTitle, "artwork", "thumbnail", "letterbox", "bars", "fill", "crop") {
+                SettingsRow(
+                    icon = Icons.Rounded.Crop,
+                    title = cropThumbnailsTitle,
+                    subtitle = stringResource(R.string.crop_thumbnails_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = cropThumbnails,
+                            onCheckedChange = CustomizationSettings::setCropThumbnails,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { CustomizationSettings.setCropThumbnails(!cropThumbnails) },
                 )
             }
         }

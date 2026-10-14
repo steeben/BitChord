@@ -50,6 +50,12 @@ object CustomizationSettings {
     val navTabs = MutableStateFlow(NavPage.pillPages.map { OrderedToggle(it, it in NavPage.defaultPill) })
     val startPage = MutableStateFlow(NavPage.HOME)
     val keepNavBarExpanded = MutableStateFlow(false)
+
+    /** The skip button on the miniplayer. Off: swiping it sideways still skips either way. */
+    val miniPlayerNextButton = MutableStateFlow(false)
+
+    /** Fill thumbnails that aren't square, trimming any bars baked into them, instead of fitting them. */
+    val cropThumbnails = MutableStateFlow(true)
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
     /** How many rows of three tiles the speed dial shows per page: 3 or 4. */
@@ -108,6 +114,8 @@ object CustomizationSettings {
         }.let(::ensureOneTab)
         startPage.value = NavPage.entries.firstOrNull { it.name == p.getString(KEY_START_PAGE, null) } ?: NavPage.HOME
         keepNavBarExpanded.value = p.getBoolean(KEY_KEEP_NAV_EXPANDED, false)
+        miniPlayerNextButton.value = p.getBoolean(KEY_MINI_PLAYER_NEXT, false)
+        cropThumbnails.value = p.getBoolean(KEY_CROP_THUMBNAILS, true)
         speedDialRows.value = p.getInt(KEY_SPEED_DIAL_ROWS, DEFAULT_SPEED_DIAL_ROWS).takeIf { it in 3..4 }
             ?: DEFAULT_SPEED_DIAL_ROWS
         homeTitle.value = p.getString(KEY_HOME_TITLE, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_HOME_TITLE
@@ -282,6 +290,16 @@ object CustomizationSettings {
         prefs?.edit()?.putString(KEY_START_PAGE, value.name)?.apply()
     }
 
+    fun setMiniPlayerNextButton(value: Boolean) {
+        miniPlayerNextButton.value = value
+        prefs?.edit()?.putBoolean(KEY_MINI_PLAYER_NEXT, value)?.apply()
+    }
+
+    fun setCropThumbnails(value: Boolean) {
+        cropThumbnails.value = value
+        prefs?.edit()?.putBoolean(KEY_CROP_THUMBNAILS, value)?.apply()
+    }
+
     fun setKeepNavBarExpanded(value: Boolean) {
         keepNavBarExpanded.value = value
         prefs?.edit()?.putBoolean(KEY_KEEP_NAV_EXPANDED, value)?.apply()
@@ -392,6 +410,8 @@ object CustomizationSettings {
     private const val KEY_DEFAULT_LIBRARY_PAGE = "custom_default_library_page"
     private const val KEY_SPEED_DIAL_PINS = "custom_speed_dial_pins"
     private const val KEY_LAST_SPEED_DIAL = "custom_last_speed_dial"
+    private const val KEY_MINI_PLAYER_NEXT = "custom_mini_player_next"
+    private const val KEY_CROP_THUMBNAILS = "custom_crop_thumbnails"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"

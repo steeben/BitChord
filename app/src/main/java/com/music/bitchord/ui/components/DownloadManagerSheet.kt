@@ -306,6 +306,7 @@ private fun DownloadManagerRow(
                     .clip(RoundedCornerShape(8.dp))
                     .thumbnailBorder(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             // A finished or failed track is stated over its own cover rather
             // than in a fourth column: the list is scanned for the odd one out,

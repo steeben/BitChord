@@ -1048,6 +1048,7 @@ private fun MemberRow(member: PartyMember, isYou: Boolean, canKick: Boolean = fa
                     model = member.avatarUrl,
                     contentDescription = null,
                     modifier = Modifier.size(32.dp).clip(CircleShape),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
                 )
             } else {
                 Text(

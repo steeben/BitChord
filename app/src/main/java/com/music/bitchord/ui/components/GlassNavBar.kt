@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -104,6 +105,9 @@ fun GlassNavBar(
     dock: PlayerDock? = null,
     /** Dragging the bar's player up into the full player. */
     pull: MiniPlayerPull? = null,
+    /** The playhead, glowing along the player's bottom edge; read only when drawing. */
+    position: com.music.bitchord.playback.PlaybackPosition? = null,
+    durationMs: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
     // Held for the same reason [tabs] is. The glass factory below closes over
@@ -165,6 +169,10 @@ fun GlassNavBar(
                     onBlockedControl = onBlockedControl,
                     dock = dock,
                     pull = pull,
+                    position = position,
+                    durationMs = durationMs,
+                    shape = accessoryShape,
+                    circular = shapeChoice == MiniPlayerShape.CIRCULAR,
                     modifier = accessoryModifier.then(accessoryGlass()),
                 )
             }
@@ -185,6 +193,10 @@ fun GlassNavBar(
                     onBlockedControl = onBlockedControl,
                     dock = dock,
                     pull = pull,
+                    position = position,
+                    durationMs = durationMs,
+                    shape = accessoryShape,
+                    circular = shapeChoice == MiniPlayerShape.CIRCULAR,
                     modifier = accessoryModifier.fillMaxWidth().then(accessoryGlass()),
                 )
             }
@@ -302,9 +314,21 @@ private fun GlassNowPlaying(
     onBlockedControl: () -> Unit,
     dock: PlayerDock?,
     pull: MiniPlayerPull?,
+    position: com.music.bitchord.playback.PlaybackPosition?,
+    durationMs: Long,
+    shape: androidx.compose.ui.graphics.Shape,
+    circular: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val haptics = rememberHaptics()
+    val showNext by CustomizationSettings.miniPlayerNextButton.collectAsStateWithLifecycle()
+    val swipe = rememberMiniPlayerSwipe()
+    val artUrl = rememberRemoteArtworkUrl(song)
+    val progressColor = progressTint(
+        com.music.bitchord.ui.player.rememberArtworkColors(artUrl?.artworkAt(ROW_ART_PX)).colors.firstOrNull()
+            ?: MaterialTheme.colorScheme.primary,
+    )
+    val density = androidx.compose.ui.platform.LocalDensity.current
     val pressSource = remember { MutableInteractionSource() }
     val isPressed by pressSource.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
@@ -344,12 +368,25 @@ private fun GlassNowPlaying(
                 },
                 locked = controlsLocked,
                 onBlocked = onBlockedControl,
+                swipe = swipe,
             )
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
             }
             .then(modifier)
+            // The playhead as light in the glass, in the cover's colour; it may
+            // spill a little past the bottom edge, so it is drawn outside the
+            // clip that keeps the sliding content in.
+            .miniPlayerProgress(
+                position = position,
+                durationMs = durationMs,
+                color = progressColor,
+                glow = true,
+                shape = shape,
+                corner = { size -> if (circular) size.height / 2f else with(density) { 16.dp.toPx() } },
+            )
+            .clipToBounds()
             .clickable(
                 interactionSource = pressSource,
                 indication = null,
@@ -360,13 +397,14 @@ private fun GlassNowPlaying(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .miniPlayerSwipeContent(swipe)
                 .padding(
                     horizontal = if (isInline) 8.dp else 12.dp,
                     vertical = if (isInline) 4.dp else 8.dp,
                 ),
         ) {
             AsyncImage(
-                model = rememberRemoteArtworkUrl(song)?.artworkAt(ROW_ART_PX),
+                model = artUrl?.artworkAt(ROW_ART_PX),
                 contentDescription = null,
                 modifier = Modifier
                     .size(artSize)
@@ -375,6 +413,7 @@ private fun GlassNowPlaying(
                     .playerDockArt(dock, if (isInline) 6.dp else 8.dp)
                     .clip(RoundedCornerShape(if (isInline) 6.dp else 8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             Spacer(Modifier.width(if (isInline) 8.dp else 10.dp))
             if (isInline) {
@@ -442,7 +481,7 @@ private fun GlassNowPlaying(
             // Dropped inline: the collapsed row is sharing its width with the
             // tab pill and the Search circle, and the title is what has to
             // survive that, not a second transport button.
-            if (!isInline) {
+            if (!isInline && showNext) {
                 Spacer(Modifier.width(8.dp))
                 IconButton(
                     onClick = {

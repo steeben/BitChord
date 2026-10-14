@@ -54,12 +54,14 @@ class LetterboxCrop : Transformation() {
         return true
     }
 
-    /** Puts [LetterboxCrop] on every YouTube video thumbnail the app loads. */
+    /** Puts [LetterboxCrop] on every YouTube video thumbnail the app loads, while Crop thumbnails is on. */
     class Install : Interceptor {
         override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
             val request = chain.request
             val url = request.data.toString()
             if (!isVideoThumbnail(url)) return chain.proceed()
+            // Settings › Layout › Crop thumbnails.
+            if (!com.music.bitchord.data.settings.CustomizationSettings.cropThumbnails.value) return chain.proceed()
             return chain.withRequest(
                 request.newBuilder().transformations(request.transformations + LetterboxCrop()).build(),
             ).proceed()

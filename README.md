@@ -47,6 +47,7 @@
 - **A "YouTube Music" category in the Library tab** that shows your whole YouTube Music library (Songs, Artists, Albums), cached so it doesn't reload every time you open it.
 - **Pick a default library.** Long-press a library, or choose it in Settings, and tapping Library on the nav bar goes straight there. You can also choose which page it opens on. The back arrow in the top-left returns to the main library page.
 - **List or grid per library tab**, and a **Last played** sort.
+- **An A–Z index** down the side of library lists sorted by name: touch or drag a letter to jump there.
 
 ### Home
 - **Speed dial.** Pin songs, albums, playlists and more to a speed dial on Home, as a 3 × 4 grid (or 3 × 3, in Settings) that fits above the miniplayer. Hold a pin and drag it to reorder, like a phone's home screen, and hold at the edge to move it to another page. The tiles are always square.
@@ -58,6 +59,7 @@
 ### Navigation
 - **Customize the nav bar.** Reorder the tabs, or swap one out for a **Playlists** shortcut.
 - **Keep the miniplayer and navigation bar expanded** instead of collapsing as you scroll.
+- **A miniplayer that shows how far through the song you are**, as a glow in the cover's colour along its bottom (a thin line without liquid glass). Swipe it sideways and the next or previous song slides in; the skip button is optional, in Settings › Layout.
 - Choose which screen the app **starts on**, and whether the miniplayer is **circular or a rounded square**.
 
 ### Appearance
@@ -71,6 +73,7 @@
 ### Under the hood
 - A launch screen that builds the logo square by square while the app loads, then opens on the speed dial as it fades in tile by tile.
 - Album art loads a small copy first, and prefetches the next tracks, so the player and its blur keep up on mobile data.
+- Thumbnails that aren't square are cropped to fill, with YouTube's black bars trimmed off (Settings › Layout › Crop thumbnails).
 - The Home feed and library pages are cached on disk and in memory for a faster start.
 - Builds are optimized for speed.
 

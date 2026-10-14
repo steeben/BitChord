@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import com.music.bitchord.ui.components.AlphabetIndexer
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -519,76 +520,96 @@ private fun SongsTab(
 ) {
     if (viewType == LibraryViewType.GRID) {
         val gridState = rememberLazyGridState()
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 140.dp),
-            state = gridState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = PAGE_GUTTER,
-                end = PAGE_GUTTER,
-                top = 6.dp,
-                bottom = contentPadding.calculateBottomPadding() + 8.dp,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                SectionHeader(
-                    icon = Icons.Rounded.LibraryMusic,
-                    title = pluralStringResource(R.plurals.song_count_plural, songs.size, songs.size),
-                    modifier = Modifier.padding(horizontal = 0.dp, vertical = 10.dp),
-                )
-            }
-            itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
-                SongGridCard(
-                    song = song,
-                    selected = song.videoId in selectedIds,
-                    isCurrent = song.isSameTrackAs(currentSong),
-                    isPlaying = song.isSameTrackAs(currentSong) && isPlaying,
-                    searchPlayingStyle = true,
-                    onClick = { onSongClick(songs, index) },
-                    onLongPress = { onSongLongPress(song) },
-                )
-            }
-        }
-    } else {
-        val listState = rememberLazyListState()
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
-        ) {
-            item {
-                SectionHeader(
-                    icon = Icons.Rounded.LibraryMusic,
-                    title = pluralStringResource(R.plurals.song_count_plural, songs.size, songs.size),
-                )
-            }
-            itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
-                SongRow(
-                    // Transparent so the page's own background shows through;
-                    // the playing row gets a soft glow instead.
-                    rowBackground = Color.Transparent,
-                    modifier = Modifier.playingGlow(song.isSameTrackAs(currentSong)),
-                    song = song,
-                    selected = song.videoId in selectedIds,
-                    isCurrent = song.isSameTrackAs(currentSong),
-                    isPlaying = song.isSameTrackAs(currentSong) && isPlaying,
-                    searchPlayingStyle = true,
-                    activeTint = PlayingAccent,
-                    onClick = { onSongClick(songs, index) },
-                    onLongPress = { onSongLongPress(song) },
-                    onMore = onSongMore?.let { more -> { more(song) } },
-                    onSwipeToQueue = { onSongSwipe(song) },
-                )
-                if (index < songs.lastIndex) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        Box(Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 140.dp),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = PAGE_GUTTER,
+                    end = PAGE_GUTTER,
+                    top = 6.dp,
+                    bottom = contentPadding.calculateBottomPadding() + 8.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    SectionHeader(
+                        icon = Icons.Rounded.LibraryMusic,
+                        title = pluralStringResource(R.plurals.song_count_plural, songs.size, songs.size),
+                        modifier = Modifier.padding(horizontal = 0.dp, vertical = 10.dp),
+                    )
+                }
+                itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
+                    SongGridCard(
+                        song = song,
+                        selected = song.videoId in selectedIds,
+                        isCurrent = song.isSameTrackAs(currentSong),
+                        isPlaying = song.isSameTrackAs(currentSong) && isPlaying,
+                        searchPlayingStyle = true,
+                        onClick = { onSongClick(songs, index) },
+                        onLongPress = { onSongLongPress(song) },
                     )
                 }
             }
+            // Jump to a letter; only shown while the list is in alphabetical order.
+            AlphabetIndexer(
+                keys = remember(songs) { songs.map { it.title } },
+                onJump = { index -> gridState.scrollToItem(index + 1) },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 48.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
+            )
+        }
+    } else {
+        val listState = rememberLazyListState()
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+            ) {
+                item {
+                    SectionHeader(
+                        icon = Icons.Rounded.LibraryMusic,
+                        title = pluralStringResource(R.plurals.song_count_plural, songs.size, songs.size),
+                    )
+                }
+                itemsIndexed(songs, key = { index, song -> "${song.videoId}_$index" }) { index, song ->
+                    SongRow(
+                        // Transparent so the page's own background shows through;
+                        // the playing row gets a soft glow instead.
+                        rowBackground = Color.Transparent,
+                        modifier = Modifier.playingGlow(song.isSameTrackAs(currentSong)),
+                        song = song,
+                        selected = song.videoId in selectedIds,
+                        isCurrent = song.isSameTrackAs(currentSong),
+                        isPlaying = song.isSameTrackAs(currentSong) && isPlaying,
+                        searchPlayingStyle = true,
+                        activeTint = PlayingAccent,
+                        onClick = { onSongClick(songs, index) },
+                        onLongPress = { onSongLongPress(song) },
+                        onMore = onSongMore?.let { more -> { more(song) } },
+                        onSwipeToQueue = { onSongSwipe(song) },
+                    )
+                    if (index < songs.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                    }
+                }
+            }
+            // Jump to a letter; only shown while the list is in alphabetical order.
+            AlphabetIndexer(
+                keys = remember(songs) { songs.map { it.title } },
+                onJump = { index -> listState.scrollToItem(index + 1) },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 48.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
+            )
         }
     }
 }
@@ -675,63 +696,83 @@ private fun ArtistsTab(
 ) {
     if (viewType == LibraryViewType.GRID) {
         val gridState = rememberLazyGridState()
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 130.dp),
-            state = gridState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = PAGE_GUTTER,
-                end = PAGE_GUTTER,
-                top = 6.dp,
-                bottom = contentPadding.calculateBottomPadding() + 8.dp,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                SectionHeader(
-                    icon = Icons.Rounded.Person,
-                    title = pluralStringResource(R.plurals.artist_count, artists.size, artists.size),
-                    modifier = Modifier.padding(horizontal = 0.dp, vertical = 10.dp),
-                )
+        Box(Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 130.dp),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = PAGE_GUTTER,
+                    end = PAGE_GUTTER,
+                    top = 6.dp,
+                    bottom = contentPadding.calculateBottomPadding() + 8.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    SectionHeader(
+                        icon = Icons.Rounded.Person,
+                        title = pluralStringResource(R.plurals.artist_count, artists.size, artists.size),
+                        modifier = Modifier.padding(horizontal = 0.dp, vertical = 10.dp),
+                    )
+                }
+                items(artists, key = { it.key }) { (artist, artistSongs) ->
+                    ArtistGridCard(
+                        name = artist,
+                        songCount = artistSongs.size,
+                        thumbnailUrl = artistSongs.firstNotNullOfOrNull { it.thumbnailUrl },
+                        onClick = { onArtistClick(artist, artistSongs) },
+                        onLongPress = onArtistLongPress?.let { { it(artist, artistSongs) } },
+                    )
+                }
             }
-            items(artists, key = { it.key }) { (artist, artistSongs) ->
-                ArtistGridCard(
-                    name = artist,
-                    songCount = artistSongs.size,
-                    thumbnailUrl = artistSongs.firstNotNullOfOrNull { it.thumbnailUrl },
-                    onClick = { onArtistClick(artist, artistSongs) },
-                    onLongPress = onArtistLongPress?.let { { it(artist, artistSongs) } },
-                )
-            }
+            // Jump to a letter; only shown while the list is in alphabetical order.
+            AlphabetIndexer(
+                keys = remember(artists) { artists.map { it.key } },
+                onJump = { index -> gridState.scrollToItem(index + 1) },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 48.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
+            )
         }
     } else {
         val listState = rememberLazyListState()
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
-        ) {
-            item {
-                SectionHeader(
-                    icon = Icons.Rounded.Person,
-                    title = pluralStringResource(R.plurals.artist_count, artists.size, artists.size),
-                )
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+            ) {
+                item {
+                    SectionHeader(
+                        icon = Icons.Rounded.Person,
+                        title = pluralStringResource(R.plurals.artist_count, artists.size, artists.size),
+                    )
+                }
+                items(artists, key = { it.key }) { (artist, artistSongs) ->
+                    ArtistRow(
+                        name = artist,
+                        songCount = artistSongs.size,
+                        thumbnailUrl = artistSongs.firstNotNullOfOrNull { it.thumbnailUrl },
+                        onClick = { onArtistClick(artist, artistSongs) },
+                        onLongPress = onArtistLongPress?.let { { it(artist, artistSongs) } },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    )
+                }
             }
-            items(artists, key = { it.key }) { (artist, artistSongs) ->
-                ArtistRow(
-                    name = artist,
-                    songCount = artistSongs.size,
-                    thumbnailUrl = artistSongs.firstNotNullOfOrNull { it.thumbnailUrl },
-                    onClick = { onArtistClick(artist, artistSongs) },
-                    onLongPress = onArtistLongPress?.let { { it(artist, artistSongs) } },
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                )
-            }
+            // Jump to a letter; only shown while the list is in alphabetical order.
+            AlphabetIndexer(
+                keys = remember(artists) { artists.map { it.key } },
+                onJump = { index -> listState.scrollToItem(index + 1) },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 48.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
+            )
         }
     }
 }
@@ -961,75 +1002,95 @@ private fun AlbumsTab(
 ) {
     if (viewType == LibraryViewType.GRID) {
         val gridState = rememberLazyGridState()
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 140.dp),
-            state = gridState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = PAGE_GUTTER,
-                end = PAGE_GUTTER,
-                top = 6.dp,
-                bottom = contentPadding.calculateBottomPadding() + 8.dp,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                SectionHeader(
-                    icon = Icons.Rounded.Album,
-                    title = pluralStringResource(R.plurals.album_count, albums.size, albums.size),
-                    modifier = Modifier.padding(horizontal = 0.dp, vertical = 10.dp),
-                )
-            }
-            if (albums.isEmpty()) {
+        Box(Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 140.dp),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = PAGE_GUTTER,
+                    end = PAGE_GUTTER,
+                    top = 6.dp,
+                    bottom = contentPadding.calculateBottomPadding() + 8.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    MessageState(
-                        message = stringResource(R.string.no_local_albums),
+                    SectionHeader(
+                        icon = Icons.Rounded.Album,
+                        title = pluralStringResource(R.plurals.album_count, albums.size, albums.size),
+                        modifier = Modifier.padding(horizontal = 0.dp, vertical = 10.dp),
+                    )
+                }
+                if (albums.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        MessageState(
+                            message = stringResource(R.string.no_local_albums),
+                        )
+                    }
+                }
+                items(albums, key = { it.key }) { entry ->
+                    AlbumGridCard(
+                        entry = entry,
+                        selected = entry.key in selectedKeys,
+                        onClick = { onAlbumClick(entry) },
+                        onLongPress = onAlbumLongPress?.let { { it(entry) } },
                     )
                 }
             }
-            items(albums, key = { it.key }) { entry ->
-                AlbumGridCard(
-                    entry = entry,
-                    selected = entry.key in selectedKeys,
-                    onClick = { onAlbumClick(entry) },
-                    onLongPress = onAlbumLongPress?.let { { it(entry) } },
-                )
-            }
+            // Jump to a letter; only shown while the list is in alphabetical order.
+            AlphabetIndexer(
+                keys = remember(albums) { albums.map { it.title } },
+                onJump = { index -> gridState.scrollToItem(index + 1) },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 48.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
+            )
         }
     } else {
         val listState = rememberLazyListState()
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
-        ) {
-            item {
-                SectionHeader(
-                    icon = Icons.Rounded.Album,
-                    title = pluralStringResource(R.plurals.album_count, albums.size, albums.size),
-                )
-            }
-            if (albums.isEmpty()) {
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+            ) {
                 item {
-                    MessageState(
-                        message = stringResource(R.string.no_local_albums),
+                    SectionHeader(
+                        icon = Icons.Rounded.Album,
+                        title = pluralStringResource(R.plurals.album_count, albums.size, albums.size),
+                    )
+                }
+                if (albums.isEmpty()) {
+                    item {
+                        MessageState(
+                            message = stringResource(R.string.no_local_albums),
+                        )
+                    }
+                }
+                items(albums, key = { it.key }) { entry ->
+                    AlbumRow(
+                        entry = entry,
+                        selected = entry.key in selectedKeys,
+                        onClick = { onAlbumClick(entry) },
+                        onLongPress = onAlbumLongPress?.let { { it(entry) } },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                     )
                 }
             }
-            items(albums, key = { it.key }) { entry ->
-                AlbumRow(
-                    entry = entry,
-                    selected = entry.key in selectedKeys,
-                    onClick = { onAlbumClick(entry) },
-                    onLongPress = onAlbumLongPress?.let { { it(entry) } },
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                )
-            }
+            // Jump to a letter; only shown while the list is in alphabetical order.
+            AlphabetIndexer(
+                keys = remember(albums) { albums.map { it.title } },
+                onJump = { index -> listState.scrollToItem(index + 1) },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 48.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
+            )
         }
     }
 }

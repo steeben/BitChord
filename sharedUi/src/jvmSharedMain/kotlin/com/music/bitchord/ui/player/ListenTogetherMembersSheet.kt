@@ -101,6 +101,7 @@ private fun MemberDrawerRow(member: PartyMember, isYou: Boolean) {
                     model = member.avatarUrl,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp).clip(CircleShape),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
                 )
             } else {
                 Text(

@@ -204,6 +204,7 @@ private fun ChannelRow(channel: AccountChannel, selected: Boolean, onClick: () -
                     .clip(CircleShape)
                     .thumbnailBorder(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
         } else {
             Box(

@@ -161,6 +161,7 @@ internal fun GlowingAvatar(
                     .size(size)
                     .clip(CircleShape)
                     .border(2.dp, Color.White.copy(alpha = 0.12f), CircleShape),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
         } else {
             Box(
@@ -401,6 +402,7 @@ private fun PartySheetAvatar(url: String?, size: Dp = 40.dp) {
             model = url,
             contentDescription = null,
             modifier = Modifier.size(size).clip(CircleShape),
+            contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
         )
     } else {
         Box(
@@ -506,6 +508,7 @@ internal fun MemberAvatarStack(
                         model = avatar,
                         contentDescription = null,
                         modifier = Modifier.size(faceSize).clip(CircleShape),
+                        contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
                     )
                 } else {
                     Text(

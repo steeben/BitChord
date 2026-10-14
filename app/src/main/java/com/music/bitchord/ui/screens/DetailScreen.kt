@@ -1641,6 +1641,7 @@ private fun CompactSongRow(
                     .clip(RoundedCornerShape(7.dp))
                     .thumbnailBorder(RoundedCornerShape(7.dp))
                     .background(palette.elevated),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
         }
@@ -1700,6 +1701,7 @@ private fun SuggestedSongRow(
                     .clip(RoundedCornerShape(8.dp))
                     .thumbnailBorder(RoundedCornerShape(8.dp))
                     .background(palette.elevated),
+                    contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
             )
             if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
         }
@@ -1818,6 +1820,7 @@ private fun TopReleaseCard(
                 .clip(coverShape)
                 .border(1.dp, Color.White.copy(alpha = TOP_RELEASE_COVER_EDGE_ALPHA), coverShape)
                 .background(palette.elevated),
+                contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
         )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -1898,6 +1901,7 @@ private fun SectionCard(
                 .clip(RoundedCornerShape(10.dp))
                 .thumbnailBorder(RoundedCornerShape(10.dp))
                 .background(palette.elevated),
+                contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
         )
         Spacer(Modifier.height(8.dp))
         Text(

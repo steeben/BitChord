@@ -99,6 +99,21 @@ import androidx.compose.foundation.border
  */
 val PAGE_GUTTER = 16.dp
 
+/** Whether artwork that isn't square is cropped to fill its box (Settings › Layout › Crop thumbnails). */
+val LocalCropThumbnails = androidx.compose.runtime.staticCompositionLocalOf { true }
+
+/**
+ * How a thumbnail fills its box: cropped to fill it, or, with Crop thumbnails
+ * off, fitted inside it the way it always was.
+ */
+@Composable
+fun thumbnailContentScale(): androidx.compose.ui.layout.ContentScale =
+    if (LocalCropThumbnails.current) {
+        androidx.compose.ui.layout.ContentScale.Crop
+    } else {
+        androidx.compose.ui.layout.ContentScale.Fit
+    }
+
 /**
  * The inset the floating chrome sits at: the mini player, the tab bar and the
  * top bar's controls. The same as [PAGE_GUTTER], so the bars' edges line up
@@ -530,6 +545,7 @@ private fun SongRowContent(
                         .clip(RoundedCornerShape(8.dp))
                         .thumbnailBorder(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
                 )
                 if (searchPlayingStyle && isCurrent && isPlaying) {
                     SearchPlayingBars(Modifier.align(Alignment.Center))

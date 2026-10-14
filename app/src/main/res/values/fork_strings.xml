@@ -48,4 +48,8 @@
     <string name="home_title_edit">Home title</string>
     <string name="home_title_edit_desc">The text beside the logo on Home</string>
     <string name="home_title_reset">Reset to BitChord Dial</string>
+    <string name="mini_player_next_button">Show next button on miniplayer</string>
+    <string name="mini_player_next_button_subtitle">Swiping the miniplayer sideways skips either way</string>
+    <string name="crop_thumbnails">Crop thumbnails</string>
+    <string name="crop_thumbnails_subtitle">Fill artwork that isn\'t square instead of showing bars</string>
 </resources>

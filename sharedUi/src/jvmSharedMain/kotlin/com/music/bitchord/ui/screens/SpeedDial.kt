@@ -334,14 +334,16 @@ internal fun SpeedDialShelf(
                                 LaunchedEffect(appear) {
                                     if (appear.value >= 1f) return@LaunchedEffect
                                     if (entering) {
-                                        // Down each column, then the next: A1, A2,
-                                        // A3, A4, B1 and on. Not before the app is
-                                        // actually on screen.
+                                        // Along each row, then the next: A1, B1, C1,
+                                        // A2 and on. Not before the app is actually
+                                        // on screen. A bouncy spring, so each tile
+                                        // grows a little past full size and settles.
                                         snapshotFlow { SpeedDialIntro.canStart }.first { it }
-                                        val column = cell % SPEED_DIAL_COLUMNS
-                                        val row = cell / SPEED_DIAL_COLUMNS
-                                        delay((column * rows + row) * INTRO_STEP_MS)
-                                        appear.animateTo(1f, tween(INTRO_FADE_MS))
+                                        delay(cell * INTRO_STEP_MS)
+                                        appear.animateTo(
+                                            1f,
+                                            spring(dampingRatio = INTRO_BOUNCE, stiffness = Spring.StiffnessMediumLow),
+                                        )
                                     } else {
                                         appear.animateTo(1f, tween(TILE_FADE_MS))
                                     }
@@ -361,7 +363,19 @@ internal fun SpeedDialShelf(
                                     modifier = Modifier
                                         .offset { offset }
                                         .size(tileW, tileH)
-                                        .graphicsLayer { alpha = if (dragId == id) 0f else appear.value },
+                                        .graphicsLayer {
+                                            val shown = appear.value
+                                            if (entering) {
+                                                // Grows from smaller, overshooting with
+                                                // the spring; opaque well before it lands.
+                                                val scale = INTRO_START_SCALE + (1f - INTRO_START_SCALE) * shown
+                                                scaleX = scale
+                                                scaleY = scale
+                                                alpha = if (dragId == id) 0f else (shown * 2.5f).coerceIn(0f, 1f)
+                                            } else {
+                                                alpha = if (dragId == id) 0f else shown.coerceIn(0f, 1f)
+                                            }
+                                        },
                                 )
                             }
                         }
@@ -436,13 +450,16 @@ fun speedDialArtRequest(context: PlatformContext, url: String?): ImageRequest =
 
 private const val TILE_FADE_MS = 300
 
-/** The launch entrance: the gap between one tile starting and the next, and each one's fade. */
-private const val INTRO_STEP_MS = 40L
-private const val INTRO_FADE_MS = 260
+/** The launch entrance: the gap between one tile starting and the next. */
+private const val INTRO_STEP_MS = 45L
+
+/** How small a tile starts, and how much its spring overshoots (lower bounces more). */
+private const val INTRO_START_SCALE = 0.35f
+private const val INTRO_BOUNCE = 0.5f
 
 /**
- * The dial's entrance when the app opens: its first page fades in one tile at
- * a time, column by column. Once per launch; the app resets [played] when the
+ * The dial's entrance when the app opens: its first page pops in one tile at
+ * a time, row by row. Once per launch; the app resets [played] when the
  * activity starts fresh, and holds [canStart] false until its first frame is
  * actually on screen (behind the splash, the entrance would play unseen).
  */

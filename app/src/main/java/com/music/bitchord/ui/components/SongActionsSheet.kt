@@ -933,6 +933,7 @@ internal fun SheetTrackHeader(
                 .clip(RoundedCornerShape(8.dp))
                 .thumbnailBorder(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentScale = com.music.bitchord.ui.components.thumbnailContentScale(),
         )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
