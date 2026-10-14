@@ -411,8 +411,10 @@ private fun Modifier.artworkActionEdgePadding(): Modifier = layout { measurable,
     val oneActionWidth = 48.dp.roundToPx()
     val extraActionFraction = ((placeable.width - oneActionWidth).toFloat() / oneActionWidth)
         .coerceIn(0f, 1f)
+    // Only the leading edge takes the inset. The trailing end holds the
+    // profile photo, which has to stay put whatever comes and goes to its left.
     val edgePadding = (PILL_INSET.roundToPx() * extraActionFraction).roundToInt()
-    val width = (placeable.width + edgePadding * 2).coerceIn(constraints.minWidth, constraints.maxWidth)
+    val width = (placeable.width + edgePadding).coerceIn(constraints.minWidth, constraints.maxWidth)
 
     layout(width, placeable.height) {
         placeable.placeRelative(edgePadding, 0)

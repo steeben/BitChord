@@ -3976,8 +3976,11 @@ private fun BitChordApp(
                 // The mark, above the bar and its fade so neither washes it out.
                 androidx.compose.animation.AnimatedVisibility(
                     visible = homeRoot,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(150)),
+                    // No fade either way: the bar's own buttons swap instantly,
+                    // and a mark that fades back in on every return to Home
+                    // reads as the page reloading.
+                    enter = EnterTransition.None,
+                    exit = ExitTransition.None,
                     modifier = Modifier.align(Alignment.TopStart),
                 ) {
                     HomeStickyLogo(
