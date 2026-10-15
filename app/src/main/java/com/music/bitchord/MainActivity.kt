@@ -177,6 +177,7 @@ import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
 import com.music.bitchord.data.settings.OrderedToggle
 import com.music.bitchord.data.settings.DefaultLibrary
+import com.music.bitchord.data.settings.LibraryStartPage
 import com.music.bitchord.ui.screens.LibraryOptionsDialog
 import com.music.bitchord.data.settings.speedDialId
 import com.music.bitchord.ui.screens.ReorderDialog
@@ -808,7 +809,6 @@ private fun BitChordApp(
     // dark artwork either way.
     SystemBarIcons(dark = !darkTheme && !showNowPlaying && !showReplay && replayStory == null)
 
-    val homeState by viewModel.home.collectAsStateWithLifecycle()
     val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val speedDialPins by CustomizationSettings.speedDialPins.collectAsStateWithLifecycle()
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
@@ -826,22 +826,7 @@ private fun BitChordApp(
     // The library folder whose options are up, from a long press on the Library page.
     var libraryOptionsFor by remember { mutableStateOf<ShelfItem?>(null) }
     libraryOptionsFor?.let { item ->
-        val id = item.browseId
-        if (id != null) {
-            LibraryOptionsDialog(
-                title = item.title,
-                isDefault = defaultLibrary?.browseId == id,
-                hasPages = id.isDeviceFolder(),
-                page = defaultLibraryPage,
-                onDefaultChange = { on ->
-                    CustomizationSettings.setDefaultLibrary(if (on) DefaultLibrary(id, item.title) else null)
-                },
-                onPageChange = CustomizationSettings::setDefaultLibraryPage,
-                onDismiss = { libraryOptionsFor = null },
-            )
-        } else {
-            libraryOptionsFor = null
-        }
+        LibraryOptionsFor(item, defaultLibrary, defaultLibraryPage) { libraryOptionsFor = null }
     }
     if (editingSpeedDial) {
         // Edited as a draft and saved on the way out, so switching a pin off
@@ -861,101 +846,11 @@ private fun BitChordApp(
             },
         )
     }
-    // New sections become settable in Settings the first time the feed shows them.
-    LaunchedEffect(homeState) {
-        (homeState as? UiState.Success)?.data?.let { shelves ->
-            CustomizationSettings.learnHomeSections(shelves.map { it.title })
-        }
-    }
-    // The dial Home showed last time, held until this launch's feed and
-    // Recently played are both in, so the tiles change once at most rather
-    // than shuffling with every response that lands.
-    val lastSpeedDial by CustomizationSettings.lastSpeedDial.collectAsStateWithLifecycle()
-    val homeFresh by viewModel.homeFresh.collectAsStateWithLifecycle()
-    val holdSavedDial = !homeFresh && lastSpeedDial.isNotEmpty()
-    val dialLeadsHome = homeSections.firstOrNull { it.enabled }?.item == CustomizationSettings.SPEED_DIAL_TITLE
-    // The feed as Home draws it: the speed dial built in, then the sections in
-    // the order Settings gives them, minus the hidden ones.
-    val baseHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial, hiddenFromDial) {
-        val savedDial = if (holdSavedDial) {
-            CustomizationSettings.buildSpeedDial(
-                speedDialPins,
-                listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, lastSpeedDial)),
-            )
-        } else {
-            null
-        }
-        when (val state = homeState) {
-            // Nothing from the network yet, but the dial can already be shown.
-            is UiState.Loading -> if (savedDial != null && dialLeadsHome) {
-                UiState.Success(listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, savedDial)))
-            } else {
-                state
-            }
-            is UiState.Success -> {
-                val dial = savedDial ?: CustomizationSettings.buildSpeedDial(speedDialPins, state.data)
-                val feed = state.data.filterNot {
-                    it.title.equals(CustomizationSettings.SPEED_DIAL_TITLE, ignoreCase = true)
-                }
-                val shelves = if (dial.isEmpty()) {
-                    feed
-                } else {
-                    listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, dial)) + feed
-                }
-                UiState.Success(CustomizationSettings.arrangeHome(shelves, homeSections))
-            }
-            else -> state
-        }
-    }
-    // The artists' dial: a page of its own under the speed dial, of the
-    // artists pinned there and then the ones played most (from the app's own
-    // listening stats). Only while it is on in Settings › Layout.
-    val artistDialOn by CustomizationSettings.artistDial.collectAsStateWithLifecycle()
-    val artistDialPins by CustomizationSettings.artistDialPins.collectAsStateWithLifecycle()
-    val artistDialPinnedIds = remember(artistDialPins) { artistDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
-    var topArtists by remember { mutableStateOf<List<ShelfItem>>(emptyList()) }
-    LaunchedEffect(artistDialOn, homeFresh) {
-        if (!artistDialOn) return@LaunchedEffect
-        topArtists = runCatching {
-            com.music.bitchord.data.stats.ListeningStats.summary(com.music.bitchord.data.stats.ReplayPeriod.ALL_TIME)
-                .artists
-                .mapNotNull { entry ->
-                    val id = entry.browseId ?: return@mapNotNull null
-                    ShelfItem(
-                        title = entry.title,
-                        subtitle = "",
-                        thumbnailUrl = entry.artworkUrl,
-                        videoId = null,
-                        browseId = id,
-                    )
-                }
-        }.getOrDefault(emptyList())
-    }
-    val arrangedHomeState = remember(baseHomeState, artistDialOn, artistDialPins, topArtists, hiddenFromDial) {
-        val base = baseHomeState
-        val artists = (artistDialPins + topArtists)
-            .distinctBy { it.speedDialId }
-            .filterNot { it.speedDialId in hiddenFromDial }
-            .take(CustomizationSettings.SPEED_DIAL_SIZE)
-        if (!artistDialOn || artists.isEmpty() || base !is UiState.Success ||
-            base.data.firstOrNull()?.title != CustomizationSettings.SPEED_DIAL_TITLE
-        ) {
-            base
-        } else {
-            // Straight after the speed dial, as Home's second page.
-            UiState.Success(
-                listOf(base.data.first(), HomeShelf(ARTIST_DIAL_SHELF_TITLE, artists)) + base.data.drop(1),
-            )
-        }
-    }
-    // Saved once the fresh dial is what's showing, for the next launch.
-    LaunchedEffect(arrangedHomeState, homeFresh) {
-        if (!homeFresh) return@LaunchedEffect
-        val dial = (arrangedHomeState as? UiState.Success)?.data
-            ?.firstOrNull { it.title == CustomizationSettings.SPEED_DIAL_TITLE }?.items
-            ?: return@LaunchedEffect
-        CustomizationSettings.setLastSpeedDial(dial)
-    }
+    // The feed as Home draws it — see [rememberHomeFeed].
+    val homeFeed = rememberHomeFeed(viewModel, homeSections, speedDialPins, hiddenFromDial)
+    val holdSavedDial = homeFeed.holdSavedDial
+    val arrangedHomeState = homeFeed.state
+    val artistDialPinnedIds = homeFeed.artistDialPinnedIds
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
     val homeRecentlyPlayedLoading by viewModel.homeRecentlyPlayedLoading.collectAsStateWithLifecycle()
 
@@ -3312,6 +3207,7 @@ private fun BitChordApp(
                             onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                             onAppLanguage = { showAppLanguage = true },
                             contentPadding = listPadding,
+                            onShowUpdate = { showUpdateDialog = true },
                         )
                     } else if (page != null && page.browseId.isDeviceFolder()) {
                         // Local Music and Downloads — both the tabbed Songs / Artists /
@@ -6270,3 +6166,149 @@ private const val TAB_KEY = "tab:"
 
 /** What the History page lists — see `historyMode`. */
 private enum class HistoryMode { YOUTUBE, DIAL_SONGS, DIAL_ARTISTS }
+
+/** Home's feed as drawn, and what the rest of the app needs from building it. */
+private class HomeFeed(
+    val state: UiState<List<HomeShelf>>,
+    /** Whether last launch's dial is still standing in for this one's. */
+    val holdSavedDial: Boolean,
+    val artistDialPinnedIds: Set<String>,
+)
+
+/**
+ * Builds Home's feed: the speed dial built in, then the sections in the order
+ * Settings gives them, with the artists' dial after the speed dial when it is
+ * on. Its own function so the app's main composable stays within the JVM's
+ * method size limit.
+ */
+@Composable
+private fun rememberHomeFeed(
+    viewModel: MainViewModel,
+    homeSections: List<OrderedToggle<String>>,
+    speedDialPins: List<ShelfItem>,
+    hiddenFromDial: Set<String>,
+): HomeFeed {
+    val homeState by viewModel.home.collectAsStateWithLifecycle()
+    // New sections become settable in Settings the first time the feed shows them.
+    LaunchedEffect(homeState) {
+        (homeState as? UiState.Success)?.data?.let { shelves ->
+            CustomizationSettings.learnHomeSections(shelves.map { it.title })
+        }
+    }
+    // The dial Home showed last time, held until this launch's feed and
+    // Recently played are both in, so the tiles change once at most rather
+    // than shuffling with every response that lands.
+    val lastSpeedDial by CustomizationSettings.lastSpeedDial.collectAsStateWithLifecycle()
+    val homeFresh by viewModel.homeFresh.collectAsStateWithLifecycle()
+    val holdSavedDial = !homeFresh && lastSpeedDial.isNotEmpty()
+    val dialLeadsHome = homeSections.firstOrNull { it.enabled }?.item == CustomizationSettings.SPEED_DIAL_TITLE
+    // The feed as Home draws it: the speed dial built in, then the sections in
+    // the order Settings gives them, minus the hidden ones.
+    val baseHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial, hiddenFromDial) {
+        val savedDial = if (holdSavedDial) {
+            CustomizationSettings.buildSpeedDial(
+                speedDialPins,
+                listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, lastSpeedDial)),
+            )
+        } else {
+            null
+        }
+        when (val state = homeState) {
+            // Nothing from the network yet, but the dial can already be shown.
+            is UiState.Loading -> if (savedDial != null && dialLeadsHome) {
+                UiState.Success(listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, savedDial)))
+            } else {
+                state
+            }
+            is UiState.Success -> {
+                val dial = savedDial ?: CustomizationSettings.buildSpeedDial(speedDialPins, state.data)
+                val feed = state.data.filterNot {
+                    it.title.equals(CustomizationSettings.SPEED_DIAL_TITLE, ignoreCase = true)
+                }
+                val shelves = if (dial.isEmpty()) {
+                    feed
+                } else {
+                    listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, dial)) + feed
+                }
+                UiState.Success(CustomizationSettings.arrangeHome(shelves, homeSections))
+            }
+            else -> state
+        }
+    }
+    // The artists' dial: a page of its own under the speed dial, of the
+    // artists pinned there and then the ones played most (from the app's own
+    // listening stats). Only while it is on in Settings › Layout.
+    val artistDialOn by CustomizationSettings.artistDial.collectAsStateWithLifecycle()
+    val artistDialPins by CustomizationSettings.artistDialPins.collectAsStateWithLifecycle()
+    val artistDialPinnedIds = remember(artistDialPins) { artistDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
+    var topArtists by remember { mutableStateOf<List<ShelfItem>>(emptyList()) }
+    LaunchedEffect(artistDialOn, homeFresh) {
+        if (!artistDialOn) return@LaunchedEffect
+        topArtists = runCatching {
+            com.music.bitchord.data.stats.ListeningStats.summary(com.music.bitchord.data.stats.ReplayPeriod.ALL_TIME)
+                .artists
+                .mapNotNull { entry ->
+                    val id = entry.browseId ?: return@mapNotNull null
+                    ShelfItem(
+                        title = entry.title,
+                        subtitle = "",
+                        thumbnailUrl = entry.artworkUrl,
+                        videoId = null,
+                        browseId = id,
+                    )
+                }
+        }.getOrDefault(emptyList())
+    }
+    val arrangedHomeState = remember(baseHomeState, artistDialOn, artistDialPins, topArtists, hiddenFromDial) {
+        val base = baseHomeState
+        val artists = (artistDialPins + topArtists)
+            .distinctBy { it.speedDialId }
+            .filterNot { it.speedDialId in hiddenFromDial }
+            .take(CustomizationSettings.SPEED_DIAL_SIZE)
+        if (!artistDialOn || artists.isEmpty() || base !is UiState.Success ||
+            base.data.firstOrNull()?.title != CustomizationSettings.SPEED_DIAL_TITLE
+        ) {
+            base
+        } else {
+            // Straight after the speed dial, as Home's second page.
+            UiState.Success(
+                listOf(base.data.first(), HomeShelf(ARTIST_DIAL_SHELF_TITLE, artists)) + base.data.drop(1),
+            )
+        }
+    }
+    // Saved once the fresh dial is what's showing, for the next launch.
+    LaunchedEffect(arrangedHomeState, homeFresh) {
+        if (!homeFresh) return@LaunchedEffect
+        val dial = (arrangedHomeState as? UiState.Success)?.data
+            ?.firstOrNull { it.title == CustomizationSettings.SPEED_DIAL_TITLE }?.items
+            ?: return@LaunchedEffect
+        CustomizationSettings.setLastSpeedDial(dial)
+    }
+    return HomeFeed(arrangedHomeState, holdSavedDial, artistDialPinnedIds)
+}
+
+/** The options for a library folder held on the Library page; [onDismiss] closes them. */
+@Composable
+private fun LibraryOptionsFor(
+    item: ShelfItem,
+    defaultLibrary: DefaultLibrary?,
+    defaultLibraryPage: LibraryStartPage,
+    onDismiss: () -> Unit,
+) {
+    val id = item.browseId
+    if (id == null) {
+        LaunchedEffect(Unit) { onDismiss() }
+        return
+    }
+    LibraryOptionsDialog(
+        title = item.title,
+        isDefault = defaultLibrary?.browseId == id,
+        hasPages = id.isDeviceFolder(),
+        page = defaultLibraryPage,
+        onDefaultChange = { on ->
+            CustomizationSettings.setDefaultLibrary(if (on) DefaultLibrary(id, item.title) else null)
+        },
+        onPageChange = CustomizationSettings::setDefaultLibraryPage,
+        onDismiss = onDismiss,
+    )
+}
