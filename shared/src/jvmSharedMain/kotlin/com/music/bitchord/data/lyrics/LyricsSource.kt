@@ -126,8 +126,8 @@ enum class LyricsSource(
     ),
     LRCLIB(
         label = "LRCLIB",
-        detail = "Whole lines only, and always up",
-        wordSynced = false,
+        detail = "Mostly whole lines, word by word where uploaded that way",
+        wordSynced = true,
     ),
     MUSIXMATCH(
         label = "Musixmatch",

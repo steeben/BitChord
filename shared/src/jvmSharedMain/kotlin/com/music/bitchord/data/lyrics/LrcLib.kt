@@ -19,8 +19,9 @@ import kotlin.math.abs
  * Two calls: an exact `get` keyed on artist + title + duration, and a fuzzy
  * `search` when that misses (YouTube Music titles carry "(From ...)" and
  * "| Official Video" noise that the exact endpoint won't match). Results are
- * line-synced `[mm:ss.xx]` LRC — LRCLIB has no word-level timing, so
- * highlighting is per line.
+ * `[mm:ss.xx]` LRC, mostly line-synced; an entry uploaded with `<mm:ss.xx>`
+ * word stamps highlights word by word, and is looked for when the exact match
+ * has none.
  */
 object LrcLib {
 
@@ -37,8 +38,15 @@ object LrcLib {
             val seconds = (durationMs / 1000).toInt()
 
             val exact = runCatching { exactMatch(cleanTitle, cleanArtist, seconds) }.getOrNull()
-            val synced = exact ?: runCatching { bestSearchHit(cleanTitle, cleanArtist, seconds) }
-                .getOrNull()
+            // LRCLIB keeps one entry per upload, and a later upload of the same
+            // song is sometimes word-stamped where the exact match is not. Worth
+            // the one search to find out: word timing is the better answer.
+            val synced = if (exact != null && WORD_STAMP.containsMatchIn(exact)) {
+                exact
+            } else {
+                runCatching { bestSearchHit(cleanTitle, cleanArtist, seconds, wordStampedOnly = exact != null) }
+                    .getOrNull() ?: exact
+            }
             synced?.let(::parseLrc)?.takeIf { it.isNotEmpty() }
         }
 
@@ -57,7 +65,13 @@ object LrcLib {
      * Fuzzy fallback. Prefers whichever hit is closest in length to what we're
      * actually playing — same song, different edit, would drift otherwise.
      */
-    private fun bestSearchHit(title: String, artist: String, seconds: Int): String? {
+    private fun bestSearchHit(
+        title: String,
+        artist: String,
+        seconds: Int,
+        /** Only an entry with word stamps, and only one no more than a moment off in length. */
+        wordStampedOnly: Boolean = false,
+    ): String? {
         val url = "$BASE/search".toHttpUrl().newBuilder()
             .addQueryParameter("track_name", title)
             .addQueryParameter("artist_name", artist)
@@ -66,6 +80,12 @@ object LrcLib {
         val hits = json.parseToJsonElement(body) as? JsonArray ?: return null
         return hits.mapNotNull { it as? JsonObject }
             .filter { it["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true }
+            .filter { hit ->
+                !wordStampedOnly || (
+                    WORD_STAMP.containsMatchIn(hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull.orEmpty()) &&
+                        abs((hit["duration"]?.jsonPrimitive?.doubleOrNull ?: -100.0) - seconds) <= WORD_MATCH_SECONDS
+                    )
+            }
             .minByOrNull {
                 val d = it["duration"]?.jsonPrimitive?.doubleOrNull ?: 0.0
                 abs(d - seconds)
@@ -200,6 +220,8 @@ object LrcLib {
     }
 
     private val STAMP = Regex("""\[(\d{1,2}):(\d{2})[.:](\d{2,3})]""")
+    private const val WORD_MATCH_SECONDS = 2.0
+
     private val WORD_STAMP = Regex("""<(\d{1,3}):(\d{2})[.:](\d{2,3})>""")
     private val NOISE = Regex(
         """\((?:from|feat\.?|official|lyrical|video|audio|remix)[^)]*\)|\[[^]]*]|""" +
