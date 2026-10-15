@@ -147,9 +147,11 @@ fun HomeShelf.withCustomCovers(covers: Map<String, String>): HomeShelf =
 fun DetailPage.withCustomCover(covers: Map<String, String>): DetailPage =
     CustomCovers.coverFor(browseId, covers)?.let { copy(thumbnailUrl = it) } ?: this
 
+@JvmName("homeWithCustomCovers")
 fun UiState<List<HomeShelf>>.withCustomCovers(covers: Map<String, String>): UiState<List<HomeShelf>> =
     if (covers.isEmpty() || this !is UiState.Success) this else UiState.Success(data.map { it.withCustomCovers(covers) })
 
+@JvmName("libraryWithCustomCovers")
 fun UiState<LibraryPage>.withCustomCovers(covers: Map<String, String>): UiState<LibraryPage> =
     if (covers.isEmpty() || this !is UiState.Success) {
         this
