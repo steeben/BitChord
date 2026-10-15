@@ -90,6 +90,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -181,9 +182,7 @@ import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
 import com.music.bitchord.data.settings.OrderedToggle
-import com.music.bitchord.data.settings.DefaultLibrary
-import com.music.bitchord.data.settings.LibraryStartPage
-import com.music.bitchord.ui.screens.LibraryOptionsDialog
+import com.music.bitchord.data.settings.LibrarySource
 import com.music.bitchord.data.settings.speedDialId
 import com.music.bitchord.ui.screens.ReorderDialog
 import com.music.bitchord.data.settings.LibrarySort
@@ -206,7 +205,16 @@ import com.music.bitchord.ui.components.AmbientYouTubeColor
 import com.music.bitchord.ui.components.ambientBlobs
 import com.music.bitchord.ui.components.rememberAmbientBlobs
 import com.music.bitchord.ui.components.ambientCompanion
-import com.music.bitchord.ui.screens.libraryLinks
+import com.music.bitchord.ui.screens.libraryExtraLinks
+import com.music.bitchord.ui.screens.LibraryHomeScreen
+import com.music.bitchord.ui.screens.LibrarySourcePicker
+import com.music.bitchord.ui.screens.LibraryFolderSearchField
+import com.music.bitchord.ui.screens.rememberLibrarySuggestions
+import com.music.bitchord.ui.screens.browseId
+import com.music.bitchord.ui.screens.LOCAL_LIBRARY_BROWSE_ID
+import com.music.bitchord.ui.screens.ALL_LIBRARY_BROWSE_ID
+import com.music.bitchord.ui.theme.NowPlayingArtwork
+import com.music.bitchord.ui.theme.nowPlayingAccent
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.ListenTogetherScreen
 import com.music.bitchord.ui.screens.PartyServerEditor
@@ -340,7 +348,6 @@ import com.music.bitchord.ui.screens.ExploreScreen
 import com.music.bitchord.ui.screens.LocalMusicScreen
 import com.music.bitchord.ui.screens.HomeScreen
 import com.music.bitchord.ui.screens.LibraryGridPage
-import com.music.bitchord.ui.screens.LibraryScreen
 import com.music.bitchord.ui.screens.MoodGenrePlaylistsScreen
 import com.music.bitchord.ui.screens.SearchScreen
 import com.music.bitchord.data.settings.SongSort
@@ -836,13 +843,15 @@ private fun BitChordApp(
     val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
     val homeTitleText by CustomizationSettings.homeTitle.collectAsStateWithLifecycle()
     var editingHomeTitle by remember { mutableStateOf(false) }
-    val defaultLibrary by CustomizationSettings.defaultLibrary.collectAsStateWithLifecycle()
-    val defaultLibraryPage by CustomizationSettings.defaultLibraryPage.collectAsStateWithLifecycle()
-    // The library folder whose options are up, from a long press on the Library page.
-    var libraryOptionsFor by remember { mutableStateOf<ShelfItem?>(null) }
-    libraryOptionsFor?.let { item ->
-        LibraryOptionsFor(item, defaultLibrary, defaultLibraryPage) { libraryOptionsFor = null }
-    }
+    // Which library the Library tab reads from — picked from its logo and
+    // remembered — and whether that picker is up.
+    val librarySource by CustomizationSettings.librarySource.collectAsStateWithLifecycle()
+    var librarySourcePickerOpen by remember { mutableStateOf(false) }
+    // A library folder's Songs / Artists / Albums tab and its search, by page
+    // id: held here because the Library menu opens a folder on any of its tabs
+    // and the search field is drawn in the top bar, not on the page.
+    val folderTabs = remember { mutableStateMapOf<String, Int>() }
+    val folderQueries = remember { mutableStateMapOf<String, String>() }
     if (editingSpeedDial) {
         // Edited as a draft and saved on the way out, so switching a pin off
         // doesn't pull its row out from under the list mid-edit.
@@ -1041,15 +1050,17 @@ private fun BitChordApp(
         // out entirely, which is worth saying rather than leaving rows behind
         // that play nothing.
         if (openPage.songs !is UiState.Loading &&
-            (open == "local:downloads" || open == CACHE_FOLDER_BROWSE_ID || Downloads.recordIdOf(open) != null ||
+            (open == "local:downloads" || open == CACHE_FOLDER_BROWSE_ID || open == LOCAL_LIBRARY_BROWSE_ID ||
+                open == ALL_LIBRARY_BROWSE_ID || Downloads.recordIdOf(open) != null ||
                 com.music.bitchord.data.spotify.LocalPlaylistStore.getPlaylist(open) != null)
         ) {
             viewModel.reloadLocalDetail(open)
         }
     }
     LaunchedEffect(localMusicFolderUri, filterNonMusicAudio) {
-        if (detail?.browseId == "local:all") {
-            viewModel.reloadLocalDetail("local:all")
+        val open = detail?.browseId
+        if (open != null && (open == "local:all" || open == LOCAL_LIBRARY_BROWSE_ID || open == ALL_LIBRARY_BROWSE_ID)) {
+            viewModel.reloadLocalDetail(open)
         }
     }
     LaunchedEffect(webdavUrl) {
@@ -1213,9 +1224,14 @@ private fun BitChordApp(
     }
     // The lead shelf is listening history, so opening Home after playing
     // something is exactly when it needs re-fetching.
-    // A YouTube Music default library is fetched ahead of the first tap on Library.
-    LaunchedEffect(signedIn, defaultLibrary) {
-        if (signedIn) viewModel.prefetchDefaultLibrary()
+    // The YouTube Music library's songs are fetched ahead of the first tap on
+    // the Library menu, whenever the picked library includes them.
+    LaunchedEffect(signedIn, librarySource) {
+        if (signedIn) viewModel.prefetchLibrarySongs()
+    }
+    // The playing song's artwork, for everything tinted after it.
+    LaunchedEffect(player.song?.thumbnailUrl) {
+        NowPlayingArtwork.url.value = player.song?.thumbnailUrl
     }
     LaunchedEffect(currentFeed) {
         if (currentFeed == MainViewModel.Feed.HOME) viewModel.onHomeShown()
@@ -2198,6 +2214,8 @@ private fun BitChordApp(
         if (granted) {
             viewModel.reloadLocalDetail("local:all")
             viewModel.reloadLocalDetail("local:downloads")
+            viewModel.reloadLocalDetail(LOCAL_LIBRARY_BROWSE_ID)
+            viewModel.reloadLocalDetail(ALL_LIBRARY_BROWSE_ID)
             viewModel.loadLibrarySongs()
         } else {
             Toast.makeText(context, context.getString(R.string.storage_required_read), Toast.LENGTH_SHORT).show()
@@ -2224,7 +2242,9 @@ private fun BitChordApp(
                 showSpotify = true
                 return@let
             }
-            if ((id == "local:all" || id == "local:downloads") && !LocalMediaRepository.hasStoragePermission(context)) {
+            if ((id == "local:all" || id == "local:downloads" || id == LOCAL_LIBRARY_BROWSE_ID || id == ALL_LIBRARY_BROWSE_ID) &&
+                !LocalMediaRepository.hasStoragePermission(context)
+            ) {
                 mediaPermissionLauncher.launch(mediaPermission)
             }
             // Left set rather than cleared: a card opened from a shelf's
@@ -2936,6 +2956,26 @@ private fun BitChordApp(
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 // The page on screen, by the key the pages below swap on.
+                // The Library's own collections, for the picked library: the
+                // account's playlists and saved shelves on YouTube Music's side,
+                // the releases downloaded whole and the app's own playlists on
+                // the device's.
+                val libraryShelves = (libraryState.withCustomCovers(customCovers) as? UiState.Success)
+                    ?.data?.shelves.orEmpty()
+                val libraryDeviceCards = (libraryDeviceItems(downloadedReleases) + localPlaylistItems)
+                    .withCustomCovers(customCovers)
+                val libraryPlaylists = HomeShelf(
+                    YtMusicRepository.PLAYLISTS_SHELF,
+                    buildList {
+                        if (librarySource != LibrarySource.LOCAL) {
+                            addAll(
+                                libraryShelves.firstOrNull { it.title == YtMusicRepository.PLAYLISTS_SHELF }
+                                    ?.items.orEmpty(),
+                            )
+                        }
+                        if (librarySource != LibrarySource.YOUTUBE_MUSIC) addAll(libraryDeviceCards)
+                    },
+                )
                 val pageKey = when {
                     // Over everything it was opened on, under the Replay and
                     // Settings it can open in turn.
@@ -3122,7 +3162,11 @@ private fun BitChordApp(
                             contentPadding = listPadding,
                         )
                     } else if (key == "library_show_all") {
-                        libraryShowAll?.let { shelf ->
+                        // The Playlists page is read live, so a playlist made or
+                        // imported from its own New Playlist tile turns up on it.
+                        libraryShowAll?.let { opened ->
+                            if (opened.title == YtMusicRepository.PLAYLISTS_SHELF) libraryPlaylists else opened
+                        }?.let { shelf ->
                             LibraryGridPage(
                                 shelf = shelf,
                                 gridState = libraryShowAllGridState,
@@ -3316,11 +3360,9 @@ private fun BitChordApp(
                         }
                         LocalMusicScreen(
                             songs = localSongs,
-                            initialTab = if (page.browseId == defaultLibrary?.browseId) {
-                                defaultLibraryPage.ordinal
-                            } else {
-                                0
-                            },
+                            selectedTab = folderTabs[page.browseId] ?: 0,
+                            onSelectedTabChange = { folderTabs[page.browseId] = it },
+                            searchQuery = folderQueries[page.browseId].orEmpty(),
                             collections = downloadCollections,
                             isDownloads = page.browseId == "local:downloads",
                             currentSong = player.song,
@@ -3356,7 +3398,7 @@ private fun BitChordApp(
                             emptyMessage = (localState as? com.music.bitchord.data.model.UiState.Error)
                                 ?.message
                                 ?: if (localState is com.music.bitchord.data.model.UiState.Loading &&
-                                    page.browseId == YT_MUSIC_LIBRARY_BROWSE_ID
+                                    (page.browseId == YT_MUSIC_LIBRARY_BROWSE_ID || page.browseId == ALL_LIBRARY_BROWSE_ID)
                                 ) {
                                     stringResource(R.string.loading_your_library)
                                 } else {
@@ -3821,42 +3863,48 @@ private fun BitChordApp(
                                 }
                             }
                         }
-                        else -> LibraryScreen(
-                            signedIn = signedIn,
-                            state = libraryState.withCustomCovers(customCovers),
-                            listState = libraryListState,
-                            onShelfItemClick = onLibraryItemClick,
-                            // Every shelf here has a menu behind it now — the account's
-                            // own playlists get rename and delete on top of what a saved
-                            // album or a Liked Music card gets. Holding an artist still
-                            // does nothing; see [onBrowseLongPress].
-                            onShelfItemLongPress = onBrowseLongPress,
-                            onNewPlaylist = { creatingPlaylist = true },
-                            onImportSpotifyPlaylist = { showSpotifyImportDialog = true },
-                            onShowAll = { shelf -> libraryShowAll = shelf },
-                            replay = {
-                                LibraryReplayEntry(
-                                    cards = replayCards,
-                                    loading = replay.loading,
-                                    holder = account?.name.orEmpty(),
-                                    memberSince = replay.memberSince,
-                                    onOpenReplay = { page ->
-                                        replayLandingPage = page
-                                        showReplay = true
-                                    },
+                        else -> {
+                            val openLibraryTab: (Int) -> Unit = { tab ->
+                                val id = librarySource.browseId
+                                folderTabs[id] = tab
+                                onLibraryItemClick(
+                                    ShelfItem(
+                                        title = context.getString(R.string.library),
+                                        subtitle = "",
+                                        thumbnailUrl = null,
+                                        videoId = null,
+                                        browseId = id,
+                                    ),
                                 )
-                            },
-                            onSignIn = { webSession = WebSessionMode.SIGN_IN },
-                            onRetry = viewModel::loadLibrary,
-                            refreshing = MainViewModel.Feed.LIBRARY in refreshing,
-                            onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
-                            pullState = libraryPull,
-                            contentPadding = listPadding,
-                            links = libraryLinks(signedIn),
-                            onLinkLongPress = { libraryOptionsFor = it },
-                            deviceItems = (libraryDeviceItems(downloadedReleases) + localPlaylistItems)
-                                .withCustomCovers(customCovers),
-                        )
+                            }
+                            LibraryHomeScreen(
+                                source = librarySource,
+                                signedIn = signedIn,
+                                suggestions = rememberLibrarySuggestions(
+                                    source = librarySource,
+                                    ytShelves = libraryShelves,
+                                    deviceItems = libraryDeviceCards,
+                                ),
+                                accent = nowPlayingAccent(),
+                                listState = libraryListState,
+                                onSourceClick = { librarySourcePickerOpen = true },
+                                onSuggestionClick = onLibraryItemClick,
+                                // The same menu a card on any shelf has.
+                                onSuggestionLongPress = onBrowseLongPress,
+                                onOpenPlaylists = { libraryShowAll = libraryPlaylists },
+                                onOpenArtists = { openLibraryTab(1) },
+                                onOpenAlbums = { openLibraryTab(2) },
+                                onOpenSongs = { openLibraryTab(0) },
+                                onOpenSpotify = { showSpotify = true },
+                                extraLinks = libraryExtraLinks(),
+                                onLinkClick = onLibraryItemClick,
+                                onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                                refreshing = MainViewModel.Feed.LIBRARY in refreshing,
+                                onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
+                                pullState = libraryPull,
+                                contentPadding = listPadding,
+                            )
+                        }
                     }
                 }
 
@@ -4053,6 +4101,24 @@ private fun BitChordApp(
                             .graphicsLayer { alpha = exploreVeil },
                     )
                 }
+                // A library folder's search, sort and view controls sit up in
+                // the bar between the back button and the account photo,
+                // giving the list below that height back.
+                val folderSearchId = detail?.browseId?.takeIf {
+                    isLocalDetail && detailActiveShelf == null && !showDiscord && !showHistory &&
+                        settingsSubScreen == null && !showAccountScrobbling && !showSources &&
+                        !showListenTogether && !showEqualizer && !showSettings && !showReplay
+                }
+                val folderSearch: (@Composable () -> Unit)? = folderSearchId?.let { folderId ->
+                    @Composable {
+                        LibraryFolderSearchField(
+                            query = folderQueries[folderId].orEmpty(),
+                            onQueryChange = { folderQueries[folderId] = it },
+                            isDownloads = folderId == "local:downloads",
+                            selectedTab = folderTabs[folderId] ?: 0,
+                        )
+                    }
+                }
                 FrostedTopBar(
                     title = when {
                         homeRoot -> ""
@@ -4160,7 +4226,9 @@ private fun BitChordApp(
                                 ),
                             )
                         }
-                    } else null,
+                    } else {
+                        folderSearch
+                    },
                     actions = {
                         // This is intentionally scoped to Listen together: the
                         // round-trip time is meaningful while coordinating a
@@ -4444,17 +4512,46 @@ private fun BitChordApp(
                 val onLibraryPage = pageKey == "library_show_all" ||
                     pageKey == "$TAB_KEY$TAB_LIBRARY" ||
                     pageKey == "$TAB_KEY$TAB_PLAYLISTS"
-                if (onLibraryPage && libraryShuffleSongs.isNotEmpty()) {
+                // A library's Songs, Artists or Albums page shuffles what it
+                // holds: that library's songs, as the page has them.
+                val folderPage = detail?.takeIf { pageKey == it.browseId && it.browseId.isDeviceFolder() }
+                val folderSongs = (folderPage?.songs as? UiState.Success)?.data.orEmpty()
+                val shuffleAll: (List<Song>, QueueSource) -> Unit = { songs, source ->
+                    if (songs.isNotEmpty()) {
+                        // As on a release page: shuffle goes on before the
+                        // queue is built, so it is built shuffled.
+                        QueueShuffle.enableForNextQueue()
+                        playFrom(songs, songs.indices.random(), source)
+                    }
+                }
+                val showLibraryShuffle = if (folderPage != null) {
+                    folderSongs.isNotEmpty()
+                } else {
+                    onLibraryPage && (librarySource != LibrarySource.YOUTUBE_MUSIC || libraryShuffleSongs.isNotEmpty())
+                }
+                if (showLibraryShuffle) {
                     LibraryShuffleButton(
                         onClick = {
-                            // As on a release page: shuffle goes on before the
-                            // queue is built, so it is built shuffled.
-                            QueueShuffle.enableForNextQueue()
-                            playFrom(
-                                libraryShuffleSongs,
-                                libraryShuffleSongs.indices.random(),
-                                QueueSource(libraryLabel, PlaybackSourceType.BROWSE),
-                            )
+                            when {
+                                folderPage != null -> shuffleAll(
+                                    folderSongs,
+                                    QueueSource(folderPage.title, PlaybackSourceType.BROWSE, folderPage.browseId),
+                                )
+                                librarySource == LibrarySource.YOUTUBE_MUSIC -> shuffleAll(
+                                    libraryShuffleSongs,
+                                    QueueSource(libraryLabel, PlaybackSourceType.BROWSE),
+                                )
+                                // The device's songs aren't in hand on the Library
+                                // page itself, so they are read on the tap.
+                                else -> viewModel.collectSongs(librarySource.browseId) { result ->
+                                    result.onSuccess { songs ->
+                                        shuffleAll(
+                                            songs,
+                                            QueueSource(libraryLabel, PlaybackSourceType.BROWSE, librarySource.browseId),
+                                        )
+                                    }
+                                }
+                            }
                         },
                         hazeState = hazeState,
                         modifier = Modifier
@@ -4483,22 +4580,6 @@ private fun BitChordApp(
                     showHistory = false
                     libraryShowAll = null
                     selectedTab = index
-                    // A default library set from a folder's long-press menu (or
-                    // Settings) opens straight away, over the Library page that
-                    // back returns to.
-                    if (index == TAB_LIBRARY) {
-                        CustomizationSettings.defaultLibrary.value?.let { library ->
-                            onLibraryItemClick(
-                                ShelfItem(
-                                    title = library.title,
-                                    subtitle = "",
-                                    thumbnailUrl = null,
-                                    videoId = null,
-                                    browseId = library.browseId,
-                                ),
-                            )
-                        }
-                    }
 
                     // Every search tab tap resets the field, focuses it, and opens
                     // the keyboard through SearchScreen's focus request.
@@ -5200,6 +5281,16 @@ private fun BitChordApp(
                     loading = playlistsLoading,
                     song = target,
                     startCreating = target == null,
+                    // Bringing a playlist over from Spotify is the other way to
+                    // start one, so it is offered beside Create.
+                    onImportSpotify = if (target == null) {
+                        {
+                            dismiss()
+                            showSpotifyImportDialog = true
+                        }
+                    } else {
+                        null
+                    },
                     onAdd = { picked ->
                         target?.let { song ->
                             viewModel.addToPlaylists(picked, song) { added, alreadyThere, failed ->
@@ -5720,6 +5811,22 @@ private fun BitChordApp(
             LyricsSourcesDialog(
                 hazeState = hazeState,
                 onDismiss = { showLyricsSources = false },
+            )
+        }
+
+        run {
+            BackHandler(enabled = librarySourcePickerOpen) { librarySourcePickerOpen = false }
+            LibrarySourcePicker(
+                visible = librarySourcePickerOpen,
+                selected = librarySource,
+                signedIn = signedIn,
+                hazeState = hazeState,
+                accent = nowPlayingAccent(),
+                onSelect = { picked ->
+                    CustomizationSettings.setLibrarySource(picked)
+                    librarySourcePickerOpen = false
+                },
+                onDismiss = { librarySourcePickerOpen = false },
             )
         }
 
@@ -6469,30 +6576,4 @@ private fun rememberHomeFeed(
         CustomizationSettings.setLastSpeedDial(dial)
     }
     return HomeFeed(arrangedHomeState, holdSavedDial, artistDialPinnedIds)
-}
-
-/** The options for a library folder held on the Library page; [onDismiss] closes them. */
-@Composable
-private fun LibraryOptionsFor(
-    item: ShelfItem,
-    defaultLibrary: DefaultLibrary?,
-    defaultLibraryPage: LibraryStartPage,
-    onDismiss: () -> Unit,
-) {
-    val id = item.browseId
-    if (id == null) {
-        LaunchedEffect(Unit) { onDismiss() }
-        return
-    }
-    LibraryOptionsDialog(
-        title = item.title,
-        isDefault = defaultLibrary?.browseId == id,
-        hasPages = id.isDeviceFolder(),
-        page = defaultLibraryPage,
-        onDefaultChange = { on ->
-            CustomizationSettings.setDefaultLibrary(if (on) DefaultLibrary(id, item.title) else null)
-        },
-        onPageChange = CustomizationSettings::setDefaultLibraryPage,
-        onDismiss = onDismiss,
-    )
 }

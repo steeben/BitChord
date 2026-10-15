@@ -180,17 +180,17 @@ fun LocalMusicScreen(
     onDeleteDownloads: ((List<Song>) -> Unit)? = null,
     /** Copies the selected Downloads rows to the WebDAV server; null hides the action. */
     onUploadToWebDav: ((List<Song>) -> Unit)? = null,
-    /** The tab to open on: 0 songs, 1 artists, 2 albums. */
-    initialTab: Int = 0,
+    /** The tab showing: 0 songs, 1 artists, 2 albums. Held by the app, which opens a library on any of them. */
+    selectedTab: Int,
+    onSelectedTabChange: (Int) -> Unit,
+    /**
+     * Narrows whichever tab is showing — songs by title/artist/album, artists
+     * and albums by name. Typed into the field in the top bar (see
+     * [LibraryFolderSearchField]), so it is held by the app as well.
+     */
+    searchQuery: String,
     modifier: Modifier = Modifier,
 ) {
-    // Which top-level tab is selected.
-    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab) }
-
-    // Narrows whichever tab is showing — songs by title/artist/album, artists
-    // and albums by name. Not saved across process death: a filter left on a
-    // folder that was never reopened is more surprising than one that reset.
-    var searchQuery by rememberSaveable { mutableStateOf("") }
     val sortOrder by if (isDownloads) {
         AppSettings.downloadedMusicSort.collectAsStateWithLifecycle()
     } else {
@@ -258,9 +258,9 @@ fun LocalMusicScreen(
     val barHeight = topBarHeight()
 
     Column(modifier = modifier.fillMaxSize()) {
-        // ── Search ───────────────────────────────────────────────────────────
-        // Above the tabs rather than inside each one, since a query typed on
-        // Songs is just as reasonable to carry over to Artists or Albums.
+        // ── Selection ────────────────────────────────────────────────────────
+        // The search field is up in the top bar; holding a Downloads row puts
+        // this bar of actions above the tabs while something is selected.
         if (selectingDownloads) {
             DownloadSelectionBar(
                 count = selectedDownloadIds.size,
@@ -291,34 +291,13 @@ fun LocalMusicScreen(
                     bottom = 4.dp,
                 ),
             )
-        } else LocalSearchField(
-            query = searchQuery,
-            onQueryChange = { searchQuery = it },
-            sortOrder = sortOrder,
-            onSortOrderChange = {
-                if (isDownloads) AppSettings.setDownloadedMusicSort(it)
-                else AppSettings.setLocalMusicSort(it)
-            },
-            viewType = viewType,
-            onViewTypeToggle = {
-                val next = if (viewType == LibraryViewType.GRID) LibraryViewType.LIST else LibraryViewType.GRID
-                com.music.bitchord.data.settings.CustomizationSettings.setLibraryTabView(selectedTab, next)
-            },
-            modifier = Modifier.padding(
-                // The same clearance every other page under the frosted bar
-                // gets — see topBarContentPadding, which this screen can't use
-                // directly since its tab row is fixed and only the search field
-                // above it needs to clear the bar.
-                top = barHeight + TopBarContentGap,
-                start = PAGE_GUTTER,
-                end = PAGE_GUTTER,
-                bottom = 4.dp,
-            ),
-        )
+        }
 
         // ── Tab row ──────────────────────────────────────────────────────────
         TabRow(
             selectedTabIndex = selectedTab,
+            // Right under the top bar, which now carries the search field.
+            modifier = if (selectingDownloads) Modifier else Modifier.padding(top = barHeight + 4.dp),
             containerColor = frostedSurfaceColor(MaterialTheme.colorScheme.background),
             contentColor = MaterialTheme.colorScheme.primary,
             indicator = { tabPositions ->
@@ -333,7 +312,7 @@ fun LocalMusicScreen(
                 label = stringResource(R.string.songs),
                 selected = selectedTab == LOCAL_TAB_SONGS,
                 onClick = {
-                    selectedTab = LOCAL_TAB_SONGS
+                    onSelectedTabChange(LOCAL_TAB_SONGS)
                     leaveDrillDown()
                 },
             )
@@ -342,7 +321,7 @@ fun LocalMusicScreen(
                 label = stringResource(R.string.artists),
                 selected = selectedTab == LOCAL_TAB_ARTISTS,
                 onClick = {
-                    selectedTab = LOCAL_TAB_ARTISTS
+                    onSelectedTabChange(LOCAL_TAB_ARTISTS)
                     leaveDrillDown()
                 },
             )
@@ -351,7 +330,7 @@ fun LocalMusicScreen(
                 label = stringResource(R.string.albums),
                 selected = selectedTab == LOCAL_TAB_ALBUMS,
                 onClick = {
-                    selectedTab = LOCAL_TAB_ALBUMS
+                    onSelectedTabChange(LOCAL_TAB_ALBUMS)
                     leaveDrillDown()
                 },
             )
@@ -361,12 +340,25 @@ fun LocalMusicScreen(
         AnimatedContent(
             targetState = if (inDrillDown) "drill:$drillDownLabel" else "tab:$selectedTab",
             transitionSpec = {
-                if (targetState.startsWith("drill:")) {
-                    (slideInHorizontally { it } + fadeIn()) togetherWith
-                        (slideOutHorizontally { -it / 3 } + fadeOut())
-                } else {
-                    (slideInHorizontally { -it / 3 } + fadeIn()) togetherWith
-                        (slideOutHorizontally { it } + fadeOut())
+                val fromTab = initialState.removePrefix("tab:").toIntOrNull()
+                    .takeIf { initialState.startsWith("tab:") }
+                val toTab = targetState.removePrefix("tab:").toIntOrNull()
+                    .takeIf { targetState.startsWith("tab:") }
+                when {
+                    targetState.startsWith("drill:") ->
+                        (slideInHorizontally { it } + fadeIn()) togetherWith
+                            (slideOutHorizontally { -it / 3 } + fadeOut())
+                    // Songs, Artists, Albums sit side by side in that order,
+                    // so a tab further along slides in from the right and an
+                    // earlier one from the left, like columns being panned.
+                    fromTab != null && toTab != null && fromTab != toTab -> {
+                        val forward = toTab > fromTab
+                        slideInHorizontally { if (forward) it else -it } togetherWith
+                            slideOutHorizontally { if (forward) -it else it }
+                    }
+                    else ->
+                        (slideInHorizontally { -it / 3 } + fadeIn()) togetherWith
+                            (slideOutHorizontally { it } + fadeOut())
                 }
             },
             label = "local_music_content",
@@ -435,7 +427,7 @@ fun LocalMusicScreen(
                         onSongLongPress = { song ->
                             if (isDownloads) {
                                 selectedDownloadIds = selectedDownloadIds + song.videoId
-                                selectedTab = LOCAL_TAB_SONGS
+                                onSelectedTabChange(LOCAL_TAB_SONGS)
                                 leaveDrillDown()
                             } else onSongLongPress(song)
                         },
@@ -1576,6 +1568,47 @@ private fun List<Song>.sortedForLibrary(order: LocalMusicSort): List<Song> = whe
  * only a list already in memory, so narrowing it on every keystroke costs
  * nothing and a submit action would just be a tap this screen doesn't need.
  */
+/**
+ * A library folder's search field with its list/grid and sort controls, drawn
+ * in the top bar between the back button and the account photo rather than
+ * above the tabs, so the list underneath gets that height back.
+ *
+ * [selectedTab] picks whose list/grid choice the toggle shows and flips: each
+ * of Songs, Artists and Albums keeps its own.
+ */
+@Composable
+fun LibraryFolderSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    isDownloads: Boolean,
+    selectedTab: Int,
+    modifier: Modifier = Modifier,
+) {
+    val sortOrder by if (isDownloads) {
+        AppSettings.downloadedMusicSort.collectAsStateWithLifecycle()
+    } else {
+        AppSettings.localMusicSort.collectAsStateWithLifecycle()
+    }
+    val tabViews by com.music.bitchord.data.settings.CustomizationSettings.libraryTabViews
+        .collectAsStateWithLifecycle()
+    val viewType = tabViews.getOrElse(selectedTab) { LibraryViewType.LIST }
+    LocalSearchField(
+        query = query,
+        onQueryChange = onQueryChange,
+        sortOrder = sortOrder,
+        onSortOrderChange = {
+            if (isDownloads) AppSettings.setDownloadedMusicSort(it)
+            else AppSettings.setLocalMusicSort(it)
+        },
+        viewType = viewType,
+        onViewTypeToggle = {
+            val next = if (viewType == LibraryViewType.GRID) LibraryViewType.LIST else LibraryViewType.GRID
+            com.music.bitchord.data.settings.CustomizationSettings.setLibraryTabView(selectedTab, next)
+        },
+        modifier = modifier,
+    )
+}
+
 @Composable
 private fun LocalSearchField(
     query: String,

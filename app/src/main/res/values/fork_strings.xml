@@ -103,4 +103,15 @@
         <item quantity="one">%1$s day</item>
         <item quantity="other">%1$s days</item>
     </plurals>
+    <string name="library_source_local">Local</string>
+    <string name="library_source_all">All</string>
+    <string name="library_source_youtube_music_subtitle">Your YouTube Music library</string>
+    <string name="library_source_youtube_music_signed_out">Sign in to see your library</string>
+    <string name="library_source_local_subtitle">Files on this device and downloads</string>
+    <string name="library_source_all_subtitle">YouTube Music and this device together</string>
+    <string name="library_source_empty">Nothing in this library yet</string>
+    <string name="choose_library">Choose library</string>
+    <string name="hide_combined_duplicates">Hide detected duplicates in the combined library</string>
+    <string name="hide_combined_duplicates_subtitle">In the All library, a song that is both in YouTube Music and on this device shows once</string>
+    <string name="import_from_spotify">Import from Spotify</string>
 </resources>

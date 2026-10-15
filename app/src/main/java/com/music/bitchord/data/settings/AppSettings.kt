@@ -556,6 +556,9 @@ object AppSettings {
     /** Hides short clips, recorder output and non-music formats from Local Music. */
     val filterNonMusicAudio = MutableStateFlow(true)
 
+    /** The All library leaves out a track it already has from another source. */
+    val hideCombinedDuplicates = MutableStateFlow(true)
+
     val localMusicSort = MutableStateFlow(LocalMusicSort.TITLE_ASC)
     val downloadedMusicSort = MutableStateFlow(LocalMusicSort.TITLE_ASC)
     val localMusicViewType = MutableStateFlow(LibraryViewType.LIST)
@@ -898,6 +901,7 @@ object AppSettings {
         spotifySpdcToken.value = prefs.getString(KEY_SPOTIFY_SPDC_TOKEN, "").orEmpty()
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
         filterNonMusicAudio.value = prefs.getBoolean(KEY_FILTER_NON_MUSIC_AUDIO, true)
+        hideCombinedDuplicates.value = prefs.getBoolean(KEY_HIDE_COMBINED_DUPLICATES, true)
         localMusicSort.value = readLocalMusicSort(KEY_LOCAL_MUSIC_SORT)
         downloadedMusicSort.value = readLocalMusicSort(KEY_DOWNLOADED_MUSIC_SORT)
         localMusicViewType.value = readLibraryViewType(KEY_LOCAL_MUSIC_VIEW_TYPE)
@@ -1653,6 +1657,11 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_REPLAY_GENRES, value).apply()
     }
 
+    fun setHideCombinedDuplicates(value: Boolean) {
+        hideCombinedDuplicates.value = value
+        prefs.edit().putBoolean(KEY_HIDE_COMBINED_DUPLICATES, value).apply()
+    }
+
     fun setFilterNonMusicAudio(value: Boolean) {
         filterNonMusicAudio.value = value
         prefs.edit().putBoolean(KEY_FILTER_NON_MUSIC_AUDIO, value).apply()
@@ -2011,6 +2020,7 @@ object AppSettings {
     private const val KEY_PAXSENIX_API_KEY = "paxsenix_api_key"
     private const val KEY_REPLAY_GENRES = "replay_genres"
     private const val KEY_FILTER_NON_MUSIC_AUDIO = "filter_non_music_audio"
+    private const val KEY_HIDE_COMBINED_DUPLICATES = "hide_combined_duplicates"
     private const val KEY_SHOW_CACHE_FOLDER = "show_cache_folder"
     private const val KEY_LOCAL_MUSIC_SORT = "local_music_sort"
     private const val KEY_DOWNLOADED_MUSIC_SORT = "downloaded_music_sort"

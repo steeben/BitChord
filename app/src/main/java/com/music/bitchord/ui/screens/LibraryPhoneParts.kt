@@ -1,6 +1,17 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import com.music.bitchord.data.settings.LibrarySource
+import com.music.bitchord.ui.components.SQUARE_LOGO_ASPECT
+import com.music.bitchord.ui.components.SquareLogo
+import com.music.bitchord.ui.icons.BitChordIcons
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cloud
@@ -33,17 +44,17 @@ import com.music.bitchord.ui.replay.ReplayStoryPage
 // sits on its "On device" shelf, and the way in to Replay at its head.
 
 /**
- * The phone's folders, drawn as a list under the Replay cards: Downloads and
- * Local Music, the song cache when Settings has it shown, and the two remote
- * libraries it can reach.
+ * The Library menu's rows after Spotify: the song cache when Settings has it
+ * shown, and the two remote libraries once they are set up. The libraries
+ * themselves — YouTube Music, the device, both — are picked from the logo at
+ * the head of the page instead; see [LibrarySource].
  */
 @Composable
-fun libraryLinks(signedIn: Boolean): List<LibraryLink> {
+fun libraryExtraLinks(): List<LibraryLink> {
     val webdavConfigured by AppSettings.webdavUrl.collectAsStateWithLifecycle()
     val smbHost by AppSettings.smbHost.collectAsStateWithLifecycle()
     val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
     val showCacheFolder by AppSettings.showCacheFolder.collectAsStateWithLifecycle()
-    val spotifyConnected by AppSettings.spotifySpdcToken.collectAsStateWithLifecycle()
     fun link(icon: ImageVector, title: String, subtitle: String, browseId: String) = LibraryLink(
         item = ShelfItem(
             title = title,
@@ -55,26 +66,6 @@ fun libraryLinks(signedIn: Boolean): List<LibraryLink> {
         icon = icon,
     )
     return listOfNotNull(
-        // Everything in the account's YouTube Music library, songs and uploads,
-        // in the same tabbed view as the device folders below.
-        link(
-            Icons.Rounded.LibraryMusic,
-            stringResource(R.string.youtube_music),
-            stringResource(R.string.youtube_music_library_subtitle),
-            YT_MUSIC_LIBRARY_BROWSE_ID,
-        ).takeIf { signedIn },
-        link(
-            Icons.Rounded.Download,
-            stringResource(R.string.downloads),
-            stringResource(R.string.downloaded_songs),
-            "local:downloads",
-        ),
-        link(
-            Icons.Rounded.Folder,
-            stringResource(R.string.local_music),
-            stringResource(R.string.audio_files_on_device),
-            "local:all",
-        ),
         // Opt-in from Settings → Storage: what the song cache is holding from
         // YouTube and JioSaavn. See [com.music.bitchord.playback.AudioCache.cachedSongs].
         link(
@@ -96,14 +87,6 @@ fun libraryLinks(signedIn: Boolean): List<LibraryLink> {
             stringResource(R.string.smb_subtitle),
             com.music.bitchord.data.smb.SmbConfig.BROWSE_ID,
         ).takeIf { smbHost.isNotBlank() && smbShare.isNotBlank() },
-        // Only while signed in to Spotify in Settings → Accounts; it opens that
-        // account's playlists rather than a browse page.
-        link(
-            Icons.Rounded.Cloud,
-            stringResource(R.string.spotify),
-            stringResource(R.string.spotify_library_subtitle),
-            SPOTIFY_BROWSE_ID,
-        ).takeIf { spotifyConnected.isNotBlank() }?.copy(logo = Res.drawable.spotify_logo),
     )
 }
 
@@ -135,6 +118,59 @@ fun libraryDeviceItems(downloadedReleases: List<SavedCollection>): List<ShelfIte
 
 /** The YouTube Music library folder: every song in the account's library, uploads included. */
 const val YT_MUSIC_LIBRARY_BROWSE_ID = "local:ytmusic"
+
+/** The Local library: the device's audio files and the downloads, as one list. */
+const val LOCAL_LIBRARY_BROWSE_ID = "local:library"
+
+/** The All library: YouTube Music's and the device's songs together, duplicates hidden by default. */
+const val ALL_LIBRARY_BROWSE_ID = "local:everything"
+
+/** The page holding every song in [this] library, with its Songs / Artists / Albums tabs. */
+val LibrarySource.browseId: String
+    get() = when (this) {
+        LibrarySource.YOUTUBE_MUSIC -> YT_MUSIC_LIBRARY_BROWSE_ID
+        LibrarySource.LOCAL -> LOCAL_LIBRARY_BROWSE_ID
+        LibrarySource.ALL -> ALL_LIBRARY_BROWSE_ID
+    }
+
+@Composable
+fun LibrarySource.label(): String = stringResource(
+    when (this) {
+        LibrarySource.YOUTUBE_MUSIC -> R.string.youtube_music
+        LibrarySource.LOCAL -> R.string.library_source_local
+        LibrarySource.ALL -> R.string.library_source_all
+    },
+)
+
+/**
+ * A library's mark: YouTube Music's own for that one, the Downloads arrow for
+ * the device's, and BitChord Dial's squares for both together.
+ */
+@Composable
+fun LibrarySourceIcon(source: LibrarySource, tint: Color, modifier: Modifier = Modifier) {
+    when (source) {
+        LibrarySource.YOUTUBE_MUSIC -> Icon(
+            painter = painterResource(R.drawable.ic_youtube_music),
+            contentDescription = null,
+            tint = tint,
+            modifier = modifier,
+        )
+        LibrarySource.LOCAL -> Icon(
+            imageVector = BitChordIcons.Download,
+            contentDescription = null,
+            tint = tint,
+            modifier = modifier,
+        )
+        LibrarySource.ALL -> Box(modifier, contentAlignment = Alignment.Center) {
+            SquareLogo(
+                color = tint,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(SQUARE_LOGO_ASPECT),
+            )
+        }
+    }
+}
 
 /** The Library row that opens the connected Spotify account; handled by the app, not a browse page. */
 const val SPOTIFY_BROWSE_ID = "app:spotify"

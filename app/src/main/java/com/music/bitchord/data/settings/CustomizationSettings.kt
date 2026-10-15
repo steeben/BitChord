@@ -27,11 +27,11 @@ enum class NavPage(val id: Int) {
 
 enum class MiniPlayerShape { CIRCULAR, SQUARED }
 
-/** Which tab a library folder opens on. Matches the folder page's tab order. */
-enum class LibraryStartPage { SONGS, ARTISTS, ALBUMS }
-
-/** A library folder the Library tab opens straight into. */
-data class DefaultLibrary(val browseId: String, val title: String)
+/**
+ * Which library the Library tab shows: the YouTube Music account's, the
+ * device's (local files and downloads together), or both at once.
+ */
+enum class LibrarySource { YOUTUBE_MUSIC, LOCAL, ALL }
 
 /** One entry in an ordered list where each entry can also be switched off. */
 data class OrderedToggle<T>(val item: T, val enabled: Boolean)
@@ -105,9 +105,8 @@ object CustomizationSettings {
     /** Whether those blobs take the playing song's artwork colour. */
     val ambientFollowsArtwork = MutableStateFlow(false)
 
-    /** The library folder the Library tab opens into, or null for the Library page itself. */
-    val defaultLibrary = MutableStateFlow<DefaultLibrary?>(null)
-    val defaultLibraryPage = MutableStateFlow(LibraryStartPage.SONGS)
+    /** The library last picked from the Library page's logo; remembered across launches. */
+    val librarySource = MutableStateFlow(LibrarySource.ALL)
 
     /**
      * Home page sections by title, in the order to show them, each shown or
@@ -155,11 +154,8 @@ object CustomizationSettings {
             ?: DEFAULT_TAB_VIEWS
         ambientBackground.value = p.getBoolean(KEY_AMBIENT_BACKGROUND, true)
         ambientFollowsArtwork.value = p.getBoolean(KEY_AMBIENT_FOLLOWS_ARTWORK, false)
-        defaultLibrary.value = p.getString(KEY_DEFAULT_LIBRARY_ID, null)?.takeIf { it.isNotBlank() }?.let {
-            DefaultLibrary(it, p.getString(KEY_DEFAULT_LIBRARY_TITLE, null).orEmpty())
-        }
-        defaultLibraryPage.value = LibraryStartPage.entries
-            .firstOrNull { it.name == p.getString(KEY_DEFAULT_LIBRARY_PAGE, null) } ?: LibraryStartPage.SONGS
+        librarySource.value = LibrarySource.entries
+            .firstOrNull { it.name == p.getString(KEY_LIBRARY_SOURCE, null) } ?: LibrarySource.ALL
         homeSections.value = readHomeSections(p.getString(KEY_HOME_SECTIONS, null))
         speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
         lastSpeedDial.value = readPins(p.getString(KEY_LAST_SPEED_DIAL, null))
@@ -427,17 +423,9 @@ object CustomizationSettings {
         prefs?.edit()?.putBoolean(KEY_KEEP_NAV_EXPANDED, value)?.apply()
     }
 
-    fun setDefaultLibrary(value: DefaultLibrary?) {
-        defaultLibrary.value = value
-        prefs?.edit()
-            ?.putString(KEY_DEFAULT_LIBRARY_ID, value?.browseId.orEmpty())
-            ?.putString(KEY_DEFAULT_LIBRARY_TITLE, value?.title.orEmpty())
-            ?.apply()
-    }
-
-    fun setDefaultLibraryPage(value: LibraryStartPage) {
-        defaultLibraryPage.value = value
-        prefs?.edit()?.putString(KEY_DEFAULT_LIBRARY_PAGE, value.name)?.apply()
+    fun setLibrarySource(value: LibrarySource) {
+        librarySource.value = value
+        prefs?.edit()?.putString(KEY_LIBRARY_SOURCE, value.name)?.apply()
     }
 
     fun setLibraryTabView(tab: Int, value: LibraryViewType) {
@@ -527,9 +515,7 @@ object CustomizationSettings {
     private const val KEY_AMBIENT_BACKGROUND = "custom_ambient_background"
     private const val KEY_LIBRARY_TAB_VIEWS = "custom_library_tab_views"
     private const val KEY_AMBIENT_FOLLOWS_ARTWORK = "custom_ambient_follows_artwork"
-    private const val KEY_DEFAULT_LIBRARY_ID = "custom_default_library_id"
-    private const val KEY_DEFAULT_LIBRARY_TITLE = "custom_default_library_title"
-    private const val KEY_DEFAULT_LIBRARY_PAGE = "custom_default_library_page"
+    private const val KEY_LIBRARY_SOURCE = "custom_library_source"
     private const val KEY_SPEED_DIAL_PINS = "custom_speed_dial_pins"
     private const val KEY_LAST_SPEED_DIAL = "custom_last_speed_dial"
     private const val KEY_MINI_PLAYER_NEXT = "custom_mini_player_next"

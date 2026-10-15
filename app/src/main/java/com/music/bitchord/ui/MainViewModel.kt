@@ -90,6 +90,10 @@ import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.StreamChoice
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.YT_MUSIC_LIBRARY_BROWSE_ID
+import com.music.bitchord.ui.screens.LOCAL_LIBRARY_BROWSE_ID
+import com.music.bitchord.ui.screens.ALL_LIBRARY_BROWSE_ID
+import com.music.bitchord.data.LibraryDuplicates
+import com.music.bitchord.data.settings.LibrarySource
 import com.music.bitchord.data.settings.CustomizationSettings
 import com.music.bitchord.ui.screens.matchesSearch
 import java.util.Locale
@@ -1656,8 +1660,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             AppSettings.filterNonMusicAudio.drop(1).collect {
-                if (_detailStack.value.any { page -> page.browseId == "local:all" }) {
-                    reloadLocalDetail("local:all")
+                listOf("local:all", LOCAL_LIBRARY_BROWSE_ID, ALL_LIBRARY_BROWSE_ID).forEach { id ->
+                    if (_detailStack.value.any { page -> page.browseId == id }) reloadLocalDetail(id)
+                }
+            }
+        }
+        viewModelScope.launch {
+            AppSettings.hideCombinedDuplicates.drop(1).collect {
+                if (_detailStack.value.any { page -> page.browseId == ALL_LIBRARY_BROWSE_ID }) {
+                    reloadLocalDetail(ALL_LIBRARY_BROWSE_ID)
                 }
             }
         }
@@ -2875,6 +2886,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
                 browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> ytLibraryState()
+                browseId == LOCAL_LIBRARY_BROWSE_ID -> combinedLibraryState(withYouTube = false)
+                browseId == ALL_LIBRARY_BROWSE_ID -> combinedLibraryState(withYouTube = true)
                 browseId == "local:all" -> {
                     val context = getApplication<Application>()
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
@@ -3075,6 +3088,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
                 browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> ytLibraryState()
+                browseId == LOCAL_LIBRARY_BROWSE_ID -> combinedLibraryState(withYouTube = false)
+                browseId == ALL_LIBRARY_BROWSE_ID -> combinedLibraryState(withYouTube = true)
                 browseId == "local:all" -> {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
                         UiState.Error(text(R.string.storage_required_read))
@@ -3250,6 +3265,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 browseId == YT_MUSIC_LIBRARY_BROWSE_ID -> ytLibraryCache?.let { Result.success(it) }
                     ?: YtMusicRepository.wholeLibrarySongs().onSuccess { ytLibraryCache = it }
+                browseId == LOCAL_LIBRARY_BROWSE_ID || browseId == ALL_LIBRARY_BROWSE_ID -> runCatching {
+                    when (val combined = combinedLibraryState(withYouTube = browseId == ALL_LIBRARY_BROWSE_ID)) {
+                        is UiState.Success -> combined.data
+                        is UiState.Error -> error(combined.message)
+                        else -> emptyList()
+                    }
+                }
                 browseId == "local:all" -> runCatching {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
                         error(text(R.string.storage_required_read))
@@ -3642,12 +3664,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Fetches the YouTube Music library ahead of time when it is the default library. */
-    fun prefetchDefaultLibrary() {
+    /**
+     * Fetches the YouTube Music library's songs ahead of time while the Library
+     * tab shows a library that has them, so its Songs, Artists and Albums
+     * pages open on a list rather than a spinner.
+     */
+    fun prefetchLibrarySongs() {
         if (!_signedIn.value || ytLibraryCache != null) return
-        if (CustomizationSettings.defaultLibrary.value?.browseId != YT_MUSIC_LIBRARY_BROWSE_ID) return
+        if (CustomizationSettings.librarySource.value == LibrarySource.LOCAL) return
         viewModelScope.launch {
             YtMusicRepository.wholeLibrarySongs().onSuccess { ytLibraryCache = it }
+        }
+    }
+
+    /**
+     * The Local library — the device's audio files and the downloads together —
+     * or, [withYouTube], the All library: those and the YouTube Music library's
+     * songs as well. A source that cannot be read (no storage permission, not
+     * signed in, offline) is left out rather than failing the rest.
+     *
+     * Listed device copies first, so when "hide detected duplicates" drops one
+     * of two copies of a song it is the stream that goes; see
+     * [LibraryDuplicates.withoutDetectedDuplicates].
+     */
+    private suspend fun combinedLibraryState(withYouTube: Boolean): UiState<List<Song>> = coroutineScope {
+        val context = getApplication<Application>()
+        val youTube = if (withYouTube && _signedIn.value) {
+            async {
+                ytLibraryCache ?: YtMusicRepository.wholeLibrarySongs()
+                    .onSuccess { ytLibraryCache = it }
+                    .getOrNull()
+                    .orEmpty()
+            }
+        } else {
+            null
+        }
+        val downloads = runCatching { Downloads.getDownloadedSongs(context) }.getOrDefault(emptyList())
+        val local = runCatching { LocalMediaRepository.getLocalMusic(context) }.getOrDefault(emptyList())
+        var songs = (downloads + local + youTube?.await().orEmpty()).distinctBy { it.videoId }
+        if (withYouTube && AppSettings.hideCombinedDuplicates.value) {
+            songs = with(LibraryDuplicates) { songs.withoutDetectedDuplicates() }
+        }
+        when {
+            songs.isNotEmpty() -> UiState.Success(songs)
+            !withYouTube && !LocalMediaRepository.hasStoragePermission(context) ->
+                UiState.Error(text(R.string.storage_required_read))
+            else -> UiState.Error(text(R.string.library_source_empty))
         }
     }
 

@@ -329,10 +329,17 @@ fun FrostedTopBar(
             // The accessory takes everything from the leading gutter up to the
             // actions, which keep their own width at the trailing end.
             val edge = if (useFloatingChrome) BAR_GUTTER else 4.dp
+            // Beside the back button when there is one (a library folder's
+            // search field), rather than over it.
+            val accessoryStart = when {
+                onBack == null -> edge
+                useFloatingChrome -> BAR_GUTTER + 44.dp + ACCESSORY_GAP
+                else -> 4.dp + 48.dp + ACCESSORY_GAP
+            }
             Row(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .then(if (accessory != null) Modifier.fillMaxWidth().padding(start = edge) else Modifier)
+                    .then(if (accessory != null) Modifier.fillMaxWidth().padding(start = accessoryStart) else Modifier)
                     // Same outer edge as the navbar; PILL_INSET below is
                     // internal padding around the icons, not extra margin.
                     .padding(end = edge),

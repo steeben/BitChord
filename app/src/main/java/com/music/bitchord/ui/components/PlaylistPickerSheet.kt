@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -57,6 +58,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.music.bitchord.R
+import com.music.bitchord.sharedui.resources.Res
+import com.music.bitchord.sharedui.resources.spotify_logo
 import com.music.bitchord.data.model.PlaylistPrivacy
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
@@ -92,6 +95,8 @@ fun PlaylistPickerSheet(
     modifier: Modifier = Modifier,
     song: Song? = null,
     startCreating: Boolean = false,
+    /** Offered under Create on the new-playlist form: a playlist brought over from Spotify instead. */
+    onImportSpotify: (() -> Unit)? = null,
 ) {
     var creating by remember { mutableStateOf(startCreating) }
     // By id rather than by value: the list is re-fetched under an open sheet,
@@ -104,6 +109,7 @@ fun PlaylistPickerSheet(
             // form; the sheet's own dismiss is the way out.
             onBack = if (startCreating) null else ({ creating = false }),
             onCreate = onCreate,
+            onImportSpotify = onImportSpotify,
             modifier = modifier,
         )
         return
@@ -245,6 +251,7 @@ private fun PlaylistRow(playlist: UserPlaylist, selected: Boolean, onClick: () -
 private fun NewPlaylistForm(
     onBack: (() -> Unit)?,
     onCreate: (String, PlaylistPrivacy) -> Unit,
+    onImportSpotify: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var name by remember { mutableStateOf("") }
@@ -375,6 +382,26 @@ private fun NewPlaylistForm(
                 .padding(horizontal = 22.dp),
         ) {
             Text(stringResource(R.string.create_playlist))
+        }
+        if (onImportSpotify != null) {
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    focusManager.clearFocus()
+                    onImportSpotify()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp),
+            ) {
+                Icon(
+                    painter = org.jetbrains.compose.resources.painterResource(Res.drawable.spotify_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.import_from_spotify))
+            }
         }
         Spacer(Modifier.height(28.dp))
     }
