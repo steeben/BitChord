@@ -268,6 +268,7 @@ import com.music.bitchord.ui.components.FloatingBarsTapGuard
 import com.music.bitchord.ui.components.BottomTab
 import com.music.bitchord.ui.components.FLOATING_BAR_MAX_WIDTH
 import com.music.bitchord.ui.components.FloatingBottomBar
+import com.music.bitchord.ui.components.LibraryShuffleButton
 import com.music.bitchord.ui.components.GlassNavBar
 import com.music.bitchord.ui.components.floatingtabbar.FloatingTabBarInlineBehavior
 import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
@@ -2874,35 +2875,37 @@ private fun BitChordApp(
         // one child it always had and changes nothing.
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
+                // The page on screen, by the key the pages below swap on.
+                val pageKey = when {
+                    showSpotify && detail == null -> "spotify"
+                    showDiscord -> "discord"
+                    showHistory -> "history"
+                    // `&& detail == null`: a card opened from the grid
+                    // stacks a detail page over it exactly as one opened
+                    // from the Library tab does — see
+                    // [onLibraryItemClick] — so with both set this must
+                    // give way to the `detail != null` branch below it
+                    // rather than keep showing the grid underneath.
+                    libraryShowAll != null && detail == null -> "library_show_all"
+                    // When a sub-screen overlay is active, keep SettingsSheet
+                    // mounted so its scroll position survives.  The overlay is
+                    // rendered below the AnimatedContent block.
+                    settingsSubScreen != null -> "settings"
+                    showAccountScrobbling -> "account_scrobbling"
+                    showSources -> "sources"
+                    showListenTogether -> "listen_together"
+                    showEqualizer -> "equalizer"
+                    // Above Replay, not below it. The top bar's account
+                    // button sets `showSettings` from every page including
+                    // this one, so with Replay winning the tie the button
+                    // was live, hit, and changed nothing on screen.
+                    showSettings -> "settings"
+                    showReplay -> "replay"
+                    detail != null -> detail.browseId
+                    else -> "$TAB_KEY$selectedTab"
+                }
                 AnimatedContent(
-                    targetState = when {
-                        showSpotify && detail == null -> "spotify"
-                        showDiscord -> "discord"
-                        showHistory -> "history"
-                        // `&& detail == null`: a card opened from the grid
-                        // stacks a detail page over it exactly as one opened
-                        // from the Library tab does — see
-                        // [onLibraryItemClick] — so with both set this must
-                        // give way to the `detail != null` branch below it
-                        // rather than keep showing the grid underneath.
-                        libraryShowAll != null && detail == null -> "library_show_all"
-                        // When a sub-screen overlay is active, keep SettingsSheet
-                        // mounted so its scroll position survives.  The overlay is
-                        // rendered below the AnimatedContent block.
-                        settingsSubScreen != null -> "settings"
-                        showAccountScrobbling -> "account_scrobbling"
-                        showSources -> "sources"
-                        showListenTogether -> "listen_together"
-                        showEqualizer -> "equalizer"
-                        // Above Replay, not below it. The top bar's account
-                        // button sets `showSettings` from every page including
-                        // this one, so with Replay winning the tie the button
-                        // was live, hit, and changed nothing on screen.
-                        showSettings -> "settings"
-                        showReplay -> "replay"
-                        detail != null -> detail.browseId
-                        else -> "$TAB_KEY$selectedTab"
-                    },
+                    targetState = pageKey,
                     // Tabs swap outright; everything else crossfades.
                     //
                     // A tab is not a place you travel to — the bar is the whole
@@ -4342,6 +4345,39 @@ private fun BitChordApp(
                 // Whichever bar is drawing reports its height here, for the
                 // guard to read at layout — never in composition, see the guard.
                 val floatingBarsHeight = remember { mutableIntStateOf(0) }
+
+                // Shuffle at the bottom right of the library pages: everything
+                // saved to the library, liked and added alike, in one shuffled
+                // queue. Outside the page's backdrop layer so its glass samples
+                // the list beneath it, and lifted off the bars by their measured
+                // height — read at layout, so it rides the glass bar as it folds.
+                val libraryShuffleSongs = remember(libraryState) {
+                    (libraryState as? UiState.Success)?.data
+                        ?.let { (it.likedSongs + it.librarySongs).distinctBy { song -> song.videoId } }
+                        .orEmpty()
+                }
+                val onLibraryPage = pageKey == "library_show_all" ||
+                    pageKey == "$TAB_KEY$TAB_LIBRARY" ||
+                    pageKey == "$TAB_KEY$TAB_PLAYLISTS"
+                if (onLibraryPage && libraryShuffleSongs.isNotEmpty()) {
+                    LibraryShuffleButton(
+                        onClick = {
+                            // As on a release page: shuffle goes on before the
+                            // queue is built, so it is built shuffled.
+                            QueueShuffle.enableForNextQueue()
+                            playFrom(
+                                libraryShuffleSongs,
+                                libraryShuffleSongs.indices.random(),
+                                QueueSource(libraryLabel, PlaybackSourceType.BROWSE),
+                            )
+                        },
+                        hazeState = hazeState,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset { IntOffset(0, -floatingBarsHeight.intValue) }
+                            .padding(end = 16.dp, bottom = 16.dp),
+                    )
+                }
                 FloatingBarsTapGuard(
                     barsHeight = { floatingBarsHeight.intValue },
                     modifier = Modifier.align(Alignment.BottomCenter),
