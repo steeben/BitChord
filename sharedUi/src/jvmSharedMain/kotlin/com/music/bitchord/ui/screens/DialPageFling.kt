@@ -8,14 +8,17 @@ import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.lazy.LazyListState
 import kotlin.math.abs
 
+/** A shelf's key in Home's list: by title, so shelves landing above it don't re-key it. */
+internal fun homeShelfKey(title: String): String = "shelf:$title"
+
 /** Keys the speed dial's page goes by in Home's list, real or placeholder. */
-internal val SPEED_DIAL_PAGE_KEYS: Set<Any> = setOf(SPEED_DIAL_SHELF_TITLE + "0", "skeleton:speed-dial")
+internal val SPEED_DIAL_PAGE_KEYS: Set<Any> = setOf(homeShelfKey(SPEED_DIAL_SHELF_TITLE), "skeleton:speed-dial")
 
 /** The title the artists' dial goes by as a shelf: never shown, only matched on. */
 const val ARTIST_DIAL_SHELF_TITLE = "Artist dial"
 
-/** The artists' dial's key in Home's list: it is always the second shelf. */
-const val ARTIST_DIAL_PAGE_KEY = ARTIST_DIAL_SHELF_TITLE + "1"
+/** The artists' dial's key in Home's list. */
+val ARTIST_DIAL_PAGE_KEY: String = homeShelfKey(ARTIST_DIAL_SHELF_TITLE)
 
 /**
  * Home's fling over its dial pages — the speed dial, then the artists' dial

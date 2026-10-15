@@ -431,7 +431,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
         if (index == leadCount) afterLead?.invoke(this)
         val repeat = seen.getOrElse(shelf.title) { 0 }
         seen[shelf.title] = repeat + 1
-        item(key = "shelf:" + shelf.title + if (repeat > 0) "#$repeat" else "") {
+        item(key = homeShelfKey(shelf.title) + if (repeat > 0) "#$repeat" else "") {
             // Shelves that arrive after the page is up fade in rather than pop.
             Box(Modifier.animateItem(fadeInSpec = tween(SHELF_FADE_MS), fadeOutSpec = tween(SHELF_FADE_MS / 2))) {
                 val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
