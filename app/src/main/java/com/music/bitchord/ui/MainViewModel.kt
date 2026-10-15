@@ -418,9 +418,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lyricsFor = key
         lyricsGeneration += 1
         val generation = lyricsGeneration
+        // A provider picked by hand holds for the song it was picked on and no
+        // other: the next track goes back to Automatic's own ranking.
+        if (AppSettings.preferredLyricsSource.value != null &&
+            currentLyricsRequest?.videoId != videoId
+        ) {
+            AppSettings.setPreferredLyricsSource(null)
+        }
         currentLyricsRequest = LyricsRequest(videoId, title, artist, durationMs, album)
-        // A provider picked by hand on an earlier track is asked first and kept
-        // whenever it answers; one since switched off in Settings is ignored.
         val preferred = AppSettings.preferredLyricsSource.value?.takeIf { it in sources }
         selectedLyricsSource = preferred
         manualLyricsJobs.values.forEach(Job::cancel)

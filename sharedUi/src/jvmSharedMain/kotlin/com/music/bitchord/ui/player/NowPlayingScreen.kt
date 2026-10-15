@@ -35,6 +35,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -3339,7 +3340,23 @@ fun NowPlayingScreen(
                                     closeLyrics()
                                 }
                             } else {
-                                Modifier
+                                // Held, the cover goes to the album it is the
+                                // cover of — the same page the title opens.
+                                // Only long presses: a tap or a swipe here is
+                                // still the player's own.
+                                val albumId = song.albumId
+                                if (albumId == null) {
+                                    Modifier
+                                } else {
+                                    Modifier.pointerInput(albumId) {
+                                        detectTapGestures(
+                                            onLongPress = {
+                                                haptics.play(Haptic.Expand)
+                                                onOpenAlbum(albumId)
+                                            },
+                                        )
+                                    }
+                                }
                             },
                         ),
                     contentAlignment = Alignment.Center,

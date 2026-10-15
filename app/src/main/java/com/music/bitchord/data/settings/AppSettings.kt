@@ -500,10 +500,9 @@ object AppSettings {
     val lyricsSourceOrder = MutableStateFlow<List<LyricsSource>>(LyricsSource.offered)
 
     /**
-     * The provider last picked by hand from the player's provider drawer, or
-     * null for the automatic choice. Asked ahead of [lyricsSourceOrder] and
-     * preferred whenever it answers, so a pick carries over to the next track
-     * instead of lasting only for the one it was made on.
+     * The provider picked by hand from the player's provider drawer for the
+     * playing song, or null for the automatic choice. Only ever for that one
+     * song: the next track clears it, and it is not kept across launches.
      */
     val preferredLyricsSource = MutableStateFlow<LyricsSource?>(null)
 
@@ -518,7 +517,7 @@ object AppSettings {
      * which is why it defaults off rather than being how [LyricsRepository]
      * always behaved.
      */
-    val prioritizeSyllableSync = MutableStateFlow(false)
+    val prioritizeSyllableSync = MutableStateFlow(true)
 
     /** Treat an answer of two lines or fewer as no answer: almost always a stub or a wrong match. */
     val ignoreShortLyrics = MutableStateFlow(false)
@@ -879,9 +878,7 @@ object AppSettings {
         lyricsSources.value = readLyricsSources()
         lyricsSourceOrder.value = readLyricsSourceOrder()
         instrumentalTracks.value = prefs.getStringSet(KEY_INSTRUMENTAL_TRACKS, null)?.toSet().orEmpty()
-        preferredLyricsSource.value = prefs.getString(KEY_PREFERRED_LYRICS_SOURCE, null)
-            ?.let { name -> LyricsSource.offered.firstOrNull { it.name == name } }
-        prioritizeSyllableSync.value = prefs.getBoolean(KEY_PRIORITIZE_SYLLABLE_SYNC, false)
+        prioritizeSyllableSync.value = prefs.getBoolean(KEY_PRIORITIZE_SYLLABLE_SYNC, true)
         ignoreShortLyrics.value = prefs.getBoolean(KEY_IGNORE_SHORT_LYRICS, false)
         paxSenixApiKey.value = prefs.getString(KEY_PAXSENIX_API_KEY, "").orEmpty()
         com.music.bitchord.data.lyrics.PaxSenix.setApiKey(paxSenixApiKey.value)
@@ -1367,7 +1364,6 @@ object AppSettings {
 
     fun setPreferredLyricsSource(value: LyricsSource?) {
         preferredLyricsSource.value = value
-        prefs.edit().putString(KEY_PREFERRED_LYRICS_SOURCE, value?.name).apply()
     }
 
     fun setLyricsSourceOrder(value: List<LyricsSource>) {
@@ -1410,7 +1406,7 @@ object AppSettings {
     fun resetLyricsSourceSettings() {
         setLyricsSources(LyricsSource.offered.toSet())
         setLyricsSourceOrder(LyricsSource.offered)
-        setPrioritizeSyllableSync(false)
+        setPrioritizeSyllableSync(true)
         setIgnoreShortLyrics(false)
     }
 
@@ -2024,7 +2020,6 @@ object AppSettings {
     private const val KEY_LYRICS_SOURCES = "lyrics_sources"
     private const val KEY_LYRICS_SOURCES_SEEN = "lyrics_sources_seen"
     private const val KEY_LYRICS_SOURCE_ORDER = "lyrics_source_order"
-    private const val KEY_PREFERRED_LYRICS_SOURCE = "preferred_lyrics_source"
     private const val KEY_INSTRUMENTAL_TRACKS = "instrumental_tracks"
     private const val KEY_PRIORITIZE_SYLLABLE_SYNC = "prioritize_syllable_sync"
     private const val KEY_IGNORE_SHORT_LYRICS = "ignore_short_lyrics"

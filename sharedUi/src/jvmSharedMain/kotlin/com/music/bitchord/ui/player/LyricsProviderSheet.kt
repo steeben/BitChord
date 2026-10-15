@@ -75,8 +75,9 @@ import dev.chrisbanes.haze.HazeState
  * than a settings dialog. A row that the automatic lookup already completed is
  * entirely local: hits switch immediately and misses cannot be requested twice.
  *
- * A pick is remembered across tracks by the host. When [onSelectAutomatic] is
- * given, an Automatic row heads the list to forget it again.
+ * A pick holds for the playing song only; the host clears it on the next
+ * track. When [onSelectAutomatic] is given, an Automatic row heads the list to
+ * forget it sooner.
  *
  * Picking does not close the drawer: it stays up so the rows can be compared,
  * reordered by their handles, or the track marked instrumental.
