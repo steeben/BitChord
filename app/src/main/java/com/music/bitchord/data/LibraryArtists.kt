@@ -25,6 +25,10 @@ import java.util.Locale
  * All library matches copies of a song by.
  */
 object LibraryArtists {
+    // Declared ahead of [KEEP_WHOLE], whose initialiser folds through [key].
+    private val MARKS = Regex("\\p{M}+")
+    private val NOT_WORD = Regex("[^\\p{L}\\p{N}]+")
+
     /** Real names that a comma would otherwise cut in two. Matched folded. */
     private val KEEP_WHOLE = listOf(
         "Tyler, The Creator",
@@ -50,9 +54,6 @@ object LibraryArtists {
 
     /** A separator only when every side is an artist of its own. */
     private val SOFT = Regex("\\s+(?:&|＆|\\+|x|×|and|vs\\.?)\\s+", RegexOption.IGNORE_CASE)
-
-    private val MARKS = Regex("\\p{M}+")
-    private val NOT_WORD = Regex("[^\\p{L}\\p{N}]+")
 
     /** One spelling of a name for comparing: no case, accents or punctuation. */
     fun key(name: String): String =
