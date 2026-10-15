@@ -319,8 +319,11 @@ internal fun AndroidCanvasArtworkPlayer(
         } else {
             Log.w(TAG, "frame capture returned null after rendered=true")
         }
-        // The opening frame as the view shows it, kept for next time.
-        if (CanvasFrameMemory.get(canvas.url) == null) {
+        // The opening frame as the view shows it, kept for next time. Only once
+        // the clip's aspect is known and its transform is on the view: a frame
+        // read back before that is the clip stretched to the view's bounds, and
+        // it would stand in, squished, every time the clip is mounted again.
+        if (CanvasFrameMemory.get(canvas.url) == null && clipAspect > 0f) {
             view.captureWhole(PLACEHOLDER_PX)?.let { CanvasFrameMemory.put(canvas.url, it.asImageBitmap()) }
         }
     }
@@ -379,7 +382,11 @@ internal fun AndroidCanvasArtworkPlayer(
         Image(
             bitmap = frame,
             contentDescription = null,
-            contentScale = ContentScale.FillBounds,
+            // Cropped rather than stretched. The frame was read back at the
+            // size the view had then, and a remount can land mid-resize — on
+            // the way back from the queue the banner is still settling — where
+            // filling the bounds squashed it until the clip's own frame took over.
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .matchParentSize()
                 .graphicsLayer { this.alpha = currentPresentationAlpha() },
@@ -396,6 +403,19 @@ internal fun AndroidCanvasArtworkPlayer(
                 // visible underneath for the length of the fade.
                 isOpaque = false
                 this.alpha = 0f
+                // The transform is worked out for the view's size, and the
+                // update block below only runs on recomposition — which has
+                // usually come and gone before a freshly mounted view is laid
+                // out, and doesn't come at all for a resize nothing in
+                // composition asked for. Left to it, the clip showed stretched
+                // to the old bounds until something else recomposed.
+                addOnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                    if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                        (view as TextureView).applyContentTransform(
+                            clipAspect, currentContentMode, currentAlignPortraitTop,
+                        )
+                    }
+                }
                 player.setVideoTextureView(this)
                 // setVideoTextureView installs ExoPlayer's own listener, and
                 // the player has to keep it — it is how the surface reaches
@@ -453,8 +473,9 @@ internal fun AndroidCanvasArtworkPlayer(
                         // This callback is the proof that the current
                         // TextureView, rather than some previously destroyed
                         // surface, contains a drawable video buffer.
-                        // In portrait-fit mode the frame is not handed to the
-                        // still artwork until its aspect and transform are ready.
+                        // The frame is not handed to the still artwork until
+                        // its aspect and transform are ready: cropped too, or
+                        // the first frame showed stretched to the view.
                         if (!rendered) {
                             val transformed = textureView?.applyContentTransform(
                                 clipAspect, currentContentMode, currentAlignPortraitTop,
@@ -466,7 +487,7 @@ internal fun AndroidCanvasArtworkPlayer(
                             val layoutReady = !portrait ||
                                 (expected != IntSize.Zero && view?.width == expected.width &&
                                     view?.height == expected.height)
-                            if ((currentContentMode == CanvasContentMode.CROP || transformed) && layoutReady) {
+                            if (transformed && layoutReady) {
                                 rendered = true
                                 frameTick++
                                 Log.d(TAG, "first frame on surface (tick $frameTick, gen $surfaceGeneration)")
