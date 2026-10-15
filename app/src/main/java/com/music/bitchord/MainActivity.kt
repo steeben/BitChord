@@ -5387,7 +5387,8 @@ private fun BitChordApp(
                 },
                 // Local to this device: YouTube Music's own cover upload isn't
                 // something the app's API can do, so any playlist can take one.
-                onSetCustomCover = pinnableId?.let { id ->
+                // One row at a time: Remove takes its place once a cover is set.
+                onSetCustomCover = pinnableId?.takeIf { customCover == null }?.let { id ->
                     {
                         browseActions = null
                         coverPickFor = id
