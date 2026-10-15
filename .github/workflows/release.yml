@@ -68,6 +68,6 @@ jobs:
             gh release upload "$TAG" "BitChord-${TAG}.apk" --clobber
           else
             gh release create "$TAG" "BitChord-${TAG}.apk" \
-              --title "BitChord ${TAG#v}" \
+              --title "BitChord Dial ${TAG#v}" \
               --notes-file RELEASE_NOTES.md
           fi

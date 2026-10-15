@@ -1,14 +1,20 @@
-First release of this fork of [BitChord](https://github.com/kushagrasinghx/BitChord).
+BitChord Dial 1.1.0
 
-- Play your uploaded YouTube Music songs
-- Ambient colour background that can follow the current song's art
-- Speed dial on Home, with pins you can reorder
-- Reorder or hide Home sections
-- Customizable navigation bar, with a Playlists shortcut
-- Keep the miniplayer and navigation bar expanded
-- Compact player controls over Spotify Canvas, and in the queue and lyrics
-- Redesigned queue with history
-- YouTube Music library folder, default library, per-tab list/grid, last-played sort
-- Swipe gestures to open the queue and minimize the player
+### Home
+- The speed dial is Home's first screen, with an artists' dial as a second page (pinned artists, then your most played)
+- Hold a tile for its menu: an artist menu (View artist, speed dial, Shuffle, Start radio, Favorite), remove from dial, show or hide its title
+- Drag pins to reorder: the pins jiggle and the rest dim
+- I'm Feeling Lucky: a die on the dial that starts a radio from your recent, most-played and liked songs
+- Every dial ends on a full page, with a History tile: the last 50 songs, or the last 20 artists
+- Hold the "BitChord Dial" title to rename it and set the grid, artists' dial, die, tile names and pin icons
+- A new launch animation, a logo that spins on pull-to-refresh, and a soft blur at the top of Explore
 
-Install over a previous build of this fork to keep your sign-in. For automatic updates, use [ObtainX](https://github.com/bikram-agarwal/ObtainX) ([F-Droid](https://f-droid.org/packages/dev.bikram.obtainx/)) pointed at this repository.
+### Everywhere else
+- Artist pages get Start radio and a pin button, and liquid glass buttons
+- Release pages load without jumping, and their songs fade in row by row
+- The miniplayer shows progress as a glow in the cover's colour, and swipes between songs; a next button is optional
+- A–Z index on library lists, cropped non-square artwork (optional), glass search switch
+- Song cache up to 50 GB, in 5 GB steps
+- Check for updates in Settings › Miscellaneous
+
+Installs over the previous build and keeps your sign-in.
