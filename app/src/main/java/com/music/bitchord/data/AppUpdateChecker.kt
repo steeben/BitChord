@@ -43,7 +43,7 @@ object AppUpdateChecker {
     private const val CACHE_SUBDIR = "updates"
 
     private const val LATEST_RELEASE_URL =
-        "https://api.github.com/repos/steeben/BitChord/releases/latest"
+        "https://api.github.com/repos/steeben/BitChord-Dial/releases/latest"
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -65,22 +65,34 @@ object AppUpdateChecker {
     @Volatile
     private var downloadCancelled = false
 
-    suspend fun check() = withContext(Dispatchers.IO) {
+    /** What asking for the latest release came back with. */
+    enum class CheckResult { UPDATE, UP_TO_DATE, NO_RELEASES, FAILED }
+
+    suspend fun check(): CheckResult = withContext(Dispatchers.IO) {
         runCatching {
-            val request = Request.Builder().url(LATEST_RELEASE_URL).build()
-            val body = Http.client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            } ?: return@runCatching
-            val release = json.parseToJsonElement(body) as? JsonObject ?: return@runCatching
-            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
-            val url = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
+            val request = Request.Builder()
+                .url(LATEST_RELEASE_URL)
+                .header("Accept", "application/vnd.github+json")
+                .build()
+            val (code, body) = Http.client.newCall(request).execute().use { response ->
+                response.code to if (response.isSuccessful) response.body?.string() else null
+            }
+            // No release published yet answers 404.
+            if (code == 404) return@runCatching CheckResult.NO_RELEASES
+            body ?: return@runCatching CheckResult.FAILED
+            val release = json.parseToJsonElement(body) as? JsonObject ?: return@runCatching CheckResult.FAILED
+            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return@runCatching CheckResult.FAILED
+            val url = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return@runCatching CheckResult.FAILED
             val apkUrl = apkAssetUrl(release)
             val notes = release["body"]?.jsonPrimitive?.contentOrNull
             val latest = tag.removePrefix("v")
             if (isNewer(latest, BuildConfig.VERSION_NAME)) {
                 _available.value = UpdateInfo(latest, url, apkUrl, notes)
+                CheckResult.UPDATE
+            } else {
+                CheckResult.UP_TO_DATE
             }
-        }
+        }.getOrDefault(CheckResult.FAILED)
     }
 
     /**

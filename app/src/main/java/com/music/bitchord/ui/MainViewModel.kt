@@ -880,6 +880,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         pool.values.take(LUCKY_POOL_SIZE)
     }
 
+    // ---- The dials' history tiles ----
+
+    private val _dialSongs = MutableStateFlow<UiState<List<Song>>>(UiState.Loading)
+    /** The last fifty songs played in the app, newest first: the speed dial's history tile. */
+    val dialSongs: StateFlow<UiState<List<Song>>> = _dialSongs.asStateFlow()
+
+    private val _dialArtists = MutableStateFlow<UiState<List<ShelfItem>>>(UiState.Loading)
+    /** The last twenty artists played, newest first: the artists' dial's history tile. */
+    val dialArtists: StateFlow<UiState<List<ShelfItem>>> = _dialArtists.asStateFlow()
+
+    /** Reads both lists afresh off the app's own listening record. */
+    fun loadDialHistory() {
+        viewModelScope.launch {
+            val stats = com.music.bitchord.data.stats.ListeningStats
+            val tracks = runCatching { stats.recentTracks(DIAL_HISTORY_SCAN) }.getOrDefault(emptyList())
+            val songs = tracks.take(DIAL_HISTORY_SONGS).map { track ->
+                Song(
+                    videoId = track.id,
+                    title = track.title,
+                    artist = track.artist,
+                    thumbnailUrl = track.art,
+                    albumName = track.album,
+                    albumId = track.albumId,
+                    artistId = track.artistId,
+                )
+            }
+            _dialSongs.value = if (songs.isEmpty()) UiState.Error(text(R.string.dial_history_empty)) else UiState.Success(songs)
+
+            // The artists' photos and pages, from the same record's chart where it has them.
+            val known = runCatching {
+                stats.summary(com.music.bitchord.data.stats.ReplayPeriod.ALL_TIME).artists
+            }.getOrDefault(emptyList()).associateBy { it.title.lowercase() }
+            val artists = tracks.mapNotNull { track ->
+                val name = stats.primaryArtist(track.artist) ?: return@mapNotNull null
+                val entry = known[name.lowercase()]
+                val id = track.artistId ?: entry?.browseId ?: return@mapNotNull null
+                ShelfItem(
+                    title = name,
+                    subtitle = "",
+                    thumbnailUrl = entry?.artworkUrl ?: track.art,
+                    videoId = null,
+                    browseId = id,
+                )
+            }.distinctBy { it.browseId }.take(DIAL_HISTORY_ARTISTS)
+            _dialArtists.value = if (artists.isEmpty()) {
+                UiState.Error(text(R.string.dial_history_empty))
+            } else {
+                UiState.Success(artists)
+            }
+        }
+    }
+
     /** Artist pages fetched for card menus, so the menu's rows share one request. */
     private val artistCardPages = HashMap<String, ArtistPage>()
 
@@ -3547,3 +3599,8 @@ private const val LUCKY_POOL_SIZE = 20
 /** How far back into history, and down the most-played lists, its seeds are drawn from. */
 private const val LUCKY_RECENT_REACH = 30
 private const val LUCKY_ROTATION_REACH = 15
+
+/** The dials' history tiles: how many songs and artists they list, and how far back they read to find them. */
+private const val DIAL_HISTORY_SONGS = 50
+private const val DIAL_HISTORY_ARTISTS = 20
+private const val DIAL_HISTORY_SCAN = 400

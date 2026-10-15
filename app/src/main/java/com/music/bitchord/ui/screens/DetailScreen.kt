@@ -6,6 +6,7 @@ import com.music.bitchord.R
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -152,6 +153,7 @@ import com.music.bitchord.ui.components.libraryGrid
 import com.music.bitchord.ui.components.lightweightLiquidGlass
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.components.detailSkeleton
+import com.music.bitchord.ui.components.ShimmerBox
 import com.music.bitchord.ui.components.topBarContentPadding
 import com.music.bitchord.ui.components.trackColumnWidth
 import com.music.bitchord.ui.haptics.Haptic
@@ -204,6 +206,15 @@ private val ARTIST_CONTENT_GUTTER = PAGE_GUTTER
  * on the blurred colour instead, which has nothing in it to compete.
  */
 private val HEADER_DROP = 44.dp
+
+/** How long the header's buttons take to fade in over their placeholders. */
+private const val HEADER_FADE_MS = 260
+
+/** The first rows of a list that has just loaded come in one after another, this far apart. */
+private const val ROW_REVEAL_STEP_MS = 35L
+private const val ROW_REVEAL_MS = 260
+private const val ROW_REVEAL_COUNT = 14
+private const val ROW_REVEAL_WINDOW_MS = 800L
 
 /** How far the artist name/logo and everything under it sit above the usual [HEADER_DROP]. */
 private val ARTIST_HEADER_LIFT = 64.dp
@@ -413,6 +424,15 @@ fun DetailScreen(
     val searchStop = with(LocalDensity.current) { topBarContentPadding().roundToPx() }
     LaunchedEffect(searching) {
         if (searching) listState.animateScrollToItem(SEARCH_ITEM_INDEX, -searchStop)
+    }
+
+    // When the track list lands while the page is up (rather than being in
+    // hand when it opened), the moment it did — its first rows fade in from
+    // then, one after another.
+    val openedLoading = remember(page.browseId) { page.songs is UiState.Loading }
+    val songsLoaded = page.songs is UiState.Success
+    val rowsRevealAt = remember(page.browseId, songsLoaded) {
+        if (songsLoaded && openedLoading) System.currentTimeMillis() else null
     }
 
     AnimatedContent(
@@ -630,6 +650,21 @@ fun DetailScreen(
                     ) { position, entry ->
                         val song = entry.value
                         val isCurrent = song.isSameTrackAs(currentSong)
+                        // Just landed: the first screenful fades in a row at a
+                        // time, top to bottom. Anything after (scrolling, a
+                        // filter) is simply there.
+                        val reveal = remember {
+                            val fresh = rowsRevealAt != null && position < ROW_REVEAL_COUNT &&
+                                System.currentTimeMillis() - rowsRevealAt < ROW_REVEAL_WINDOW_MS
+                            Animatable(if (fresh) 0f else 1f)
+                        }
+                        LaunchedEffect(reveal) {
+                            if (reveal.value < 1f) {
+                                delay(position * ROW_REVEAL_STEP_MS)
+                                reveal.animateTo(1f, tween(ROW_REVEAL_MS))
+                            }
+                        }
+                        Column(Modifier.graphicsLayer { alpha = reveal.value }) {
                         SongRow(
                             song = if (numbered) {
                                 song
@@ -660,6 +695,7 @@ fun DetailScreen(
                                 thickness = 0.5.dp,
                                 color = palette.divider,
                             )
+                        }
                         }
                     }
                 }
@@ -830,8 +866,11 @@ private fun ReleaseHeader(
             }
 
             // Action buttons — live inside the header so there is zero gap
-            // between the cover zone and the first song row.
-            if (songs.isNotEmpty()) {
+            // between the cover zone and the first song row. While the tracks
+            // load, placeholders of the same size hold their place, so nothing
+            // above or below moves when the real ones fade in over them.
+            val loading = page.songs is UiState.Loading
+            if (songs.isNotEmpty() || loading) {
                 // Only where YouTube said the release can be saved and the
                 // caller is willing to take the write — see [onToggleLibrary].
                 val library = page.library?.takeIf { onToggleLibrary != null }
@@ -842,6 +881,29 @@ private fun ReleaseHeader(
                 val full = circles >= 4
                 val circleSize = if (full) 46.dp else 50.dp
                 Spacer(Modifier.height(14.dp))
+                AnimatedContent(
+                    targetState = songs.isNotEmpty(),
+                    transitionSpec = {
+                        fadeIn(tween(HEADER_FADE_MS)) togetherWith fadeOut(tween(HEADER_FADE_MS / 2))
+                    },
+                    contentAlignment = Alignment.Center,
+                    label = "releaseActions",
+                ) { ready ->
+                if (!ready) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = HEADER_GUTTER)
+                            .graphicsLayer { alpha = 0.4f },
+                        horizontalArrangement = Arrangement.spacedBy(
+                            if (full) 8.dp else 10.dp,
+                            Alignment.CenterHorizontally,
+                        ),
+                    ) {
+                        repeat(circles + 1) { ShimmerBox(Modifier.size(circleSize), CircleShape) }
+                    }
+                    return@AnimatedContent
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -904,6 +966,7 @@ private fun ReleaseHeader(
                             size = circleSize,
                         )
                     }
+                }
                 }
             }
         }

@@ -401,12 +401,8 @@ fun LazyListScope.detailSkeleton(isArtist: Boolean) {
         }
         return
     }
-    item(key = "skeleton:detail:actions") {
-        Column(Modifier.graphicsLayer { alpha = 0.4f }) {
-            DetailActionsSkeleton(isArtist = false)
-            Spacer(Modifier.height(20.dp))
-        }
-    }
+    // A release's buttons are placeheld inside its header, where the real ones
+    // land; only the rows are drawn here.
     songListSkeleton(count = 8, keyPrefix = "skeleton:detail:song", alpha = 0.4f)
 }
 

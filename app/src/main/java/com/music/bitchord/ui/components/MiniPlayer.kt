@@ -392,8 +392,7 @@ fun MiniPlayer(
     val swipe = rememberMiniPlayerSwipe()
     val artUrl = rememberRemoteArtworkUrl(song)
     val progressColor = progressTint(
-        com.music.bitchord.ui.player.rememberArtworkColors(artUrl?.artworkAt(ROW_ART_PX)).colors.firstOrNull()
-            ?: MaterialTheme.colorScheme.primary,
+        com.music.bitchord.ui.player.rememberArtworkColors(artUrl?.artworkAt(ROW_ART_PX)).art,
     )
     // percent rather than a dp figure, so the corner stays exactly half the
     // height if the row's contents ever change it — which is what keeps a pill

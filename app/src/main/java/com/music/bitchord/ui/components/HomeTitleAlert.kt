@@ -46,6 +46,7 @@ fun HomeTitleAlert(
 ) {
     var text by remember { mutableStateOf(current) }
     AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        val close = LocalAlertClose.current
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -70,7 +71,7 @@ fun HomeTitleAlert(
                 onValueChange = { text = it.take(CustomizationSettings.HOME_TITLE_MAX) },
                 placeholder = CustomizationSettings.DEFAULT_HOME_TITLE,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSave(text) }),
+                keyboardActions = KeyboardActions(onDone = { close { onSave(text) } }),
             )
             DialOptions(Modifier.padding(top = 16.dp))
         }
@@ -78,19 +79,19 @@ fun HomeTitleAlert(
         AlertAction(
             label = stringResource(R.string.save),
             emphasised = true,
-            onClick = { onSave(text) },
+            onClick = { close { onSave(text) } },
         )
         AlertRule()
         AlertAction(
             label = stringResource(R.string.home_title_reset),
             emphasised = false,
-            onClick = { onSave("") },
+            onClick = { close { onSave("") } },
         )
         AlertRule()
         AlertAction(
             label = stringResource(R.string.cancel),
             emphasised = false,
-            onClick = onDismiss,
+            onClick = { close(onDismiss) },
         )
     }
 }
@@ -102,6 +103,7 @@ private fun DialOptions(modifier: Modifier = Modifier) {
     val artistDial by CustomizationSettings.artistDial.collectAsStateWithLifecycle()
     val feelingLucky by CustomizationSettings.feelingLucky.collectAsStateWithLifecycle()
     val pinIcon by CustomizationSettings.dialPinIcon.collectAsStateWithLifecycle()
+    val labels by CustomizationSettings.dialLabels.collectAsStateWithLifecycle()
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = stringResource(R.string.speed_dial_grid),
@@ -117,6 +119,7 @@ private fun DialOptions(modifier: Modifier = Modifier) {
         )
         DialSwitch(stringResource(R.string.artist_dial), artistDial, CustomizationSettings::setArtistDial)
         DialSwitch(stringResource(R.string.feeling_lucky_setting), feelingLucky, CustomizationSettings::setFeelingLucky)
+        DialSwitch(stringResource(R.string.dial_labels_default), labels, CustomizationSettings::setDialLabels)
         DialSwitch(stringResource(R.string.dial_pin_icon), pinIcon, CustomizationSettings::setDialPinIcon)
     }
 }

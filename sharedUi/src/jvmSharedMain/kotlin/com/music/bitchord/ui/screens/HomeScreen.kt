@@ -164,10 +164,16 @@ fun HomeScreen(
     onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     /** "I'm Feeling Lucky"'s die on the speed dial, or null for none. */
     speedDialLucky: SpeedDialLucky? = null,
-    /** Dial tiles (by video or browse id) drawn without their title. */
-    dialHiddenLabels: Set<String> = emptySet(),
+    /** Whether dial tiles show their titles by default. */
+    dialLabels: Boolean = true,
+    /** Dial tiles (by video or browse id) that go against [dialLabels]. */
+    dialLabelOverrides: Set<String> = emptySet(),
     /** Whether pinned dial tiles carry the pin badge. */
     dialPinIcon: Boolean = true,
+    /** The history tile that ends each dial: the speed dial's songs, the artists' dial's artists. */
+    onSpeedDialHistory: (() -> Unit)? = null,
+    onArtistDialHistory: (() -> Unit)? = null,
+    dialHistoryLabel: String = "",
     /**
      * The saved section layout, for the loading placeholders: whether the speed
      * dial leads Home, and whether Recents is shown at all.
@@ -319,8 +325,12 @@ fun HomeScreen(
                         artistDialPinned = artistDialPinned,
                         onArtistDialReorder = onArtistDialReorder,
                         speedDialLucky = speedDialLucky,
-                        dialHiddenLabels = dialHiddenLabels,
+                        dialLabels = dialLabels,
+                        dialLabelOverrides = dialLabelOverrides,
                         dialPinIcon = dialPinIcon,
+                        onSpeedDialHistory = onSpeedDialHistory,
+                        onArtistDialHistory = onArtistDialHistory,
+                        dialHistoryLabel = dialHistoryLabel,
                         afterLead = if (dialLeads && !holdSpeedDial) bannerItem else null,
                         onSpeedDialReorder = onSpeedDialReorder,
                         recentsViewType = recentsViewType,
@@ -399,8 +409,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     artistDialPinned: Set<String> = emptySet(),
     onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     speedDialLucky: SpeedDialLucky? = null,
-    dialHiddenLabels: Set<String> = emptySet(),
+    dialLabels: Boolean = true,
+    dialLabelOverrides: Set<String> = emptySet(),
     dialPinIcon: Boolean = true,
+    onSpeedDialHistory: (() -> Unit)? = null,
+    onArtistDialHistory: (() -> Unit)? = null,
+    dialHistoryLabel: String = "",
     /** Items to put straight after the lead page (or pages: the dials). */
     afterLead: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
     onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
@@ -428,8 +442,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                         onReorder = onArtistDialReorder,
                         currentSong = null,
                         isPlaying = false,
-                        hiddenLabels = dialHiddenLabels,
+                        showLabels = dialLabels,
+                        labelOverrides = dialLabelOverrides,
                         showPinIcon = dialPinIcon,
+                        onHistory = onArtistDialHistory,
+                        historyLabel = dialHistoryLabel,
                     )
                 } else if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
                     SpeedDialShelf(
@@ -446,8 +463,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                         currentSong = currentSong,
                         isPlaying = isPlaying,
                         lucky = speedDialLucky,
-                        hiddenLabels = dialHiddenLabels,
+                        showLabels = dialLabels,
+                        labelOverrides = dialLabelOverrides,
                         showPinIcon = dialPinIcon,
+                        onHistory = onSpeedDialHistory,
+                        historyLabel = dialHistoryLabel,
                     )
                 } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                     RecentShelf(

@@ -57,7 +57,15 @@ private val FallbackColors = listOf(
 
 /** The four mesh colours, wrapped so the backdrop can skip recomposition. */
 @Immutable
-data class MeshPalette(val colors: List<Color>)
+data class MeshPalette(
+    val colors: List<Color>,
+    /**
+     * The colours actually found in the artwork, most common first — none of
+     * the stock or fanned-out fill [colors] may carry. Empty until the artwork
+     * has been read (or if it couldn't be).
+     */
+    val art: List<Color> = emptyList(),
+)
 
 /**
  * The Apple Music "Now Playing" backdrop: four luminous colour blobs sampled
@@ -228,9 +236,17 @@ fun rememberArtworkColors(imageUrl: String?, canvasFrame: ImageBitmap? = null): 
             .size(128) // palette quality is fine at thumbnail size, and it's fast
             .forPixelAccess() // Palette needs pixel access
             .build()
-        val result = SingletonImageLoader.get(context).execute(request)
-        val bitmap = (result as? SuccessResult)?.image?.toImageBitmap() ?: return@LaunchedEffect
-        palette = MeshPalette(paletteOf(bitmap))
+        val loader = SingletonImageLoader.get(context)
+        val bitmap = (loader.execute(request) as? SuccessResult)?.image?.toImageBitmap()
+            // Not every artwork URL takes a size; try it as it is before
+            // giving up and leaving the stock colours up.
+            ?: (
+                loader.execute(
+                    ImageRequest.Builder(context).data(imageUrl).size(128).forPixelAccess().build(),
+                ) as? SuccessResult
+                )?.image?.toImageBitmap()
+            ?: return@LaunchedEffect
+        palette = withContext(Dispatchers.Default) { MeshPalette(paletteOf(bitmap), artSwatches(bitmap)) }
     }
 
     LaunchedEffect(canvasFrame) {
@@ -239,8 +255,7 @@ fun rememberArtworkColors(imageUrl: String?, canvasFrame: ImageBitmap? = null): 
         // ExoPlayer decodes real content).  A dark sleeve will still exceed the
         // threshold because compression noise pushes mean luminance above ~12.
         if (isLikelyBlackFrame(frame)) return@LaunchedEffect
-        val colors = withContext(Dispatchers.Default) { paletteOf(frame) }
-        palette = MeshPalette(colors)
+        palette = withContext(Dispatchers.Default) { MeshPalette(paletteOf(frame), artSwatches(frame)) }
     }
     return palette
 }
@@ -262,6 +277,12 @@ private const val DRIFT_RADIANS = (PI * 0.45f).toFloat()
  * purple. So the whole swatch list is read instead, and any shortfall is
  * derived from the art's own colours rather than borrowed.
  */
+/** Every colour the artwork has, most common first, near-black and near-white included. */
+private fun artSwatches(bitmap: ImageBitmap): List<Color> =
+    paletteSwatches(bitmap, 24, true)
+        .sortedByDescending { it.population }
+        .map { Color(it.rgb) }
+
 private fun paletteOf(bitmap: ImageBitmap): List<Color> {
     fun swatchesOf(clearFilters: Boolean): List<Color> =
         paletteSwatches(bitmap, 24, clearFilters)

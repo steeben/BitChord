@@ -325,8 +325,7 @@ private fun GlassNowPlaying(
     val swipe = rememberMiniPlayerSwipe()
     val artUrl = rememberRemoteArtworkUrl(song)
     val progressColor = progressTint(
-        com.music.bitchord.ui.player.rememberArtworkColors(artUrl?.artworkAt(ROW_ART_PX)).colors.firstOrNull()
-            ?: MaterialTheme.colorScheme.primary,
+        com.music.bitchord.ui.player.rememberArtworkColors(artUrl?.artworkAt(ROW_ART_PX)).art,
     )
     val density = androidx.compose.ui.platform.LocalDensity.current
     val pressSource = remember { MutableInteractionSource() }

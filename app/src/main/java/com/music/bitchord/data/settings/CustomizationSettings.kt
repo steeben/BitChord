@@ -72,7 +72,10 @@ object CustomizationSettings {
     /** Ids taken off the dials with "Remove from dial", kept off until pinned again. */
     val hiddenFromDial = MutableStateFlow<Set<String>>(emptySet())
 
-    /** Dial tiles drawn as artwork alone, without their title. */
+    /** Whether dial tiles show their titles, unless a tile says otherwise. */
+    val dialLabels = MutableStateFlow(true)
+
+    /** Dial tiles that go against [dialLabels]: hidden while it is on, shown while it is off. */
     val dialHiddenLabels = MutableStateFlow<Set<String>>(emptySet())
 
     /** Whether pinned tiles on the dials carry the little pin badge. */
@@ -164,6 +167,7 @@ object CustomizationSettings {
         hiddenFromDial.value = p.getStringSet(KEY_HIDDEN_FROM_DIAL, emptySet())?.toSet().orEmpty()
         dialHiddenLabels.value = p.getStringSet(KEY_DIAL_HIDDEN_LABELS, emptySet())?.toSet().orEmpty()
         dialPinIcon.value = p.getBoolean(KEY_DIAL_PIN_ICON, true)
+        dialLabels.value = p.getBoolean(KEY_DIAL_LABELS, true)
     }
 
     // ── Home sections ───────────────────────────────────────────────────
@@ -273,14 +277,26 @@ object CustomizationSettings {
         setHiddenFromDial(hiddenFromDial.value + id)
     }
 
-    /** Shows or hides a dial tile's title; returns whether it is now hidden. */
-    fun toggleDialLabel(item: ShelfItem): Boolean {
-        val id = item.speedDialId ?: return false
-        val hidden = id !in dialHiddenLabels.value
-        val value = if (hidden) dialHiddenLabels.value + id else dialHiddenLabels.value - id
+    /** Whether a dial tile's title shows: the default, unless the tile overrides it. */
+    fun dialLabelShown(id: String?): Boolean = dialLabels.value != (id != null && id in dialHiddenLabels.value)
+
+    /** Shows or hides one dial tile's title, against the default. */
+    fun toggleDialLabel(item: ShelfItem) {
+        val id = item.speedDialId ?: return
+        val value = if (id in dialHiddenLabels.value) dialHiddenLabels.value - id else dialHiddenLabels.value + id
+        setDialLabelOverrides(value)
+    }
+
+    /** Shows or hides every tile's title; the tiles' own choices start over from it. */
+    fun setDialLabels(value: Boolean) {
+        dialLabels.value = value
+        prefs?.edit()?.putBoolean(KEY_DIAL_LABELS, value)?.apply()
+        setDialLabelOverrides(emptySet())
+    }
+
+    private fun setDialLabelOverrides(value: Set<String>) {
         dialHiddenLabels.value = value
         prefs?.edit()?.putStringSet(KEY_DIAL_HIDDEN_LABELS, value)?.apply()
-        return hidden
     }
 
     fun setDialPinIcon(value: Boolean) {
@@ -524,6 +540,7 @@ object CustomizationSettings {
     private const val KEY_HIDDEN_FROM_DIAL = "custom_hidden_from_dial"
     private const val KEY_DIAL_HIDDEN_LABELS = "custom_dial_hidden_labels"
     private const val KEY_DIAL_PIN_ICON = "custom_dial_pin_icon"
+    private const val KEY_DIAL_LABELS = "custom_dial_labels"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"

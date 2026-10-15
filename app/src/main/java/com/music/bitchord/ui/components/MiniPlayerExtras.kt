@@ -192,9 +192,24 @@ fun Modifier.miniPlayerProgress(
 }
 
 /**
- * The cover's main colour, made bright enough to read as light on the bar: a
- * dark or washed-out cover would otherwise give a progress line you can't see.
+ * The cover's colour for the progress glow: the most vivid of [colors], made
+ * bright enough to read as light on the bar. A cover with no real colour in it
+ * (black, white, greys) gets a soft white rather than a tint — a grey has no hue
+ * of its own, and boosting one used to invent one (red, read as pink).
  */
+fun progressTint(colors: List<Color>): Color {
+    val hsv = FloatArray(3)
+    fun chroma(color: Color): Float {
+        android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+        return hsv[1] * hsv[2]
+    }
+    // Nothing read off the cover yet: a neutral light, not a guess at a hue.
+    val vivid = colors.maxByOrNull(::chroma) ?: return NEUTRAL_GLOW
+    if (chroma(vivid) < MIN_CHROMA) return NEUTRAL_GLOW
+    return progressTint(vivid)
+}
+
+/** [color] made bright enough to read as light on the bar. */
 fun progressTint(color: Color): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(color.toArgb(), hsv)
@@ -202,6 +217,11 @@ fun progressTint(color: Color): Color {
     hsv[2] = hsv[2].coerceAtLeast(0.8f)
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
+
+/** How much colour (saturation × brightness) a cover needs before the glow takes its hue. */
+private const val MIN_CHROMA = 0.12f
+
+private val NEUTRAL_GLOW = Color(0xFFE8E8EC)
 
 private val PLAIN_LINE: Dp = 2.5.dp
 private val GLASS_LINE: Dp = 2.dp

@@ -132,6 +132,7 @@ import com.music.bitchord.ui.components.PopupLayer
 import com.music.bitchord.ui.screens.SpeedDialIntro
 import com.music.bitchord.ui.screens.ARTIST_DIAL_SHELF_TITLE
 import com.music.bitchord.ui.screens.SpeedDialLucky
+import com.music.bitchord.ui.screens.RecentArtistsScreen
 import com.music.bitchord.ui.screens.ARTIST_DIAL_PAGE_KEY
 import com.music.bitchord.ui.screens.speedDialArtRequest
 import com.music.bitchord.ui.theme.Metropolis
@@ -681,6 +682,13 @@ private fun BitChordApp(
     var confirmJioSaavn by remember { mutableStateOf(false) }
     var editingPartyServer by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    /**
+     * Which history the History page shows: YouTube's (the Library tab's
+     * button), or the dials' — the last songs or artists played in the app,
+     * from a dial's history tile.
+     */
+    var historyMode by remember { mutableStateOf(HistoryMode.YOUTUBE) }
+    LaunchedEffect(showHistory) { if (!showHistory) historyMode = HistoryMode.YOUTUBE }
     // A Library shelf's "Show all" — the shelf it was opened from, so its own
     // cards can be laid out again as a full-screen grid. See [LibraryGridPage].
     var libraryShowAll by remember { mutableStateOf<HomeShelf?>(null) }
@@ -807,6 +815,7 @@ private fun BitChordApp(
     // Tiles taken off the dials by hand, kept off until pinned again.
     val hiddenFromDial by CustomizationSettings.hiddenFromDial.collectAsStateWithLifecycle()
     val dialHiddenLabels by CustomizationSettings.dialHiddenLabels.collectAsStateWithLifecycle()
+    val dialLabels by CustomizationSettings.dialLabels.collectAsStateWithLifecycle()
     val dialPinIcon by CustomizationSettings.dialPinIcon.collectAsStateWithLifecycle()
     var editingSpeedDial by remember { mutableStateOf(false) }
     val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
@@ -1360,6 +1369,7 @@ private fun BitChordApp(
     val libraryLabel = stringResource(R.string.library)
     val searchLabel = stringResource(R.string.search)
     val historyLabel = stringResource(R.string.history)
+    val recentlyPlayedLabel = stringResource(R.string.recently_played_songs)
     val replayLabel = stringResource(R.string.replay)
     val queueLabel = stringResource(R.string.queue)
     val sharedLinkLabel = stringResource(R.string.shared_link)
@@ -1701,7 +1711,8 @@ private fun BitChordApp(
      * destroy the queue already playing. Once ready, the whole old queue is
      * replaced in one Media3 operation.
      */
-    val startRadio: (Song) -> Unit = { song ->
+    /** Starts a radio off [song]; [announce] says so in a toast once it is playing. */
+    val startRadioFrom: (Song, Boolean) -> Unit = { song, announce ->
         val originalController = controller
         if (originalController != null && !refusedByHost()) {
             val request = ++playRequestGeneration
@@ -1765,14 +1776,17 @@ private fun BitChordApp(
                 // Make this station — never the queue from before it — what a
                 // fresh process restores, even if it is killed immediately.
                 activeController.commitRadioQueue()
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.radio_started, song.title),
-                    Toast.LENGTH_SHORT,
-                ).show()
+                if (announce) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.radio_started, song.title),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
             }
         }
     }
+    val startRadio: (Song) -> Unit = { song -> startRadioFrom(song, true) }
     val addToQueue: (Song) -> Unit = { song ->
         scope.launch {
             if (refusedByHost()) return@launch
@@ -2130,7 +2144,8 @@ private fun BitChordApp(
     // off a random seed from the session's pool — see MainViewModel.feelingLucky.
     val feelingLuckyOn by CustomizationSettings.feelingLucky.collectAsStateWithLifecycle()
     val luckyLabel = stringResource(R.string.feeling_lucky)
-    val latestStartRadio by rememberUpdatedState(startRadio)
+    // Quietly: the die landing is all the answer a roll needs.
+    val latestStartRadio by rememberUpdatedState<(Song) -> Unit>({ song -> startRadioFrom(song, false) })
     val speedDialLucky = remember(feelingLuckyOn, luckyLabel) {
         if (!feelingLuckyOn) {
             null
@@ -3087,7 +3102,51 @@ private fun BitChordApp(
                     val pageDetailListState = remember(key) {
                         detailListStates.getOrPut(key) { LazyListState() }
                     }
-                    if (key == "history") {
+                    if (key == "history" && historyMode == HistoryMode.DIAL_ARTISTS) {
+                        val dialArtists by viewModel.dialArtists.collectAsStateWithLifecycle()
+                        RecentArtistsScreen(
+                            state = dialArtists,
+                            listState = historyListState,
+                            onArtistClick = { item ->
+                                item.browseId?.let { id ->
+                                    viewModel.openDetail(
+                                        browseId = id,
+                                        title = item.title,
+                                        subtitle = item.subtitle,
+                                        thumbnailUrl = item.thumbnailUrl,
+                                        type = BrowseType.ARTIST,
+                                    )
+                                }
+                            },
+                            // The artist menu a dial tile gets, minus the rows
+                            // about the dial: this list isn't one.
+                            onArtistLongPress = { item ->
+                                onDialLongPress(item, true)
+                                dialMenuItem = null
+                            },
+                            onRetry = viewModel::loadDialHistory,
+                            contentPadding = listPadding,
+                        )
+                    } else if (key == "history" && historyMode == HistoryMode.DIAL_SONGS) {
+                        val dialSongs by viewModel.dialSongs.collectAsStateWithLifecycle()
+                        HistoryScreen(
+                            state = dialSongs,
+                            listState = historyListState,
+                            currentSong = player.song,
+                            isPlaying = player.isPlaying,
+                            onSongClick = { songs, index ->
+                                playFrom(
+                                    songs,
+                                    index,
+                                    QueueSource(recentlyPlayedLabel, PlaybackSourceType.HOME),
+                                )
+                            },
+                            onSongLongPress = openSongMenu,
+                            onSongSwipe = onSongSwipe,
+                            onRetry = viewModel::loadDialHistory,
+                            contentPadding = listPadding,
+                        )
+                    } else if (key == "history") {
                         HistoryScreen(
                             state = historyState,
                             listState = historyListState,
@@ -3490,7 +3549,19 @@ private fun BitChordApp(
                                 CustomizationSettings.setArtistDialPins(reordered)
                             },
                             speedDialLucky = speedDialLucky,
-                            dialHiddenLabels = dialHiddenLabels,
+                            dialHistoryLabel = stringResource(R.string.dial_history),
+                            onSpeedDialHistory = {
+                                viewModel.loadDialHistory()
+                                historyMode = HistoryMode.DIAL_SONGS
+                                showHistory = true
+                            },
+                            onArtistDialHistory = {
+                                viewModel.loadDialHistory()
+                                historyMode = HistoryMode.DIAL_ARTISTS
+                                showHistory = true
+                            },
+                            dialLabels = dialLabels,
+                            dialLabelOverrides = dialHiddenLabels,
                             dialPinIcon = dialPinIcon,
                             skeletonSpeedDialFirst = homeSections.firstOrNull { it.enabled }?.item ==
                                 CustomizationSettings.SPEED_DIAL_TITLE,
@@ -3720,6 +3791,7 @@ private fun BitChordApp(
                                     ),
                                     selectedIndex = searchSource.ordinal,
                                     onSelect = { index -> onSearchSourceChange(SearchSource.entries[index]) },
+                                    glass = true,
                                 )
                             },
                             searchingLibrary = searchSource == SearchSource.LIBRARY,
@@ -4008,7 +4080,11 @@ private fun BitChordApp(
                         homeRoot -> ""
                         showSpotify && detail == null -> stringResource(R.string.spotify)
                         showDiscord -> "Discord"
-                        showHistory -> stringResource(R.string.history)
+                        showHistory -> when (historyMode) {
+                            HistoryMode.YOUTUBE -> stringResource(R.string.history)
+                            HistoryMode.DIAL_SONGS -> stringResource(R.string.recently_played_songs)
+                            HistoryMode.DIAL_ARTISTS -> stringResource(R.string.recent_artists)
+                        }
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
                         showAccountScrobbling -> stringResource(R.string.account_scrobbling)
                         showSources -> stringResource(R.string.sources)
@@ -4195,6 +4271,7 @@ private fun BitChordApp(
                                 IconButton(
                                     onClick = {
                                         showHistory = true
+                                        historyMode = HistoryMode.YOUTUBE
                                         viewModel.loadHistory()
                                     },
                                 ) {
@@ -4868,7 +4945,7 @@ private fun BitChordApp(
                         CustomizationSettings.toggleDialLabel(item)
                     }
                 },
-                dialLabelHidden = song.videoId in dialHiddenLabels,
+                dialLabelHidden = dialLabels == (song.videoId in dialHiddenLabels),
                 // Stays open: the row it replaces itself with is the
                 // progress, and closing the sheet would hide the only
                 // answer to "did that work?".
@@ -5390,7 +5467,7 @@ private fun BitChordApp(
                         CustomizationSettings.toggleDialLabel(item)
                     }
                 },
-                dialLabelHidden = target.browseId in dialHiddenLabels,
+                dialLabelHidden = dialLabels == (target.browseId in dialHiddenLabels),
             )
         }
         browseActions?.takeIf { browseMenuOrigin == null }?.let { target ->
@@ -6190,3 +6267,6 @@ private const val TAB_PLAYLISTS = 4
  * prefix has to be the one thing both the writing and the reading agree on.
  */
 private const val TAB_KEY = "tab:"
+
+/** What the History page lists — see `historyMode`. */
+private enum class HistoryMode { YOUTUBE, DIAL_SONGS, DIAL_ARTISTS }

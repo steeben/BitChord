@@ -76,6 +76,7 @@ import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VolumeOff
@@ -159,6 +160,7 @@ import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
 import com.music.bitchord.R
+import com.music.bitchord.ui.components.lightweightLiquidGlass
 import com.music.bitchord.data.sources.DeviceCodecs
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.data.settings.DownloadQuality
@@ -197,6 +199,8 @@ fun SettingsScreen(
     onAppLanguage: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    /** Opens the update dialog, once a check has found one. */
+    onShowUpdate: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -1457,13 +1461,25 @@ fun SettingsScreen(
                         else -> stringResource(R.string.song_cache_limit_subtitle)
                     },
                     value = cacheLimitLabel,
-                    sliderValue = cacheLimitMb.toFloat(),
-                    onSliderValue = {
-                        AppSettings.setAudioCacheLimitBytes(it.roundToInt().toLong() * 1024 * 1024)
+                    // Stops: the default 512 MB, then 5 GB to 50 GB in fives,
+                    // then Unlimited.
+                    sliderValue = if (cacheUnlimited) {
+                        CACHE_STOP_UNLIMITED.toFloat()
+                    } else {
+                        cacheStopOf(cacheLimitMb).toFloat()
                     },
-                    valueRange = (AppSettings.DEFAULT_CACHE_LIMIT_BYTES / (1024 * 1024)).toFloat()..
-                        CACHE_UNLIMITED_STOP_MB.toFloat(),
-                    steps = 19,
+                    onSliderValue = { value ->
+                        val stop = value.roundToInt()
+                        AppSettings.setAudioCacheLimitBytes(
+                            when {
+                                stop >= CACHE_STOP_UNLIMITED -> AppSettings.UNLIMITED_CACHE_LIMIT_BYTES
+                                stop <= 0 -> AppSettings.DEFAULT_CACHE_LIMIT_BYTES
+                                else -> stop * CACHE_STEP_GB * 1024L * 1024 * 1024
+                            },
+                        )
+                    },
+                    valueRange = 0f..CACHE_STOP_UNLIMITED.toFloat(),
+                    steps = CACHE_STOP_UNLIMITED - 1,
                 )
             }
             val clearSongCacheTitle = stringResource(R.string.clear_song_cache)
@@ -1547,6 +1563,41 @@ fun SettingsScreen(
         // No footer: it only restated the stop-on-close row's own subtitle,
         // which sits four rows above it and says the same thing in fewer words.
         SearchableSettingsGroup(search, header = stringResource(R.string.miscellaneous)) {
+            val checkUpdatesTitle = stringResource(R.string.check_for_updates)
+            row(checkUpdatesTitle, "update", "version", "release", "upgrade", "new version") {
+                val update by com.music.bitchord.data.AppUpdateChecker.available.collectAsStateWithLifecycle()
+                var checking by remember { mutableStateOf(false) }
+                var lastResult by remember { mutableStateOf<com.music.bitchord.data.AppUpdateChecker.CheckResult?>(null) }
+                val updateScope = rememberCoroutineScope()
+                SettingsRow(
+                    icon = Icons.Rounded.SystemUpdate,
+                    title = checkUpdatesTitle,
+                    subtitle = when {
+                        checking -> stringResource(R.string.checking_for_updates)
+                        update != null -> stringResource(R.string.update_ready, update?.version.orEmpty())
+                        lastResult == com.music.bitchord.data.AppUpdateChecker.CheckResult.UP_TO_DATE ->
+                            stringResource(R.string.up_to_date, com.music.bitchord.BuildConfig.VERSION_NAME)
+                        lastResult == com.music.bitchord.data.AppUpdateChecker.CheckResult.NO_RELEASES ->
+                            stringResource(R.string.no_releases_yet)
+                        lastResult == com.music.bitchord.data.AppUpdateChecker.CheckResult.FAILED ->
+                            stringResource(R.string.update_check_failed)
+                        else -> stringResource(R.string.current_version, com.music.bitchord.BuildConfig.VERSION_NAME)
+                    },
+                    onClick = {
+                        if (update != null) {
+                            onShowUpdate()
+                        } else if (!checking) {
+                            checking = true
+                            updateScope.launch {
+                                val result = com.music.bitchord.data.AppUpdateChecker.check()
+                                checking = false
+                                lastResult = result
+                                if (result == com.music.bitchord.data.AppUpdateChecker.CheckResult.UPDATE) onShowUpdate()
+                            }
+                        }
+                    },
+                )
+            }
             val playNextOnSwipeTitle = stringResource(R.string.play_next_on_swipe)
             row(playNextOnSwipeTitle, "swipe", "queue") {
                 SettingsRow(
@@ -2127,13 +2178,25 @@ internal fun openEqualizer(context: Context, sessionId: Int) {
 }
 
 /** Above this, the cache limit slider's subtitle warns rather than reassures. */
-private const val CACHE_WARNING_MB = 2048
+private const val CACHE_WARNING_MB = 20 * 1024
 
 /**
  * Where the cache limit slider's "Unlimited" stop sits: one 512MB step past
  * [AppSettings.MAX_CACHE_LIMIT_BYTES], so the fixed sizes keep their positions.
  */
-private const val CACHE_UNLIMITED_STOP_MB = 10 * 1024 + 512
+private const val CACHE_UNLIMITED_STOP_MB = 50 * 1024 + 5 * 1024
+
+/** The cache slider's step past its first stop, and the stop that means Unlimited (after 50 GB). */
+private const val CACHE_STEP_GB = 5
+private const val CACHE_STOP_UNLIMITED = 11
+
+/** The slider stop nearest a limit of [mb]: 0 for the default, then one per 5 GB. */
+private fun cacheStopOf(mb: Int): Int =
+    if (mb <= AppSettings.DEFAULT_CACHE_LIMIT_BYTES / (1024 * 1024)) {
+        0
+    } else {
+        (mb / (CACHE_STEP_GB * 1024f)).roundToInt().coerceIn(1, CACHE_STOP_UNLIMITED - 1)
+    }
 
 /** "512 MB", "2 GB", "2.5 GB" — whichever reads more naturally at that size. */
 private fun formatCacheSize(mb: Int): String {
@@ -2887,13 +2950,24 @@ internal fun SegmentedControl(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** A glass track (liquid glass when that is on, a frosted film otherwise) for over the page's backdrop. */
+    glass: Boolean = false,
 ) {
     val haptics = LocalHapticFeedback.current
+    val trackShape = RoundedCornerShape(10.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.outline)
+            .then(
+                if (glass) {
+                    Modifier.lightweightLiquidGlass(
+                        shape = trackShape,
+                        fallbackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                    )
+                } else {
+                    Modifier.clip(trackShape).background(MaterialTheme.colorScheme.outline)
+                },
+            )
             // Enough of a margin for the track to read as a track. At 2dp the
             // selected pill sat all but flush against the container's own edge,
             // so the two rounded rectangles merged into one shape and the
@@ -2947,6 +3021,6 @@ internal fun SegmentedControl(
 }
 
 /** This fork's releases, for updates. */
-private const val FORK_RELEASES_URL = "https://github.com/steeben/BitChord/releases"
+private const val FORK_RELEASES_URL = "https://github.com/steeben/BitChord-Dial/releases"
 private const val OBTAINX_GITHUB_URL = "https://github.com/bikram-agarwal/ObtainX"
 private const val OBTAINX_FDROID_URL = "https://f-droid.org/packages/dev.bikram.obtainx/"

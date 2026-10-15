@@ -3,7 +3,14 @@ package com.music.bitchord.ui.screens
 import com.music.bitchord.R
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -99,3 +106,71 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexed(
     count = songs.size,
     key = { "${songs[it].videoId}:$it" },
 ) { index -> row(index, songs[index]) }
+
+@OptIn(ExperimentalFoundationApi::class)
+/**
+ * The artists played most recently, newest first: what the artists' dial's
+ * history tile opens. Tapping one opens their page; holding one opens the
+ * same menu an artist's card has.
+ */
+@Composable
+fun RecentArtistsScreen(
+    state: UiState<List<com.music.bitchord.data.model.ShelfItem>>,
+    listState: LazyListState,
+    onArtistClick: (com.music.bitchord.data.model.ShelfItem) -> Unit,
+    onArtistLongPress: (com.music.bitchord.data.model.ShelfItem) -> Unit,
+    onRetry: () -> Unit,
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = contentPadding,
+    ) {
+        when (state) {
+            is UiState.Loading -> songListSkeleton(count = 10, keyPrefix = "skeleton:recent-artists", circular = true)
+            is UiState.Error -> item(key = "recent-artists:message") {
+                MessageState(
+                    message = state.message,
+                    actionLabel = stringResource(R.string.try_again),
+                    onAction = onRetry,
+                )
+            }
+            is UiState.Success -> {
+                val artists = state.data
+                items(count = artists.size, key = { "${artists[it].browseId}:$it" }) { index ->
+                    val artist = artists[index]
+                    androidx.compose.foundation.layout.Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = { onArtistClick(artist) },
+                                onLongClick = { onArtistLongPress(artist) },
+                            )
+                            .padding(horizontal = com.music.bitchord.ui.components.PAGE_GUTTER, vertical = 8.dp),
+                    ) {
+                        coil3.compose.AsyncImage(
+                            model = artist.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                        )
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(14.dp))
+                        androidx.compose.material3.Text(
+                            text = artist.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

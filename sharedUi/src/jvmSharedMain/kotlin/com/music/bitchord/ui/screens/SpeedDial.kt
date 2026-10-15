@@ -39,6 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -150,6 +151,50 @@ private val LUCKY_TILE = ShelfItem(
     browseId = "bitchord:feeling-lucky",
 )
 
+/** The history tile's place, last on the last page: never a real item, only matched on. */
+private val HISTORY_TILE = ShelfItem(
+    title = "",
+    subtitle = "",
+    thumbnailUrl = null,
+    videoId = null,
+    browseId = "bitchord:dial-history",
+)
+
+/** What a dial slot holds, when it isn't a tile's index in the order. */
+private const val SLOT_BLANK = -1
+private const val SLOT_LUCKY = -2
+private const val SLOT_HISTORY = -3
+
+/**
+ * Where everything on a dial goes, slot by slot: each tile's index in the
+ * order, the die, the history tile, or nothing.
+ *
+ * The dial always ends on a full page. Tiles from the end of the order (the
+ * least wanted — pins come first) are left off to make it so, or, where that
+ * would cut a pin or leave nothing, the last page is filled out with blank
+ * slots instead. The history tile is the last slot of all; the die is the last
+ * on the first page (the one before it, when the dial is a single page).
+ */
+private fun dialSlots(count: Int, pinned: Int, perPage: Int, lucky: Boolean, history: Boolean): IntArray {
+    val extras = (if (lucky) 1 else 0) + (if (history) 1 else 0)
+    val needed = count + extras
+    var pages = needed / perPage
+    if (pages == 0 || pages * perPage - extras < minOf(pinned, count)) {
+        pages = (needed + perPage - 1) / perPage
+    }
+    pages = pages.coerceAtLeast(1)
+    val total = pages * perPage
+    val slots = IntArray(total) { SLOT_BLANK }
+    if (history) slots[total - 1] = SLOT_HISTORY
+    if (lucky) slots[if (history && pages == 1) perPage - 2 else perPage - 1] = SLOT_LUCKY
+    val shown = minOf(count, total - extras)
+    var next = 0
+    for (i in 0 until total) {
+        if (slots[i] == SLOT_BLANK && next < shown) slots[i] = next++
+    }
+    return slots
+}
+
 /**
  * YouTube Music's speed dial: a grid of tiles three across and [rows] down,
  * swiped sideways through further pages.
@@ -179,27 +224,40 @@ internal fun SpeedDialShelf(
     isPlaying: Boolean,
     /** The die, on the speed dial when it is switched on. */
     lucky: SpeedDialLucky? = null,
-    /** Tiles (by video or browse id) drawn without their title. */
-    hiddenLabels: Set<String> = emptySet(),
+    /** Whether tiles show their titles, unless they are in [labelOverrides]. */
+    showLabels: Boolean = true,
+    /** Tiles (by video or browse id) that go against [showLabels]. */
+    labelOverrides: Set<String> = emptySet(),
     /** Whether pinned tiles carry the pin badge. */
     showPinIcon: Boolean = true,
+    /** The history tile, last on the last page: opens what was played lately. Null for none. */
+    onHistory: (() -> Unit)? = null,
+    historyLabel: String = "",
 ) {
     if (shelf.items.isEmpty()) return
     val perPage = SPEED_DIAL_COLUMNS * rows
     // The order on screen: the shelf's, until a drag changes it.
     var order by remember(shelf.items) { mutableStateOf(shelf.items) }
-    // What is drawn: the order, with the die (when there is one) last on the
-    // first page, or after the last tile on a dial shorter than a page.
-    val luckyAt = if (lucky != null) minOf(perPage - 1, order.size) else -1
-    val display = remember(order, luckyAt) {
-        if (luckyAt < 0) order else order.toMutableList().apply { add(luckyAt, LUCKY_TILE) }
+    val pinnedCount = remember(order, pinnedIds) { order.takeWhile { it.dialId() in pinnedIds }.size }
+    // What is drawn, slot by slot — see [dialSlots]. A drag only reorders the
+    // pins among themselves, so the slots stay put through one.
+    val slots = remember(order.size, pinnedCount, perPage, lucky != null, onHistory != null) {
+        dialSlots(order.size, pinnedCount, perPage, lucky != null, onHistory != null)
     }
-    val latestLuckyAt by rememberUpdatedState(luckyAt)
-    val latestDisplaySize by rememberUpdatedState(display.size)
-    val pageCount = ((display.size + perPage - 1) / perPage).coerceAtLeast(1)
+    val display: List<ShelfItem?> = remember(order, slots) {
+        slots.map { slot ->
+            when {
+                slot >= 0 -> order[slot]
+                slot == SLOT_LUCKY -> LUCKY_TILE
+                slot == SLOT_HISTORY -> HISTORY_TILE
+                else -> null
+            }
+        }
+    }
+    val latestSlots by rememberUpdatedState(slots)
+    val pageCount = (slots.size / perPage).coerceAtLeast(1)
     val latestPageCount by rememberUpdatedState(pageCount)
     val pagerState = rememberPagerState { latestPageCount }
-    val pinnedCount = remember(order, pinnedIds) { order.takeWhile { it.dialId() in pinnedIds }.size }
     val latestPinned by rememberUpdatedState(pinnedCount)
     val latestOrder by rememberUpdatedState(order)
     val latestReorder by rememberUpdatedState(onReorder)
@@ -233,7 +291,7 @@ internal fun SpeedDialShelf(
     // the saved one) fades in rather than popping, while the dial's first
     // appearance and every page swiped to stay instant.
     val shownIds = remember { HashSet<String>() }
-    SideEffect { display.forEach { shownIds += it.dialId() } }
+    SideEffect { display.forEach { item -> item?.let { shownIds += it.dialId() } } }
     // The first dial of a launch comes in tile by tile; see [SpeedDialIntro].
     val intro = remember { !SpeedDialIntro.played }
     SideEffect { SpeedDialIntro.played = true }
@@ -270,14 +328,11 @@ internal fun SpeedDialShelf(
             )
 
             /** The index in the order of the tile drawn at [shown], or null for the die. */
-            fun toOrder(shown: Int): Int? {
-                val at = latestLuckyAt
-                return when {
-                    at < 0 || shown < at -> shown
-                    shown == at -> null
-                    else -> shown - 1
-                }
-            }
+            fun toOrder(shown: Int): Int? = latestSlots.getOrNull(shown)?.takeIf { it >= 0 }
+
+            /** Where in the order a tile dropped on slot [shown] goes: the tile there, or after those before it. */
+            fun orderAt(shown: Int): Int =
+                toOrder(shown) ?: (0 until shown.coerceAtMost(latestSlots.size)).count { latestSlots[it] >= 0 }
 
             /** The index among the tiles drawn under [pos], or null in a gap or past the last tile. */
             fun hit(pos: Offset, page: Int): Int? {
@@ -286,7 +341,8 @@ internal fun SpeedDialShelf(
                 val row = floor(pos.y / (tileHPx + gapPx)).toInt()
                 if (col !in 0 until SPEED_DIAL_COLUMNS || row !in 0 until rows) return null
                 if (x - col * (tileWPx + gapPx) > tileWPx || pos.y - row * (tileHPx + gapPx) > tileHPx) return null
-                return (page * perPage + row * SPEED_DIAL_COLUMNS + col).takeIf { it < latestDisplaySize }
+                return (page * perPage + row * SPEED_DIAL_COLUMNS + col)
+                    .takeIf { it < latestSlots.size && latestSlots[it] != SLOT_BLANK }
             }
 
             Box(
@@ -357,7 +413,7 @@ internal fun SpeedDialShelf(
                                         val col = floor(x / (tileWPx + gapPx)).toInt().coerceIn(0, SPEED_DIAL_COLUMNS - 1)
                                         val row = floor(dragPos.y / (tileHPx + gapPx)).toInt().coerceIn(0, rows - 1)
                                         val cell = pagerState.currentPage * perPage + row * SPEED_DIAL_COLUMNS + col
-                                        val target = (toOrder(cell) ?: cell)
+                                        val target = orderAt(cell)
                                             .coerceIn(0, (latestPinned - 1).coerceAtLeast(0))
                                         val current = latestOrder.indexOfFirst { it.dialId() == id }
                                         if (current >= 0 && target != current) {
@@ -389,7 +445,8 @@ internal fun SpeedDialShelf(
                     modifier = Modifier.fillMaxWidth(),
                 ) { page ->
                     Box(Modifier.fillMaxWidth().height(gridHeight)) {
-                        display.drop(page * perPage).take(perPage).forEachIndexed { cell, item ->
+                        display.drop(page * perPage).take(perPage).forEachIndexed { cell, slotItem ->
+                            val item = slotItem ?: return@forEachIndexed
                             key(item.dialId()) {
                                 val target = cellOrigin(cell).let { IntOffset(it.x.roundToInt(), it.y.roundToInt()) }
                                 val offset by animateIntOffsetAsState(
@@ -457,11 +514,19 @@ internal fun SpeedDialShelf(
                                         dim = dim,
                                         modifier = tileModifier,
                                     )
+                                } else if (item === HISTORY_TILE && onHistory != null) {
+                                    HistoryTile(
+                                        label = historyLabel,
+                                        showLabel = showLabels,
+                                        onClick = onHistory,
+                                        dim = dim,
+                                        modifier = tileModifier,
+                                    )
                                 } else {
                                     SpeedDialTile(
                                         item = item,
                                         pinned = pinnedTile && showPinIcon,
-                                        showLabel = id !in hiddenLabels,
+                                        showLabel = showLabels != (id in labelOverrides),
                                         current = currentSong != null && item.videoId == currentSong.videoId,
                                         isPlaying = isPlaying,
                                         onClick = { onItemClick(item) },
@@ -487,7 +552,7 @@ internal fun SpeedDialShelf(
                         SpeedDialTile(
                             item = item,
                             pinned = showPinIcon,
-                            showLabel = liftedId !in hiddenLabels,
+                            showLabel = showLabels != (liftedId in labelOverrides),
                             current = false,
                             isPlaying = false,
                             onClick = {},
@@ -622,9 +687,9 @@ private fun SpeedDialTile(
             )
             Text(
                 text = item.title,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelLarge.let { it.copy(fontSize = (it.fontSize.value - 2f).sp) },
                 color = Color.White,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -643,6 +708,45 @@ private fun SpeedDialTile(
             )
         }
         if (current && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
+        DimOverlay(dim)
+    }
+}
+
+/** The tile last on a dial's last page: a clock, opening what was played lately. */
+@Composable
+private fun HistoryTile(
+    label: String,
+    showLabel: Boolean,
+    onClick: () -> Unit,
+    dim: () -> Float,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .thumbnailBorder(shape)
+            .background(DICE_GROUND)
+            .clickable(onClickLabel = label, onClick = onClick),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.History,
+            contentDescription = label,
+            tint = Color.White.copy(alpha = 0.85f),
+            modifier = Modifier.align(Alignment.Center).fillMaxSize(0.36f),
+        )
+        if (showLabel) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.let { it.copy(fontSize = (it.fontSize.value - 2f).sp) },
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
         DimOverlay(dim)
     }
 }

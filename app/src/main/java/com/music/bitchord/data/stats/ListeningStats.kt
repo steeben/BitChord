@@ -304,6 +304,23 @@ object ListeningStats {
         }
     }
 
+    /**
+     * The [limit] tracks heard most recently, newest first — read back from
+     * the newest month until there are enough, since a track's last play in a
+     * later month is always more recent than any in an earlier one.
+     */
+    suspend fun recentTracks(limit: Int): List<TrackEntry> = withContext(Dispatchers.IO) {
+        flushAndAwait()
+        val out = HashMap<String, TrackEntry>()
+        for (month in months().asReversed()) {
+            read(month.toString())?.tracks?.forEach { track ->
+                if (track.last > 0 && (out[track.id]?.last ?: 0L) < track.last) out[track.id] = track
+            }
+            if (out.size >= limit) break
+        }
+        out.values.sortedByDescending { it.last }.take(limit)
+    }
+
     /** Every month with a file, oldest first. */
     fun months(): List<YearMonth> {
         if (!ready) return emptyList()

@@ -806,6 +806,15 @@ private fun ChoiceRow(
     }
 }
 
+/**
+ * Inside an [AlertScaffold]: plays the alert's way out — the entrance run
+ * backwards — and then [action]. Every alert's scrim closes this way; an
+ * alert's own buttons can too, so nothing in it vanishes in a single frame.
+ */
+internal val LocalAlertClose = androidx.compose.runtime.staticCompositionLocalOf<(() -> Unit) -> Unit> {
+    { action -> action() }
+}
+
 /** The scrim + frosted card frame shared by every UIAlertController-style dialog. */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -827,6 +836,17 @@ internal fun AlertScaffold(
             ),
         )
     }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var closing by remember { mutableStateOf(false) }
+    val close: (() -> Unit) -> Unit = { action ->
+        if (!closing) {
+            closing = true
+            scope.launch {
+                shown.animateTo(0f, androidx.compose.animation.core.tween(ALERT_EXIT_MS))
+                action()
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -836,7 +856,7 @@ internal fun AlertScaffold(
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
-                onClick = onDismiss,
+                onClick = { close(onDismiss) },
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -855,7 +875,12 @@ internal fun AlertScaffold(
                     interactionSource = remember { MutableInteractionSource() },
                     onClick = {},
                 ),
-            content = content,
-        )
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalAlertClose provides close) {
+                content()
+            }
+        }
     }
 }
+
+private const val ALERT_EXIT_MS = 180
