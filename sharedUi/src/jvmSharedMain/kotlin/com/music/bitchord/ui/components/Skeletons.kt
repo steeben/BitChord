@@ -351,11 +351,23 @@ private fun DetailActionsSkeleton(isArtist: Boolean) {
             // Matches the real pair's inset, height and corner, so the header
             // above them doesn't shift when the track list lands.
             .padding(horizontal = PAGE_GUTTER + 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(
+            if (isArtist) 12.dp else 10.dp,
+            Alignment.CenterHorizontally,
+        ),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ShimmerBox(Modifier.size(50.dp), CircleShape)
-        ShimmerBox(Modifier.width(130.dp).height(50.dp), CircleShape)
-        if (!isArtist) {
+        if (isArtist) {
+            // Radio, Shuffle, the big Play, the star, the pin — the artist
+            // page's row as it lands.
+            ShimmerBox(Modifier.size(46.dp), CircleShape)
+            ShimmerBox(Modifier.size(46.dp), CircleShape)
+            ShimmerBox(Modifier.size(70.dp), CircleShape)
+            ShimmerBox(Modifier.size(46.dp), CircleShape)
+            ShimmerBox(Modifier.size(46.dp), CircleShape)
+        } else {
+            ShimmerBox(Modifier.size(50.dp), CircleShape)
+            ShimmerBox(Modifier.width(130.dp).height(50.dp), CircleShape)
             ShimmerBox(Modifier.size(50.dp), CircleShape)
         }
     }

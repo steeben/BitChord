@@ -534,7 +534,6 @@ fun DetailScreen(
                         pinned = artistPinned,
                         onTogglePin = onToggleArtistPin,
                         bottomSpace = 22.dp,
-                        playColor = appleArt?.keyColor?.let { Color(it) },
                     )
                 }
             }
