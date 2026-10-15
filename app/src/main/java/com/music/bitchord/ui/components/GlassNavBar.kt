@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.music.bitchord.ui.theme.LocalNowPlayingTint
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,7 +124,10 @@ fun GlassNavBar(
         }
     }
     val contentColor = glassContentColor()
-    val selectedColor = contentColor
+    // The selected tab wears the playing song's colour. Read through a state
+    // inside the held tab content rather than keyed on, so the crossfade from
+    // one song's colour to the next doesn't rebuild the tabs every frame.
+    val selectedColor by rememberUpdatedState(LocalNowPlayingTint.current ?: contentColor)
     val unselectedColor = contentColor.copy(alpha = 0.65f)
     val haptics = rememberHaptics()
 
@@ -237,7 +241,7 @@ fun GlassNavBar(
     ) {
         tabs.forEachIndexed { index, tab ->
             val isSelected = index == selectedIndex
-            val tint = if (isSelected) selectedColor else unselectedColor
+            val tint: () -> Color = { if (isSelected) selectedColor else unselectedColor }
             val onClick = {
                 if (!isSelected) haptics.play(Haptic.Select)
                 currentOnTabSelected(index)
@@ -249,7 +253,7 @@ fun GlassNavBar(
                         Icon(
                             imageVector = tab.icon,
                             contentDescription = tab.label,
-                            tint = tint,
+                            tint = tint(),
                             modifier = Modifier.size(25.dp),
                         )
                     },
@@ -262,7 +266,7 @@ fun GlassNavBar(
                         Icon(
                             imageVector = tab.icon,
                             contentDescription = tab.label,
-                            tint = tint,
+                            tint = tint(),
                             modifier = Modifier.size(25.dp),
                         )
                     },
@@ -270,7 +274,7 @@ fun GlassNavBar(
                         Text(
                             text = tab.label,
                             style = MaterialTheme.typography.labelSmall,
-                            color = tint,
+                            color = tint(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             // The library's Tab stacks the glyph and the label

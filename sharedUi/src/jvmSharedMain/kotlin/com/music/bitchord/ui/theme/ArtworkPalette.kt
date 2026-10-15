@@ -7,7 +7,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -139,6 +141,42 @@ fun rememberArtworkPalette(
         ).value,
         divider = animateColorAsState(target.divider, spec, label = "tintDivider").value,
     )
+}
+
+/**
+ * The playing song's colour, for chrome that takes it on: the Home mark and
+ * title, the selected tab, the library's logo and menu glyphs. Null while
+ * nothing plays, so each caller keeps its own colour then:
+ * `LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.onBackground`.
+ *
+ * Provided once, at the app's root, from [rememberNowPlayingTint].
+ */
+val LocalNowPlayingTint = compositionLocalOf<Color?> { null }
+
+/**
+ * The accent [rememberArtworkPalette] would give the artwork at [artworkUrl] —
+ * the sleeve's brightest note, made legible on the theme's background — or
+ * null while nothing plays. Until a new sleeve has been read the last song's
+ * colour holds, and the change crossfades rather than cuts unless "Reduce
+ * animation" is on.
+ */
+@Composable
+fun rememberNowPlayingTint(
+    artworkUrl: String?,
+    dark: Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f,
+): Color? {
+    val reduceAnimation by PlayerPlatform.host.settings.reduceAnimation.collectAsStateWithLifecycle()
+    val seed = rememberArtworkSeed(artworkUrl, CARD_ART_PX)
+    var settled by remember { mutableStateOf<Color?>(null) }
+    val target = when {
+        artworkUrl == null -> null
+        seed != null -> seed.toPalette(dark).accent
+        else -> settled
+    }
+    SideEffect { settled = target }
+    if (target == null) return null
+    val spec: AnimationSpec<Color> = if (reduceAnimation) snap() else tween(TINT_FADE_MS)
+    return animateColorAsState(target, spec, label = "nowPlayingTint").value
 }
 
 /**

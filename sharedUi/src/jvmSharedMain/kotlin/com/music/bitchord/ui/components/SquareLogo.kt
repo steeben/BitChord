@@ -2,6 +2,7 @@ package com.music.bitchord.ui.components
 
 import com.music.bitchord.ui.screens.ARTIST_DIAL_PAGE_KEY
 import com.music.bitchord.ui.screens.SPEED_DIAL_PAGE_KEYS
+import com.music.bitchord.ui.theme.LocalNowPlayingTint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -254,6 +255,8 @@ fun HomeStickyLogo(
             },
     ) {
         SquareLogo(
+            // Wears the playing song's colour; its own while nothing plays.
+            color = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.onBackground,
             refreshing = refreshing,
             pullFraction = pullFraction,
             modifier = Modifier.fillMaxHeight(),

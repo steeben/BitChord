@@ -64,6 +64,11 @@ val Metropolis = FontFamily(
     Font(R.font.metropolis_extrabold, FontWeight.W800),
 )
 
+/** Tiny5 LCD, the pixel face "DIAL" is set in within the Home title. */
+val Tiny5Lcd = FontFamily(
+    Font(R.font.tiny5_lcd_regular, FontWeight.W400),
+)
+
 // Heavy, tight typography — the backbone of the Apple Music look.
 private val BitChordTypography = Typography(
     displayLarge = TextStyle(fontWeight = FontWeight.W800, fontSize = 34.sp, letterSpacing = (-0.8).sp),
