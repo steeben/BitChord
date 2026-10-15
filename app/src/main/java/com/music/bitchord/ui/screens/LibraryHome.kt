@@ -176,7 +176,7 @@ fun LibraryHomeScreen(
                 )
             }
             item(key = "menu") {
-                val rows = buildList {
+                val rows = buildList<MenuRow> {
                     add(MenuRow(stringResource(R.string.playlists), Icons.AutoMirrored.Rounded.QueueMusic, onClick = onOpenPlaylists))
                     add(MenuRow(stringResource(R.string.artists), Icons.Rounded.Mic, onClick = onOpenArtists))
                     add(MenuRow(stringResource(R.string.albums), Icons.Rounded.Album, onClick = onOpenAlbums))
@@ -807,7 +807,7 @@ suspend fun dealLibraryFeed(
             .forEach { ytRecent += LibrarySuggestion(ShelfItem(it.album!!, it.artist, it.art, null, it.albumId)) }
         // Only artists with a picture of their own: a round crop of a track's
         // sleeve would pass for the artist and not be them.
-        recent.mapNotNull { track -> track.artistId?.let(artistsById::get) }
+        recent.mapNotNull { track -> track.artistId?.let { artistsById[it] } }
             .distinctBy { it.browseId }
             .filter { !it.artworkUrl.isNullOrBlank() }
             .take(TOP_ENTRIES / 2)
@@ -919,7 +919,7 @@ suspend fun dealLibraryFeed(
     val deviceCards = if (device) deviceItems.map { LibrarySuggestion(it) } else emptyList()
 
     // Mixes: the device's answer to a station, played from what is on it.
-    val localMixes = buildList {
+    val localMixes = buildList<LibrarySuggestion> {
         localArtists.forEach { artist ->
             val tracks = artist.songs.orEmpty()
             if (tracks.size >= 3) {
@@ -990,11 +990,11 @@ suspend fun dealLibraryFeed(
             val newestLocal = songs.filter { it.onDevice() }
                 .sortedByDescending { it.localDateAddedSeconds ?: Long.MIN_VALUE }
             val newestStreamed = songs.filterNot { it.onDevice() }
-            buildList {
+            buildList<Song> {
                 var i = 0
                 while (size < ROW_LENGTH && (i < newestLocal.size || i < newestStreamed.size)) {
-                    newestStreamed.getOrNull(i)?.let(::add)
-                    newestLocal.getOrNull(i)?.let(::add)
+                    newestStreamed.getOrNull(i)?.let { add(it) }
+                    newestLocal.getOrNull(i)?.let { add(it) }
                     i++
                 }
             }.take(ROW_LENGTH)
@@ -1016,7 +1016,7 @@ suspend fun dealLibraryFeed(
                 )
             }
     } else {
-        val localRows = buildList {
+        val localRows = buildList<LibraryFeedRow> {
             if (recentlyPlayedLocal.isNotEmpty()) {
                 add(LibraryFeedRow(labels.recentlyPlayed, songs = recentlyPlayedLocal.take(ROW_LENGTH)))
             }
