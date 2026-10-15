@@ -79,6 +79,8 @@ import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.IosShare
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Upgrade
@@ -1013,6 +1015,7 @@ private fun BitChordApp(
     val detailSongSorts by AppSettings.detailSongSorts.collectAsStateWithLifecycle()
     val songSort = detail?.browseId?.let { detailSongSorts[it] } ?: SongSort.DEFAULT
     var songSortMenuOpen by remember { mutableStateOf(false) }
+    var artistMenuOpen by remember { mutableStateOf(false) }
     val likeStatuses by viewModel.likeStatuses.collectAsStateWithLifecycle()
     // Which tracks are being held on YouTube's own upload, so the player's menu
     // offers the way back out of a revert rather than the revert again.
@@ -3716,25 +3719,14 @@ private fun BitChordApp(
                                 null
                             },
                             onStartRadio = startRadio,
-                            // Pinned to whichever dial an artist goes to.
-                            artistPinned = page.browseId in artistDialPinnedIds || page.browseId in speedDialPinnedIds,
-                            onToggleArtistPin = page.browseId.takeIf { it.startsWith("UC") }?.let { id ->
-                                {
-                                    val pinned = CustomizationSettings.toggleSpeedDial(
-                                        ShelfItem(
-                                            title = page.title,
-                                            subtitle = "",
-                                            thumbnailUrl = page.thumbnailUrl,
-                                            videoId = null,
-                                            browseId = id,
-                                        ),
-                                    )
-                                    showQueueNotice(
-                                        context.getString(
-                                            if (pinned) R.string.added_to_speed_dial else R.string.removed_from_speed_dial,
-                                        ),
-                                    )
-                                }
+                            // Opened off the Library while it is showing what is
+                            // on the device: the page starts narrowed to that too.
+                            localOnlyByDefault = selectedTab == TAB_LIBRARY && librarySource == LibrarySource.LOCAL,
+                            isLocalSong = { song ->
+                                song.localUri != null || song.localPath != null || song.videoId in savedDownloads
+                            },
+                            isLocalRelease = { item ->
+                                item.browseId?.let { it.startsWith(LIBRARY_GROUP_PREFIX) || downloadIdFor(it) != null } == true
                             },
                             releaseLibrary = releaseLibrary,
                             onLoadReleaseLibrary = viewModel::loadReleaseLibrary,
@@ -4638,27 +4630,18 @@ private fun BitChordApp(
                                     )
                                 }
                             }
-                            // Left of the account photo, on an artist page: iOS's
-                            // share glyph, sending the artist's channel link — the
-                            // one YouTube Music itself shares for an artist.
+                            // Left of the account photo, on an artist page: the
+                            // artist's own menu — pin them or their radio to the
+                            // speed dial, or share their channel link. The menu is
+                            // [FrostedArtistMenu], composed with the other frosted
+                            // overlays further down so its glass sees the page.
                             if (detail != null && !isLocalDetail && detail.type == BrowseType.ARTIST &&
                                 detailActiveShelf == null && detail.browseId.startsWith("UC") && !showStats
                             ) {
-                                IconButton(
-                                    onClick = {
-                                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
-                                            putExtra(
-                                                Intent.EXTRA_TEXT,
-                                                "https://music.youtube.com/channel/${detail.browseId}",
-                                            )
-                                        }
-                                        context.startActivity(Intent.createChooser(sendIntent, detail.title))
-                                    },
-                                ) {
+                                IconButton(onClick = { artistMenuOpen = true }) {
                                     Icon(
-                                        Icons.Rounded.IosShare,
-                                        contentDescription = stringResource(R.string.share),
+                                        Icons.Rounded.MoreHoriz,
+                                        contentDescription = stringResource(R.string.more),
                                         tint = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
@@ -6121,6 +6104,69 @@ private fun BitChordApp(
             )
         }
 
+        run {
+            BackHandler(enabled = artistMenuOpen) { artistMenuOpen = false }
+            val artist = detail?.takeIf { it.type == BrowseType.ARTIST && it.browseId.startsWith("UC") }
+            // The radio pin plays a radio off the artist's top song, the same one
+            // the page's own radio circle starts from.
+            val topSong = (artist?.songs as? com.music.bitchord.data.model.UiState.Success)?.data?.firstOrNull()
+            val artistItem = artist?.let {
+                ShelfItem(
+                    title = it.title,
+                    subtitle = "",
+                    thumbnailUrl = it.thumbnailUrl,
+                    videoId = null,
+                    browseId = it.browseId,
+                )
+            }
+            val radioItem = if (artist != null && topSong != null) {
+                ShelfItem(
+                    title = context.getString(R.string.artist_radio_title, artist.title),
+                    subtitle = "Song • ${topSong.artist}",
+                    thumbnailUrl = artist.thumbnailUrl ?: topSong.thumbnailUrl,
+                    videoId = topSong.videoId,
+                    browseId = null,
+                )
+            } else {
+                null
+            }
+            val announcePin: (Boolean) -> Unit = { pinned ->
+                showQueueNotice(
+                    context.getString(if (pinned) R.string.added_to_speed_dial else R.string.removed_from_speed_dial),
+                )
+            }
+            FrostedArtistMenu(
+                visible = artistMenuOpen && artist != null,
+                hazeState = hazeState,
+                artistPinned = artist != null &&
+                    (artist.browseId in artistDialPinnedIds || artist.browseId in speedDialPinnedIds),
+                radioPinned = radioItem?.videoId?.let { it in speedDialPinnedIds || it in artistDialPinnedIds } == true,
+                onPinArtist = artistItem?.let { item ->
+                    {
+                        artistMenuOpen = false
+                        announcePin(CustomizationSettings.toggleSpeedDial(item))
+                    }
+                },
+                onPinRadio = radioItem?.let { item ->
+                    {
+                        artistMenuOpen = false
+                        announcePin(CustomizationSettings.toggleSpeedDial(item))
+                    }
+                },
+                onShare = artist?.let { page ->
+                    {
+                        artistMenuOpen = false
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/channel/${page.browseId}")
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, page.title))
+                    }
+                },
+                onDismiss = { artistMenuOpen = false },
+            )
+        }
+
         // Always composed so it can animate both ways; draws nothing while shut.
         run {
             BackHandler(enabled = showAccountSelector) { showAccountSelector = false }
@@ -6598,6 +6644,79 @@ private fun FrostedSortMenu(
                     }
             }
         }
+    }
+}
+
+/**
+ * The artist page's "..." menu, on the same frosted panel as [FrostedSortMenu]
+ * and growing out of the same corner. A null action leaves its row off.
+ */
+@Composable
+private fun FrostedArtistMenu(
+    visible: Boolean,
+    hazeState: HazeState,
+    artistPinned: Boolean,
+    radioPinned: Boolean,
+    onPinArtist: (() -> Unit)?,
+    onPinRadio: (() -> Unit)?,
+    onShare: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    val shape = MaterialTheme.shapes.extraLarge
+    PopupLayer(
+        visible = visible,
+        onDismiss = onDismiss,
+        contentAlignment = Alignment.TopEnd,
+        origin = TransformOrigin(1f, 0f),
+    ) {
+        Surface(
+            color = Color.Transparent,
+            contentColor = popupContentColor(),
+            shape = shape,
+            modifier = Modifier
+                .padding(top = 56.dp, end = 20.dp)
+                .width(IntrinsicSize.Max)
+                .popupSurface(shape, hazeState)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {},
+                ),
+        ) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                onPinArtist?.let {
+                    ArtistMenuRow(
+                        Icons.Rounded.PushPin,
+                        stringResource(if (artistPinned) R.string.unpin_artist_from_speed_dial else R.string.pin_artist_to_speed_dial),
+                        it,
+                    )
+                }
+                onPinRadio?.let {
+                    ArtistMenuRow(
+                        Icons.Rounded.Radio,
+                        stringResource(if (radioPinned) R.string.unpin_artist_radio_from_speed_dial else R.string.pin_artist_radio_to_speed_dial),
+                        it,
+                    )
+                }
+                onShare?.let { ArtistMenuRow(Icons.Rounded.IosShare, stringResource(R.string.share), it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArtistMenuRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
