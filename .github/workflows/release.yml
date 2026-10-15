@@ -1,10 +1,14 @@
 name: Release
 
 # Pushing a tag like v1.0.0 builds the APK and publishes it as a GitHub release,
-# which is what the in-app update check and ObtainX both read.
+# which is what the in-app update check and ObtainX both read. So does a push
+# to main that changes RELEASE_NOTES.md: the release is then tagged v<versionName>
+# (from app/build.gradle.kts) at that commit, unless that release already exists.
 on:
   push:
     tags: ['v*', '[0-9]*']
+    branches: [main]
+    paths: ['RELEASE_NOTES.md']
   workflow_dispatch:
     inputs:
       tag:
@@ -18,25 +22,46 @@ jobs:
   release:
     name: Build and publish APK
     runs-on: ubuntu-latest
-    env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ github.event.inputs.tag || github.sha }}
+
+      - name: Work out the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            VERSION=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' app/build.gradle.kts | head -n1)
+            TAG="v${VERSION}"
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release $TAG already exists; nothing to do."
+              echo "SKIP=1" >> "$GITHUB_ENV"
+            fi
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
+        if: env.SKIP != '1'
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - if: env.SKIP != '1'
+        uses: gradle/actions/setup-gradle@v4
 
-      - run: chmod +x gradlew
+      - if: env.SKIP != '1'
+        run: chmod +x gradlew
 
       # Same shared key as the test builds, so a release installs over them.
       - name: Use the shared signing key
+        if: env.SKIP != '1'
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
@@ -51,6 +76,7 @@ jobs:
           fi
 
       - name: Build
+        if: env.SKIP != '1'
         run: |
           ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix \
             -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
@@ -59,6 +85,7 @@ jobs:
             -Pandroid.injected.signing.key.password=android
 
       - name: Publish release
+        if: env.SKIP != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -68,6 +95,7 @@ jobs:
             gh release upload "$TAG" "BitChord-${TAG}.apk" --clobber
           else
             gh release create "$TAG" "BitChord-${TAG}.apk" \
+              --target "$GITHUB_SHA" \
               --title "BitChord Dial ${TAG#v}" \
               --notes-file RELEASE_NOTES.md
           fi

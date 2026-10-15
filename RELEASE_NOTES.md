@@ -17,4 +17,4 @@ BitChord Dial 1.1.0
 - Song cache up to 50 GB, in 5 GB steps
 - Check for updates in Settings › Miscellaneous
 
-Installs over the previous build and keeps your sign-in.
+Installs over the previous build of BitChord Dial and keeps your sign-in.
