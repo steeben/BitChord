@@ -162,6 +162,13 @@ import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.ui.player.CanvasArtworkPlayer
 import com.music.bitchord.ui.theme.ArtworkPalette
 import com.music.bitchord.ui.theme.rememberArtworkPalette
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Size
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -187,6 +194,18 @@ private val PILL_SHAPE = RoundedCornerShape(12.dp)
  * search can carry the page up to it.
  */
 private const val SEARCH_ITEM_INDEX = 1
+
+/** The artist page's action row: the item after the header. */
+private const val ARTIST_ACTIONS_INDEX = 1
+
+/** The gap under a release's controls row, at the foot of its header. */
+private val RELEASE_HEADER_FOOT = 14.dp
+
+/** How far past the stop the content above the pinned controls takes to fade out. */
+private val PIN_FADE_DISTANCE = 48.dp
+
+/** The band under the pinned controls in which rows fade out on their way up. */
+private val PIN_FADE_BAND = 28.dp
 
 /** The inset the header text and the action pills share. */
 private val HEADER_GUTTER = PAGE_GUTTER + 8.dp
@@ -369,6 +388,14 @@ fun DetailScreen(
     // Back closes the search first — this handler is registered after the one
     // that pops the page, so it is the one that answers while it's enabled.
     BackHandler(enabled = searching) { closeSearch() }
+    val toggleSearch: () -> Unit = {
+        if (searching) {
+            closeSearch()
+        } else {
+            searching = true
+            focusSearch = true
+        }
+    }
 
     // Each surviving row still knows where it sat in the full running order, so
     // an album's track numbers stay the album's rather than becoming positions
@@ -422,8 +449,45 @@ fun DetailScreen(
     // the tap, so the row it scrolls to is already in the list by the time it
     // runs.
     val searchStop = with(LocalDensity.current) { topBarContentPadding().roundToPx() }
+    val releaseActionsFoot = with(LocalDensity.current) { RELEASE_HEADER_FOOT.roundToPx() }
+    val pinFadePx = with(LocalDensity.current) { PIN_FADE_DISTANCE.toPx() }
+    val pinBandPx = with(LocalDensity.current) { PIN_FADE_BAND.toPx() }
+
+    // The controls row — the release's circles, or the artist's Play row —
+    // stops under the top bar once a scroll carries it up there, and the list
+    // runs on beneath it. Where the row sits inside its list item and how tall
+    // it is are reported by the row; the rest is read off the list.
+    var controlsOffset by remember(page.browseId) { mutableIntStateOf(0) }
+    var controlsHeight by remember(page.browseId) { mutableIntStateOf(0) }
+    val controlsIndex = if (isArtist) ARTIST_ACTIONS_INDEX else 0
+    val hasControls = if (isArtist) songs.isNotEmpty() else songs.isNotEmpty() || page.songs is UiState.Loading
+    val showsControls by rememberUpdatedState(hasControls)
+    val pinTop by rememberUpdatedState(searchStop)
+    // How far past the stop the row would have scrolled, in px; negative while
+    // it is still below it, null where there is no row to pin.
+    val controlsOvershoot: () -> Float? = remember(listState, controlsIndex, page.browseId) {
+        {
+            if (!showsControls || controlsHeight <= 0) {
+                null
+            } else {
+                val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == controlsIndex }
+                when {
+                    item != null -> (pinTop - (item.offset + controlsOffset)).toFloat()
+                    listState.firstVisibleItemIndex > controlsIndex -> Float.MAX_VALUE
+                    else -> null
+                }
+            }
+        }
+    }
+    val controlsPinned by remember(controlsOvershoot) {
+        derivedStateOf { (controlsOvershoot() ?: -1f) >= 0f }
+    }
+
     LaunchedEffect(searching) {
-        if (searching) listState.animateScrollToItem(SEARCH_ITEM_INDEX, -searchStop)
+        // Under the pinned controls rather than behind them: the field is the
+        // next thing down from the row, so the row is carried exactly to its
+        // stop and the field lands just below it.
+        if (searching) listState.animateScrollToItem(SEARCH_ITEM_INDEX, -(searchStop + controlsHeight + releaseActionsFoot))
     }
 
     // When the track list lands while the page is up (rather than being in
@@ -473,7 +537,48 @@ fun DetailScreen(
 
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // Once the controls are pinned, whatever scrolls up to
+                        // them fades out in the band just under them and is gone
+                        // by the time it reaches them: nothing shows behind the
+                        // row or carries on up behind the top bar. Offscreen only
+                        // then, so the cut is out of the list alone and not the
+                        // artwork painted behind it.
+                        .graphicsLayer {
+                            compositingStrategy = if (controlsPinned) {
+                                CompositingStrategy.Offscreen
+                            } else {
+                                CompositingStrategy.Auto
+                            }
+                        }
+                        .drawWithContent {
+                            drawContent()
+                            val overshoot = controlsOvershoot() ?: return@drawWithContent
+                            if (overshoot < 0f) return@drawWithContent
+                            // Eased in over the first stretch past the stop, so
+                            // the header's own text above the row doesn't blink
+                            // out the instant the row arrives.
+                            val keep = 1f - (overshoot / pinFadePx).coerceIn(0f, 1f)
+                            val cut = pinTop + controlsHeight.toFloat()
+                            drawRect(
+                                color = Color.Black.copy(alpha = keep),
+                                topLeft = Offset.Zero,
+                                size = Size(size.width, cut),
+                                blendMode = BlendMode.DstIn,
+                            )
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0f to Color.Black.copy(alpha = keep),
+                                    1f to Color.Black,
+                                    startY = cut,
+                                    endY = cut + pinBandPx,
+                                ),
+                                topLeft = Offset(0f, cut),
+                                size = Size(size.width, pinBandPx),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        },
                     // Both artist photos and release artwork run edge-to-edge up under
                     // the glass bar — the image is the top of the page, not a card on it.
                     contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
@@ -491,17 +596,15 @@ fun DetailScreen(
                         onPlay = { onSongClick(songs, 0) },
                         onShuffle = { onShuffle(songs) },
                         searching = searching,
-                        onSearch = {
-                            if (searching) {
-                                closeSearch()
-                            } else {
-                                searching = true
-                                focusSearch = true
-                            }
-                        },
+                        onSearch = toggleSearch,
                         onMore = onMore,
                         onArtistClick = onArtistClick,
                         onToggleLibrary = onToggleLibrary,
+                        onControlsPlaced = { top, height ->
+                            controlsOffset = top
+                            controlsHeight = height
+                        },
+                        controlsPinned = { controlsPinned },
                     )
                 }
             }
@@ -534,6 +637,12 @@ fun DetailScreen(
                         pinned = artistPinned,
                         onTogglePin = onToggleArtistPin,
                         bottomSpace = 22.dp,
+                        modifier = Modifier
+                            .onSizeChanged {
+                                controlsOffset = 0
+                                controlsHeight = it.height
+                            }
+                            .graphicsLayer { alpha = if (controlsPinned) 0f else 1f },
                     )
                 }
             }
@@ -761,6 +870,44 @@ fun DetailScreen(
             if (isArtist) aboutItem()
         }
 
+                // The pinned copy of the controls, at the stop under the top
+                // bar. The row in the list goes invisible while this is up, so
+                // there is only ever one of them to be seen or pressed.
+                if (controlsPinned) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .offset { IntOffset(0, pinTop) },
+                    ) {
+                        if (isArtist) {
+                            Column {
+                                ActionRow(
+                                    palette = palette,
+                                    onPlay = { onSongClick(songs, 0) },
+                                    onShuffle = { onShuffle(songs) },
+                                    subscription = page.subscription?.takeIf { onToggleSubscription != null },
+                                    onToggleSubscription = onToggleSubscription,
+                                    onStartRadio = onStartRadio?.let { radio -> songs.firstOrNull()?.let { first -> { radio(first) } } },
+                                    pinned = artistPinned,
+                                    onTogglePin = onToggleArtistPin,
+                                    bottomSpace = 0.dp,
+                                )
+                            }
+                        } else {
+                            ReleaseActions(
+                                page = page,
+                                palette = palette,
+                                songs = songs,
+                                onPlay = { onSongClick(songs, 0) },
+                                onShuffle = { onShuffle(songs) },
+                                searching = searching,
+                                onSearch = toggleSearch,
+                                onMore = onMore,
+                                onToggleLibrary = onToggleLibrary,
+                            )
+                        }
+                    }
+                }
     }
 } else {
     ArtistShelfGridPage(
@@ -797,8 +944,14 @@ private fun ReleaseHeader(
     onMore: ((List<Song>) -> Unit)?,
     onArtistClick: (String, String) -> Unit,
     onToggleLibrary: (() -> Unit)?,
+    /** Where the controls row sits inside this header and how tall it is, in px. */
+    onControlsPlaced: (top: Int, height: Int) -> Unit = { _, _ -> },
+    /** True while the pinned copy above the list stands in for the row here. */
+    controlsPinned: () -> Boolean = { false },
 ) {
     val (credit, meta) = page.headerLines(trackCount, songs.playtime())
+    // Held outside state: only read when the row reports where it landed.
+    val headerCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
     // Every row on a release carries the same credit — see [pageCredit] — so
     // the first one speaks for the whole page, the same source the rows'
     // own long-press "Open artist" already reads from.
@@ -806,7 +959,7 @@ private fun ReleaseHeader(
 
     // The outer Box just needs to be as tall as its content — we don't force
     // an aspect ratio here so the action buttons can extend below the artwork.
-    Box(Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().onPlaced { headerCoords[0] = it }) {
 
         Spacer(Modifier.fillMaxWidth().height(artHeight + HEADER_DROP))
 
@@ -815,7 +968,7 @@ private fun ReleaseHeader(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 14.dp),
+                .padding(bottom = RELEASE_HEADER_FOOT),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -865,110 +1018,150 @@ private fun ReleaseHeader(
             }
 
             // Action buttons — live inside the header so there is zero gap
-            // between the cover zone and the first song row. While the tracks
-            // load, placeholders of the same size hold their place, so nothing
-            // above or below moves when the real ones fade in over them.
-            val loading = page.songs is UiState.Loading
-            if (songs.isNotEmpty() || loading) {
-                // Only where YouTube said the release can be saved and the
-                // caller is willing to take the write — see [onToggleLibrary].
-                val library = page.library?.takeIf { onToggleLibrary != null }
-                // All release actions are circles. On a 360dp screen a full
-                // five-control row comes down 4dp so it stays inside the shared
-                // header gutter instead of running off the edge.
-                val circles = listOfNotNull(library, onMore).size + 2 // + Shuffle, Search
-                val full = circles >= 4
-                val circleSize = if (full) 46.dp else 50.dp
+            // between the cover zone and the first song row.
+            if (songs.isNotEmpty() || page.songs is UiState.Loading) {
                 Spacer(Modifier.height(14.dp))
-                AnimatedContent(
-                    targetState = songs.isNotEmpty(),
-                    transitionSpec = {
-                        fadeIn(tween(HEADER_FADE_MS)) togetherWith fadeOut(tween(HEADER_FADE_MS / 2))
-                    },
-                    contentAlignment = Alignment.Center,
-                    label = "releaseActions",
-                ) { ready ->
-                if (!ready) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = HEADER_GUTTER)
-                            .graphicsLayer { alpha = 0.4f },
-                        horizontalArrangement = Arrangement.spacedBy(
-                            if (full) 8.dp else 10.dp,
-                            Alignment.CenterHorizontally,
-                        ),
-                    ) {
-                        repeat(circles + 1) { ShimmerBox(Modifier.size(circleSize), CircleShape) }
-                    }
-                    return@AnimatedContent
-                }
-                Row(
+                ReleaseActions(
+                    page = page,
+                    palette = palette,
+                    songs = songs,
+                    onPlay = onPlay,
+                    onShuffle = onShuffle,
+                    searching = searching,
+                    onSearch = onSearch,
+                    onMore = onMore,
+                    onToggleLibrary = onToggleLibrary,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = HEADER_GUTTER),
-                    horizontalArrangement = Arrangement.spacedBy(
-                        if (full) 8.dp else 10.dp,
-                        Alignment.CenterHorizontally,
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (library != null) {
-                        CircleIconButton(
-                            // A tick, not a filled-in plus: the pair reads as
-                            // "not yet / done", which is what the state is.
-                            icon = if (library.saved) BitChordIcons.Check else BitChordIcons.Plus,
-                            contentDescription = if (library.saved) {
-                                stringResource(R.string.remove_from_library)
-                            } else {
-                                stringResource(R.string.add_to_library)
-                            },
-                            palette = palette,
-                            onClick = { onToggleLibrary?.invoke() },
-                            haptic = if (library.saved) Haptic.ToggleOff else Haptic.ToggleOn,
-                            size = circleSize,
-                        )
-                    }
-                    CircleIconButton(
-                        icon = BitChordIcons.Shuffle,
-                        contentDescription = stringResource(R.string.shuffle),
-                        palette = palette,
-                        onClick = onShuffle,
-                        haptic = Haptic.Resume,
-                        size = circleSize,
-                    )
-                    PlayPill(
-                        onClick = onPlay,
-                        iconOnly = true,
-                        size = circleSize,
-                    )
-                    // Where the download circle used to be. Downloading a
-                    // release is a thing done once and then not thought about;
-                    // finding a track on a long playlist is a thing done while
-                    // reading the page, so it is the one that earns a button and
-                    // the download moved to the overflow beside it.
-                    CircleIconButton(
-                        icon = if (searching) Icons.Rounded.Close else BitChordIcons.Search,
-                        contentDescription = stringResource(
-                            if (searching) R.string.close_search else R.string.search_this_list,
-                        ),
-                        palette = palette,
-                        onClick = onSearch,
-                        size = circleSize,
-                    )
-                    onMore?.let { more ->
-                        CircleIconButton(
-                            icon = Icons.Rounded.MoreHoriz,
-                            contentDescription = stringResource(R.string.more),
-                            palette = palette,
-                            onClick = { more(songs) },
-                            size = circleSize,
-                        )
-                    }
-                }
-                }
+                        .onGloballyPositioned { row ->
+                            val header = headerCoords[0]?.takeIf { it.isAttached } ?: return@onGloballyPositioned
+                            onControlsPlaced(
+                                header.localPositionOf(row, Offset.Zero).y.roundToInt(),
+                                row.size.height,
+                            )
+                        }
+                        .graphicsLayer { alpha = if (controlsPinned()) 0f else 1f },
+                )
             }
         }
+    }
+}
+
+/**
+ * A release's controls row — save, shuffle, play, search, more. Drawn in the
+ * header, and again pinned under the top bar once the header has scrolled
+ * it up there (see [DetailScreen]), so both copies have to be the same thing.
+ * While the tracks load, placeholders of the same size hold their place, so
+ * nothing above or below moves when the real ones fade in over them.
+ */
+@Composable
+private fun ReleaseActions(
+    page: DetailPage,
+    palette: ArtworkPalette,
+    songs: List<Song>,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    searching: Boolean,
+    onSearch: () -> Unit,
+    onMore: ((List<Song>) -> Unit)?,
+    onToggleLibrary: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    // Only where YouTube said the release can be saved and the
+    // caller is willing to take the write — see [onToggleLibrary].
+    val library = page.library?.takeIf { onToggleLibrary != null }
+    // All release actions are circles. On a 360dp screen a full
+    // five-control row comes down 4dp so it stays inside the shared
+    // header gutter instead of running off the edge.
+    val circles = listOfNotNull(library, onMore).size + 2 // + Shuffle, Search
+    val full = circles >= 4
+    val circleSize = if (full) 46.dp else 50.dp
+    AnimatedContent(
+        targetState = songs.isNotEmpty(),
+        transitionSpec = {
+            fadeIn(tween(HEADER_FADE_MS)) togetherWith fadeOut(tween(HEADER_FADE_MS / 2))
+        },
+        contentAlignment = Alignment.Center,
+        label = "releaseActions",
+        modifier = modifier,
+    ) { ready ->
+    if (!ready) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = HEADER_GUTTER)
+                .graphicsLayer { alpha = 0.4f },
+            horizontalArrangement = Arrangement.spacedBy(
+                if (full) 8.dp else 10.dp,
+                Alignment.CenterHorizontally,
+            ),
+        ) {
+            repeat(circles + 1) { ShimmerBox(Modifier.size(circleSize), CircleShape) }
+        }
+        return@AnimatedContent
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = HEADER_GUTTER),
+        horizontalArrangement = Arrangement.spacedBy(
+            if (full) 8.dp else 10.dp,
+            Alignment.CenterHorizontally,
+        ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (library != null) {
+            CircleIconButton(
+                // A tick, not a filled-in plus: the pair reads as
+                // "not yet / done", which is what the state is.
+                icon = if (library.saved) BitChordIcons.Check else BitChordIcons.Plus,
+                contentDescription = if (library.saved) {
+                    stringResource(R.string.remove_from_library)
+                } else {
+                    stringResource(R.string.add_to_library)
+                },
+                palette = palette,
+                onClick = { onToggleLibrary?.invoke() },
+                haptic = if (library.saved) Haptic.ToggleOff else Haptic.ToggleOn,
+                size = circleSize,
+            )
+        }
+        CircleIconButton(
+            icon = BitChordIcons.Shuffle,
+            contentDescription = stringResource(R.string.shuffle),
+            palette = palette,
+            onClick = onShuffle,
+            haptic = Haptic.Resume,
+            size = circleSize,
+        )
+        PlayPill(
+            onClick = onPlay,
+            iconOnly = true,
+            size = circleSize,
+        )
+        // Where the download circle used to be. Downloading a
+        // release is a thing done once and then not thought about;
+        // finding a track on a long playlist is a thing done while
+        // reading the page, so it is the one that earns a button and
+        // the download moved to the overflow beside it.
+        CircleIconButton(
+            icon = if (searching) Icons.Rounded.Close else BitChordIcons.Search,
+            contentDescription = stringResource(
+                if (searching) R.string.close_search else R.string.search_this_list,
+            ),
+            palette = palette,
+            onClick = onSearch,
+            size = circleSize,
+        )
+        onMore?.let { more ->
+            CircleIconButton(
+                icon = Icons.Rounded.MoreHoriz,
+                contentDescription = stringResource(R.string.more),
+                palette = palette,
+                onClick = { more(songs) },
+                size = circleSize,
+            )
+        }
+    }
     }
 }
 
@@ -1344,12 +1537,13 @@ private fun ActionRow(
     /** Right of the star: pins the artist to a Home dial. */
     pinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     // Five across is too wide for the three-button spacing on a narrow phone.
     val crowded = onStartRadio != null || onTogglePin != null
     val side = if (crowded) ARTIST_SIDE_BUTTON_CROWDED else ARTIST_SIDE_BUTTON
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = HEADER_GUTTER),
         horizontalArrangement = Arrangement.spacedBy(
