@@ -60,6 +60,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -118,6 +119,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Titles already on screen, so a later page can't repeat a shelf. */
     private val homeSeenTitles = mutableSetOf<String>()
+
+    /**
+     * Titles (lowercased) of shelves a refresh kept from the feed it replaced —
+     * the ones under the dials, from the supplements or the disk cache — until
+     * their own request brings them back. Dropping them for the gap would make
+     * that part of the page fade out and back in.
+     */
+    private val homeCarriedTitles = mutableSetOf<String>()
 
     private val _homeLoadingMore = MutableStateFlow(false)
 
@@ -1846,6 +1855,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _home.value = UiState.Loading
         homeContinuation = null
         homeSeenTitles.clear()
+        homeCarriedTitles.clear()
         _homeLoadingMore.value = false
         _homeRecentlyPlayedLoading.value = _signedIn.value
         _homeFresh.value = false
@@ -1923,15 +1933,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (counted) {
                     _homePendingShelves.value += YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.size
                 }
-                YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
-                    viewModelScope.launch {
-                        try {
-                            YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
-                                if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+                viewModelScope.launch {
+                    val answered = YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.map { browseId ->
+                        async {
+                            try {
+                                YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
+                                    if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+                                }.isSuccess
+                            } finally {
+                                if (counted) homeShelfRequestSettled(identity, generation)
                             }
-                        } finally {
-                            if (counted) homeShelfRequestSettled(identity, generation)
                         }
+                    }
+                    // Kept shelves nothing brought back are gone from the feed now.
+                    // Left in place if a request failed, rather than emptying the
+                    // page's foot while offline.
+                    if (answered.awaitAll().all { it } && isCurrentHomeLoad(identity, generation)) {
+                        dropCarriedHomeShelves()
                     }
                 }
             }
@@ -1976,9 +1994,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             })
             return
         }
-        val added = shelves.withoutRepeatsOf(existing)
+        // A shelf a refresh kept takes its fresh copy where it stands.
+        val replacing = shelves.filter { it.title.lowercase(Locale.ROOT) in homeCarriedTitles }
+        val updated = if (replacing.isEmpty()) {
+            existing
+        } else {
+            val byTitle = replacing.associateBy { it.title.lowercase(Locale.ROOT) }
+            byTitle.keys.forEach(homeCarriedTitles::remove)
+            existing.map { byTitle[it.title.lowercase(Locale.ROOT)] ?: it }
+        }
+        val added = (shelves - replacing.toSet()).withoutRepeatsOf(updated)
             .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
-        if (added.isNotEmpty()) _home.value = UiState.Success(existing + added)
+        if (added.isNotEmpty() || replacing.isNotEmpty()) _home.value = UiState.Success(updated + added)
+    }
+
+    private fun dropCarriedHomeShelves() {
+        if (homeCarriedTitles.isEmpty()) return
+        val existing = (_home.value as? UiState.Success)?.data ?: return
+        val kept = existing.filterNot { it.title.lowercase(Locale.ROOT) in homeCarriedTitles }
+        homeSeenTitles.removeAll(homeCarriedTitles)
+        homeCarriedTitles.clear()
+        if (kept.size != existing.size && kept.isNotEmpty()) _home.value = UiState.Success(kept)
     }
 
     /**
@@ -1993,12 +2029,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (identity != listenerKey()) return@coroutineScope
         core.onSuccess { feed ->
             homeContinuation = feed.continuation
+            val previous = (_home.value as? UiState.Success)?.data.orEmpty()
             homeSeenTitles.clear()
+            homeCarriedTitles.clear()
             val lead = listOfNotNull(recentShelf)
             lead.forEach { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
             val shelves = feed.shelves.withoutRepeatsOf(lead)
                 .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
-            if (shelves.isNotEmpty()) _home.value = UiState.Success(lead + shelves)
+            if (shelves.isNotEmpty()) {
+                // The old page's tail past the core feed (the supplements under
+                // the dials, or a cached page's) stays until its own request
+                // answers, instead of vanishing and fading back in.
+                val fresh = lead + shelves
+                val lastShared = previous.indexOfLast { it.title.lowercase(Locale.ROOT) in homeSeenTitles }
+                val carried = previous.drop(lastShared + 1).withoutRepeatsOf(fresh)
+                    .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
+                carried.forEach { homeCarriedTitles.add(it.title.lowercase(Locale.ROOT)) }
+                _home.value = UiState.Success(fresh + carried)
+            }
             // A pull to refresh after the supplements were shown fetches them again.
             if (reloadSupplements && homeSectionsRevealed) {
                 deferHomeSupplements(identity, homeLoadGeneration.get(), counted = false)

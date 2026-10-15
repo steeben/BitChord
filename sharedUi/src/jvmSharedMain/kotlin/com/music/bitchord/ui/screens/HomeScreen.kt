@@ -423,9 +423,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
 ) {
     // The dials lead together; anything put after the lead goes after both.
     val leadCount = if (shelves.getOrNull(1)?.title == ARTIST_DIAL_SHELF_TITLE) 2 else 1
+    // Keyed by title, not position: a shelf that lands above others (a section
+    // ranked higher in Settings, the artists' dial turning up) would otherwise
+    // give every shelf under it a new key, and each would fade out and back in.
+    val seen = HashMap<String, Int>()
     shelves.forEachIndexed { index, shelf ->
         if (index == leadCount) afterLead?.invoke(this)
-        item(key = shelf.title + index) {
+        val repeat = seen.getOrElse(shelf.title) { 0 }
+        seen[shelf.title] = repeat + 1
+        item(key = "shelf:" + shelf.title + if (repeat > 0) "#$repeat" else "") {
             // Shelves that arrive after the page is up fade in rather than pop.
             Box(Modifier.animateItem(fadeInSpec = tween(SHELF_FADE_MS), fadeOutSpec = tween(SHELF_FADE_MS / 2))) {
                 val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
