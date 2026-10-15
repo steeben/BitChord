@@ -202,7 +202,10 @@ private const val ARTIST_ACTIONS_INDEX = 1
 private val RELEASE_HEADER_FOOT = 14.dp
 
 /** How far past the stop the content above the pinned controls takes to fade out. */
-private val PIN_FADE_DISTANCE = 48.dp
+private val PIN_FADE_DISTANCE = 32.dp
+
+/** The soft edge, just above the top bar's foot, where the title is cut once past the stop. */
+private val PIN_BAR_EDGE = 16.dp
 
 /** The band under the pinned controls in which rows fade out on their way up. */
 private val PIN_FADE_BAND = 28.dp
@@ -452,6 +455,7 @@ fun DetailScreen(
     val releaseActionsFoot = with(LocalDensity.current) { RELEASE_HEADER_FOOT.roundToPx() }
     val pinFadePx = with(LocalDensity.current) { PIN_FADE_DISTANCE.toPx() }
     val pinBandPx = with(LocalDensity.current) { PIN_FADE_BAND.toPx() }
+    val pinEdgePx = with(LocalDensity.current) { PIN_BAR_EDGE.toPx() }
 
     // The controls row — the release's circles, or the artist's Play row —
     // stops under the top bar once a scroll carries it up there, and the list
@@ -459,10 +463,15 @@ fun DetailScreen(
     // it is are reported by the row; the rest is read off the list.
     var controlsOffset by remember(page.browseId) { mutableIntStateOf(0) }
     var controlsHeight by remember(page.browseId) { mutableIntStateOf(0) }
+    // How far above the row the page's title starts. The row stops that far
+    // below the top bar, so at the stop the title sits just under the bar with
+    // the credit and meta lines between it and the row — and from there on the
+    // title is what scrolls up and fades, not the row.
+    var controlsLead by remember(page.browseId) { mutableIntStateOf(0) }
     val controlsIndex = if (isArtist) ARTIST_ACTIONS_INDEX else 0
     val hasControls = if (isArtist) songs.isNotEmpty() else songs.isNotEmpty() || page.songs is UiState.Loading
     val showsControls by rememberUpdatedState(hasControls)
-    val pinTop by rememberUpdatedState(searchStop)
+    val pinTop by rememberUpdatedState(searchStop + controlsLead)
     // How far past the stop the row would have scrolled, in px; negative while
     // it is still below it, null where there is no row to pin.
     val controlsOvershoot: () -> Float? = remember(listState, controlsIndex, page.browseId) {
@@ -487,7 +496,7 @@ fun DetailScreen(
         // Under the pinned controls rather than behind them: the field is the
         // next thing down from the row, so the row is carried exactly to its
         // stop and the field lands just below it.
-        if (searching) listState.animateScrollToItem(SEARCH_ITEM_INDEX, -(searchStop + controlsHeight + releaseActionsFoot))
+        if (searching) listState.animateScrollToItem(SEARCH_ITEM_INDEX, -(pinTop + controlsHeight + releaseActionsFoot))
     }
 
     // When the track list lands while the page is up (rather than being in
@@ -557,14 +566,34 @@ fun DetailScreen(
                             val overshoot = controlsOvershoot() ?: return@drawWithContent
                             if (overshoot < 0f) return@drawWithContent
                             // Eased in over the first stretch past the stop, so
-                            // the header's own text above the row doesn't blink
-                            // out the instant the row arrives.
+                            // the title above the row doesn't blink out the
+                            // instant the row arrives — and whatever is left of
+                            // it is cut at the top bar's foot, never drawn up
+                            // behind the bar's buttons.
                             val keep = 1f - (overshoot / pinFadePx).coerceIn(0f, 1f)
                             val cut = pinTop + controlsHeight.toFloat()
+                            val barFoot = searchStop.toFloat()
+                            drawRect(
+                                color = Color.Transparent,
+                                topLeft = Offset.Zero,
+                                size = Size(size.width, (barFoot - pinEdgePx).coerceAtLeast(0f)),
+                                blendMode = BlendMode.DstIn,
+                            )
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    1f to Color.Black.copy(alpha = keep),
+                                    startY = barFoot - pinEdgePx,
+                                    endY = barFoot,
+                                ),
+                                topLeft = Offset(0f, barFoot - pinEdgePx),
+                                size = Size(size.width, pinEdgePx),
+                                blendMode = BlendMode.DstIn,
+                            )
                             drawRect(
                                 color = Color.Black.copy(alpha = keep),
-                                topLeft = Offset.Zero,
-                                size = Size(size.width, cut),
+                                topLeft = Offset(0f, barFoot),
+                                size = Size(size.width, (cut - barFoot).coerceAtLeast(0f)),
                                 blendMode = BlendMode.DstIn,
                             )
                             drawRect(
@@ -585,7 +614,13 @@ fun DetailScreen(
                 ) {
             item(key = "header") {
                 if (isArtist) {
-                    ArtistHeader(page = page, palette = palette, artHeight = artHeight, appleArt = appleArt)
+                    ArtistHeader(
+                        page = page,
+                        palette = palette,
+                        artHeight = artHeight,
+                        appleArt = appleArt,
+                        onNamePlaced = { controlsLead = it },
+                    )
                 } else {
                     ReleaseHeader(
                         page = page,
@@ -600,9 +635,10 @@ fun DetailScreen(
                         onMore = onMore,
                         onArtistClick = onArtistClick,
                         onToggleLibrary = onToggleLibrary,
-                        onControlsPlaced = { top, height ->
+                        onControlsPlaced = { top, height, lead ->
                             controlsOffset = top
                             controlsHeight = height
+                            controlsLead = lead
                         },
                         controlsPinned = { controlsPinned },
                     )
@@ -944,14 +980,18 @@ private fun ReleaseHeader(
     onMore: ((List<Song>) -> Unit)?,
     onArtistClick: (String, String) -> Unit,
     onToggleLibrary: (() -> Unit)?,
-    /** Where the controls row sits inside this header and how tall it is, in px. */
-    onControlsPlaced: (top: Int, height: Int) -> Unit = { _, _ -> },
+    /**
+     * Where the controls row sits inside this header, how tall it is, and how
+     * far above it the title starts, in px.
+     */
+    onControlsPlaced: (top: Int, height: Int, lead: Int) -> Unit = { _, _, _ -> },
     /** True while the pinned copy above the list stands in for the row here. */
     controlsPinned: () -> Boolean = { false },
 ) {
     val (credit, meta) = page.headerLines(trackCount, songs.playtime())
     // Held outside state: only read when the row reports where it landed.
     val headerCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val titleTop = remember { intArrayOf(0) }
     // Every row on a release carries the same credit — see [pageCredit] — so
     // the first one speaks for the whole page, the same source the rows'
     // own long-press "Open artist" already reads from.
@@ -978,7 +1018,12 @@ private fun ReleaseHeader(
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = HEADER_GUTTER),
+                modifier = Modifier
+                    .padding(horizontal = HEADER_GUTTER)
+                    .onGloballyPositioned { title ->
+                        val header = headerCoords[0]?.takeIf { it.isAttached } ?: return@onGloballyPositioned
+                        titleTop[0] = header.localPositionOf(title, Offset.Zero).y.roundToInt()
+                    },
             )
             // Artist / credit line
             if (credit.isNotBlank()) {
@@ -1034,10 +1079,8 @@ private fun ReleaseHeader(
                     modifier = Modifier
                         .onGloballyPositioned { row ->
                             val header = headerCoords[0]?.takeIf { it.isAttached } ?: return@onGloballyPositioned
-                            onControlsPlaced(
-                                header.localPositionOf(row, Offset.Zero).y.roundToInt(),
-                                row.size.height,
-                            )
+                            val top = header.localPositionOf(row, Offset.Zero).y.roundToInt()
+                            onControlsPlaced(top, row.size.height, (top - titleTop[0]).coerceAtLeast(0))
                         }
                         .graphicsLayer { alpha = if (controlsPinned()) 0f else 1f },
                 )
@@ -1309,8 +1352,15 @@ private fun ArtistHeader(
     palette: ArtworkPalette,
     artHeight: Dp,
     appleArt: AppleArtistArt?,
+    /** How far the name (or logo) starts above the foot of this header, in px. */
+    onNamePlaced: (Int) -> Unit = {},
 ) {
-    Box(Modifier.fillMaxWidth()) {
+    val headerCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    fun reportName(name: LayoutCoordinates) {
+        val header = headerCoords[0]?.takeIf { it.isAttached } ?: return
+        onNamePlaced((header.size.height - header.localPositionOf(name, Offset.Zero).y.roundToInt()).coerceAtLeast(0))
+    }
+    Box(Modifier.fillMaxWidth().onPlaced { headerCoords[0] = it }) {
         Spacer(Modifier.fillMaxWidth().height(artHeight + HEADER_DROP - ARTIST_HEADER_LIFT))
         val logoUrl = appleArt?.logoUrl
         // Whether the logo has actually been drawn. Until it has — a first fetch
@@ -1354,6 +1404,7 @@ private fun ArtistHeader(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .onGloballyPositioned { if (logoShown) reportName(it) }
                     .padding(top = 14.dp, bottom = 20.dp)
                     // Sized from the incoming width in layout rather than through a
                     // BoxWithConstraints, which would subcompose the image.
@@ -1375,6 +1426,7 @@ private fun ArtistHeader(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .onGloballyPositioned { reportName(it) }
                 // Bottom is half the top inset — the stats pills (or, absent
                 // those, the action row) sit closer under the name than the
                 // name sits under the artwork.
