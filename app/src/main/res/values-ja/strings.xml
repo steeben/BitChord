@@ -1268,4 +1268,11 @@
     <string name="spotify_track_unavailable">その曲は YouTube Music で見つかりません</string>
     <string name="chinese_simplified">中文（简体）</string>
     <string name="chinese_traditional">中文（繁體）</string>
+    <string name="local_only">ローカル</string>
+    <string name="nothing_on_device_for_artist">このアーティストの曲はまだこのデバイスにありません</string>
+    <string name="artist_radio_title">%1$s ラジオ</string>
+    <string name="pin_artist_to_speed_dial">アーティストをスピードダイヤルに固定</string>
+    <string name="unpin_artist_from_speed_dial">アーティストをスピードダイヤルから外す</string>
+    <string name="pin_artist_radio_to_speed_dial">アーティストのラジオをスピードダイヤルに固定</string>
+    <string name="unpin_artist_radio_from_speed_dial">アーティストのラジオをスピードダイヤルから外す</string>
 </resources>

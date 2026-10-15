@@ -1330,4 +1330,11 @@
     <string name="spotify_track_unavailable">Nie znaleziono tego utworu w YouTube Music</string>
     <string name="chinese_simplified">中文（简体）</string>
     <string name="chinese_traditional">中文（繁體）</string>
+    <string name="local_only">Lokalne</string>
+    <string name="nothing_on_device_for_artist">Na tym urządzeniu nie ma jeszcze nic tego wykonawcy</string>
+    <string name="artist_radio_title">Radio %1$s</string>
+    <string name="pin_artist_to_speed_dial">Przypnij wykonawcę do szybkiego wybierania</string>
+    <string name="unpin_artist_from_speed_dial">Odepnij wykonawcę od szybkiego wybierania</string>
+    <string name="pin_artist_radio_to_speed_dial">Przypnij radio wykonawcy do szybkiego wybierania</string>
+    <string name="unpin_artist_radio_from_speed_dial">Odepnij radio wykonawcy od szybkiego wybierania</string>
 </resources>

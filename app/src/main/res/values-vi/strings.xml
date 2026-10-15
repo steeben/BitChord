@@ -1207,4 +1207,11 @@
     <string name="spotify_track_unavailable">Không tìm thấy bài hát đó trên YouTube Music</string>
     <string name="chinese_simplified">中文（简体）</string>
     <string name="chinese_traditional">中文（繁體）</string>
+    <string name="local_only">Cục bộ</string>
+    <string name="nothing_on_device_for_artist">Chưa có gì của nghệ sĩ này trên thiết bị này</string>
+    <string name="artist_radio_title">Radio %1$s</string>
+    <string name="pin_artist_to_speed_dial">Ghim nghệ sĩ vào quay số nhanh</string>
+    <string name="unpin_artist_from_speed_dial">Bỏ ghim nghệ sĩ khỏi quay số nhanh</string>
+    <string name="pin_artist_radio_to_speed_dial">Ghim radio nghệ sĩ vào quay số nhanh</string>
+    <string name="unpin_artist_radio_from_speed_dial">Bỏ ghim radio nghệ sĩ khỏi quay số nhanh</string>
 </resources>

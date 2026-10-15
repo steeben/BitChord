@@ -1267,4 +1267,11 @@
     <string name="spotify_library_subtitle">你的 Spotify 播放列表</string>
     <string name="spotify_sign_in">使用 Spotify 登录</string>
     <string name="spotify_track_unavailable">在 YouTube Music 上找不到该歌曲</string>
+    <string name="local_only">本地</string>
+    <string name="nothing_on_device_for_artist">此设备上还没有该艺人的内容</string>
+    <string name="artist_radio_title">%1$s 电台</string>
+    <string name="pin_artist_to_speed_dial">将艺人固定到快速拨号</string>
+    <string name="unpin_artist_from_speed_dial">将艺人从快速拨号取消固定</string>
+    <string name="pin_artist_radio_to_speed_dial">将艺人电台固定到快速拨号</string>
+    <string name="unpin_artist_radio_from_speed_dial">将艺人电台从快速拨号取消固定</string>
 </resources>
