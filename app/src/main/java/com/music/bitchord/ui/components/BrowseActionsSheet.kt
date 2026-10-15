@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material.icons.rounded.Title
 import androidx.compose.material.icons.rounded.FormatClear
 import androidx.compose.material.icons.rounded.HideImage
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Radio
@@ -181,6 +182,11 @@ fun BrowseActionsSheet(
     onSetCustomCover: (() -> Unit)? = null,
     /** Puts the playlist's own cover back. Null when no custom one is set. */
     onRemoveCustomCover: (() -> Unit)? = null,
+    /**
+     * Picks which of the album's own covers stands for it — see
+     * [com.music.bitchord.data.AlbumArtChoices]. Null hides the row.
+     */
+    onChooseAlbumArt: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     /**
      * Removes the files this release was downloaded as, when it was downloaded
@@ -379,6 +385,9 @@ fun BrowseActionsSheet(
             }
             onRemoveCustomCover?.let {
                 ActionRow(Icons.Rounded.HideImage, stringResource(R.string.remove_custom_cover), onClick = it)
+            }
+            onChooseAlbumArt?.let {
+                ActionRow(Icons.Rounded.Image, stringResource(R.string.choose_album_art), onClick = it)
             }
             if (onDelete != null) {
                 if (confirmingDelete) {

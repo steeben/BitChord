@@ -395,6 +395,7 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlinx.coroutines.launch
+import com.music.bitchord.data.withChosenAlbumArt
 import com.music.bitchord.data.withCustomCover
 import com.music.bitchord.data.withCustomCovers
 import kotlinx.coroutines.delay
@@ -818,6 +819,8 @@ private fun BitChordApp(
     var browseActions by remember { mutableStateOf<BrowseTarget?>(null) }
     /** The card held to open [browseActions] — see [songMenuOrigin]. */
     var browseMenuOrigin by remember { mutableStateOf<HeldItem?>(null) }
+    /** The album whose cover is being chosen, or null when that sheet is shut. */
+    var albumArtPick by remember { mutableStateOf<BrowseTarget?>(null) }
     /**
      * The dial tile the open menu was held on, or null when the menu came from
      * anywhere else — what gives the menu its "Remove from dial" row.
@@ -1062,6 +1065,7 @@ private fun BitChordApp(
     // in the app's own store, and sit on the same shelf as the downloaded ones.
     val localPlaylists by com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.collectAsStateWithLifecycle()
     val customCovers by com.music.bitchord.data.CustomCovers.covers.collectAsStateWithLifecycle()
+    val albumArtChoices by com.music.bitchord.data.AlbumArtChoices.choices.collectAsStateWithLifecycle()
     val localPlaylistItems = localPlaylists.map { playlist ->
         ShelfItem(
             title = playlist.title,
@@ -3639,7 +3643,7 @@ private fun BitChordApp(
                             }
                         }
                         DetailScreen(
-                            page = page.withCustomCover(customCovers),
+                            page = page.withCustomCover(customCovers).withChosenAlbumArt(albumArtChoices),
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                             listState = pageDetailListState,
@@ -5639,11 +5643,21 @@ private fun BitChordApp(
                 }
             }
             val customCover = com.music.bitchord.data.CustomCovers.coverFor(pinnableId, customCovers)
+            // An album, or a device album held on the Albums tab (which
+            // arrives with no type, as its rows all name the one album).
+            val albumTarget = target.type == BrowseType.ALBUM ||
+                (target.type == BrowseType.OTHER && target.browseId == null && target.songs.isNotEmpty() &&
+                    target.songs.all { it.albumName.equals(target.title, ignoreCase = true) })
+            val chosenAlbumArt = if (albumTarget) {
+                com.music.bitchord.data.AlbumArtChoices.chosen(target.browseId, target.title, albumArtChoices)
+            } else {
+                null
+            }
             BrowseActionsSheet(
                 // The live answer, not the one the target was built with.
                 target = target.copy(
                     playlist = playlist,
-                    thumbnailUrl = customCover ?: target.thumbnailUrl,
+                    thumbnailUrl = customCover ?: chosenAlbumArt ?: target.thumbnailUrl,
                 ),
                 presentation = presentation,
                 onRenameInSheet = {
@@ -5797,6 +5811,14 @@ private fun BitChordApp(
                         com.music.bitchord.data.CustomCovers.remove(id)
                     }
                 },
+                onChooseAlbumArt = target
+                    .takeIf { albumTarget && com.music.bitchord.data.AlbumArtChoices.worthOffering(it.songs) }
+                    ?.let { album ->
+                        {
+                            browseActions = null
+                            albumArtPick = album
+                        }
+                    },
                 onDelete = playlist?.let { p ->
                     {
                         browseActions = null
@@ -5840,6 +5862,17 @@ private fun BitChordApp(
                 },
                 dialLabelHidden = dialLabels == (target.browseId in dialHiddenLabels),
             )
+        }
+        albumArtPick?.let { target ->
+            ModalBottomSheet(
+                onDismissRequest = { albumArtPick = null },
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
+                com.music.bitchord.ui.components.AlbumArtPickerSheet(
+                    target = target,
+                    onDone = { albumArtPick = null },
+                )
+            }
         }
         browseActions?.takeIf { browseMenuOrigin == null }?.let { target ->
             ModalBottomSheet(

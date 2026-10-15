@@ -71,6 +71,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.music.bitchord.R
+import com.music.bitchord.data.AlbumArtChoices
+import com.music.bitchord.data.LibraryArtists
 import com.music.bitchord.data.LibraryDuplicates
 import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
@@ -864,6 +866,8 @@ suspend fun dealLibraryFeed(
 
     // ── The device's side ──
     val local = if (device) songs.filter { it.onDevice() } else emptyList()
+    val knownArtists = LibraryArtists.knownArtists(local.map { it.artist })
+    val albumArt = AlbumArtChoices.choices.value
     val localAlbums = local
         .filter { !it.albumName.isNullOrBlank() }
         .groupBy { it.albumName!!.folded() }
@@ -871,12 +875,13 @@ suspend fun dealLibraryFeed(
         .filter { it.size >= 2 }
         .map { tracks ->
             val first = tracks.first()
-            val artist = tracks.groupingBy { it.artist }.eachCount().maxByOrNull { it.value }?.key.orEmpty()
+            val artist = LibraryArtists.albumArtist(tracks, knownArtists)
             LibrarySuggestion(
                 ShelfItem(
                     title = first.albumName!!,
                     subtitle = artist,
-                    thumbnailUrl = tracks.firstNotNullOfOrNull { it.thumbnailUrl },
+                    thumbnailUrl = AlbumArtChoices.chosen(null, first.albumName!!, albumArt)
+                        ?: tracks.firstNotNullOfOrNull { it.thumbnailUrl },
                     videoId = null,
                     browseId = libraryGroupId(BrowseType.ALBUM, first.albumName!!, artist),
                 ),
@@ -884,12 +889,10 @@ suspend fun dealLibraryFeed(
                 groupType = BrowseType.ALBUM,
             )
         }
-    val localArtists = local
-        .groupBy { LibraryDuplicates.artistKey(it.artist) }
-        .values
-        .filter { it.size >= 2 }
-        .map { tracks ->
-            val name = tracks.first().artist
+    // A collaboration counts toward each of its artists — see LibraryArtists.
+    val localArtists = LibraryArtists.group(local)
+        .filter { (_, tracks) -> tracks.size >= 2 }
+        .map { (name, tracks) ->
             LibrarySuggestion(
                 ShelfItem(
                     title = name,

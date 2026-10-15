@@ -186,6 +186,10 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                 // Covers filed on the SMB share; anything else falls
                 // through to Coil's own fetchers. See SmbCoverFetcher.
                 add(SmbCoverFetcher.Factory())
+                // A device track's own picture, for choosing an album's
+                // cover. See AlbumArtChoices.
+                add(com.music.bitchord.data.TrackArtFetcher.Factory())
+                add(com.music.bitchord.data.TrackArtFetcher.StringFactory())
             }
             .memoryCache {
                 MemoryCache.Builder()

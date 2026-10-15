@@ -770,6 +770,7 @@ object AppSettings {
         this.authStore = authStore
         com.music.bitchord.data.spotify.LocalPlaylistStore.init(context)
         com.music.bitchord.data.CustomCovers.init(context)
+        com.music.bitchord.data.AlbumArtChoices.init(context)
         LastPlayed.init(context)
         readAll()
         watchConnection(context)

@@ -93,6 +93,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.music.bitchord.data.AlbumArtChoices
+import com.music.bitchord.data.LibraryArtists
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.ROW_ART_PX
@@ -451,7 +453,9 @@ fun LocalMusicScreen(
 
                 key == "tab:$LOCAL_TAB_ARTISTS" -> {
                     val artists = remember(sortedSongs, searchQuery) {
-                        sortedSongs.groupBy { it.artist }
+                        // A collaboration is each of its artists' — see LibraryArtists.
+                        LibraryArtists.group(sortedSongs)
+                            .associateTo(LinkedHashMap()) { it }
                             .entries
                             .filter { searchQuery.isBlank() || it.key.contains(searchQuery, ignoreCase = true) }
                             .sortedBy { indexSortKey(it.key) }
@@ -475,8 +479,9 @@ fun LocalMusicScreen(
 
                 else -> {
                     // LOCAL_TAB_ALBUMS
-                    val albums = remember(sortedSongs, collections, searchQuery) {
-                        albumEntries(sortedSongs, collections).filter {
+                    val albumArt by AlbumArtChoices.choices.collectAsStateWithLifecycle()
+                    val albums = remember(sortedSongs, collections, searchQuery, albumArt) {
+                        albumEntries(sortedSongs, collections, albumArt).filter {
                             searchQuery.isBlank() ||
                                 it.title.contains(searchQuery, ignoreCase = true) ||
                                 it.artist.contains(searchQuery, ignoreCase = true)
@@ -966,7 +971,9 @@ private class AlbumEntry(
 private fun albumEntries(
     songs: List<Song>,
     collections: List<DownloadedCollection>,
+    albumArt: Map<String, String> = emptyMap(),
 ): List<AlbumEntry> {
+    val known = LibraryArtists.knownArtists(songs.map { it.artist })
     val asked = collections.map { collection ->
         AlbumEntry(
             title = collection.title,
@@ -990,8 +997,9 @@ private fun albumEntries(
             if (name == null || name.lowercase(Locale.ROOT) in claimed) return@mapNotNull null
             AlbumEntry(
                 title = name,
-                artist = group.firstOrNull()?.artist.orEmpty(),
-                thumbnailUrl = group.firstNotNullOfOrNull { it.thumbnailUrl },
+                artist = LibraryArtists.albumArtist(group, known),
+                thumbnailUrl = AlbumArtChoices.chosen(null, name, albumArt)
+                    ?: group.firstNotNullOfOrNull { it.thumbnailUrl },
                 playlist = false,
                 songs = group,
                 asked = false,
