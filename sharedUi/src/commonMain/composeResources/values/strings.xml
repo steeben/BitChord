@@ -89,8 +89,11 @@
     <string name="lyrics_instrumental">Instrumental</string>
     <string name="lyrics_provider_reorder">Drag to change priority</string>
     <string name="lyrics_provider_automatic_detail">Best match in your Settings order</string>
-    <string name="lyrics_prefer_word_synced">Prefer word-by-word</string>
-    <string name="lyrics_prefer_word_synced_detail">On Automatic, skip line-only lyrics when a provider has per-word timing</string>
+    <string name="lyrics_prefer_word_synced">Prefer timestamped lyrics</string>
+    <string name="lyrics_prefer_word_synced_detail">On Automatic, take per-word timing first, then per-line, then untimed lyrics</string>
+    <string name="lyrics_ignore_short">Ignore short lyrics</string>
+    <string name="lyrics_ignore_short_detail">Skip results with 2 lines or fewer</string>
+    <string name="lyrics_provider_too_short">Only 2 lines or fewer, skipped</string>
     <string name="lyrics_provider_fetching">Fetching lyrics…</string>
     <string name="lyrics_provider_found">Lyrics found · Tap to use</string>
     <string name="lyrics_provider_not_fetched">Tap to fetch</string>

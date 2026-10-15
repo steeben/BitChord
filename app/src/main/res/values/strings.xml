@@ -590,8 +590,8 @@
     <string name="playlist_name">Playlist name</string>
     <string name="presence">Presence</string>
     <string name="preview">Preview</string>
-    <string name="prioritize_syllable_lyrics">Prioritize syllable lyrics</string>
-    <string name="prioritize_syllable_lyrics_subtitle">Keep searching past a line-synced match for word-by-word lyrics</string>
+    <string name="prioritize_syllable_lyrics">Prefer timestamped lyrics</string>
+    <string name="prioritize_syllable_lyrics_subtitle">Per-word timing first, then per-line, then untimed lyrics</string>
     <string name="quality_hourly">%1$s · %2$s</string>
     <string name="quality_per_track">%1$s · %2$s per track</string>
     <string name="queued">Queued</string>

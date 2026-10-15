@@ -777,6 +777,10 @@ fun NowPlayingScreen(
     preferWordSyncedLyrics: Boolean = false,
     /** Null hides the drawer's word-by-word switch. */
     onPreferWordSyncedLyricsChange: ((Boolean) -> Unit)? = null,
+    /** Whether answers of two lines or fewer are passed over. */
+    ignoreShortLyrics: Boolean = false,
+    /** Null hides the drawer's short-lyrics switch. */
+    onIgnoreShortLyricsChange: ((Boolean) -> Unit)? = null,
     /** Providers whose answer for this track is word-synced; crowned in the drawer. */
     wordSyncedLyricsProviders: Set<LyricsSource> = emptySet(),
     /** The track is marked instrumental: the lyric strip is hidden. */
@@ -1671,6 +1675,8 @@ fun NowPlayingScreen(
                 onSelectAutomatic = onSelectAutomaticLyrics,
                 preferWordSynced = preferWordSyncedLyrics,
                 onPreferWordSyncedChange = onPreferWordSyncedLyricsChange,
+                ignoreShort = ignoreShortLyrics,
+                onIgnoreShortChange = onIgnoreShortLyricsChange,
                 wordSynced = wordSyncedLyricsProviders,
                 instrumental = lyricsInstrumental,
                 onToggleInstrumental = onToggleLyricsInstrumental,

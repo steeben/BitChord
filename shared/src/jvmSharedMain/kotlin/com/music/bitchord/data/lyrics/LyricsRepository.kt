@@ -72,6 +72,12 @@ object LyricsRepository {
     data class Result(val source: LyricsSource, val lines: List<LyricLine>) {
         /** Whether this answer times individual words, not just whole lines. */
         val isWordSynced: Boolean get() = lines.any { it.isWordSynced }
+
+        /** Whether the lines carry timestamps at all, per word or per line. */
+        val isTimed: Boolean get() = lines.any { it.timeMs > 0 }
+
+        /** Two sung lines or fewer: a stub or a wrong match far more often than a song. */
+        val isShort: Boolean get() = lines.count { it.text.isNotBlank() } <= SHORT_LINES
     }
 
     /**
@@ -98,6 +104,8 @@ object LyricsRepository {
         sources: Set<LyricsSource> = LyricsSource.entries.toSet(),
         order: List<LyricsSource> = LyricsSource.entries,
         prioritizeSyllableSync: Boolean = false,
+        /** Pass over answers of two lines or fewer, as though the source had missed. */
+        ignoreShort: Boolean = false,
         isrc: String? = null,
         /** Called from the provider job itself, including for lazily-started providers. */
         onSourceStarted: ((LyricsSource) -> Unit)? = null,
@@ -162,19 +170,25 @@ object LyricsRepository {
         }
 
         try {
+            // Best of each kind seen so far, in priority order: per-word wins
+            // outright, then per-line, then untimed text as the last resort.
             var lineSynced: Result? = null
+            var untimed: Result? = null
             for ((source, job) in racing) {
                 // If we already found a line-synced or better result, skip Genius completely
                 if (lineSynced != null && source == LyricsSource.GENIUS) continue
 
                 val found = runCatching { job.await() }.getOrNull() ?: continue
+                if (ignoreShort && found.isShort) continue
                 if (found.isWordSynced) return@coroutineScope found
-                if (!prioritizeSyllableSync && found.lines.any { it.timeMs > 0 }) {
-                    return@coroutineScope found
+                if (found.isTimed) {
+                    if (!prioritizeSyllableSync) return@coroutineScope found
+                    if (lineSynced == null) lineSynced = found
+                } else if (untimed == null) {
+                    untimed = found
                 }
-                if (lineSynced == null) lineSynced = found
             }
-            lineSynced
+            lineSynced ?: untimed
         } finally {
             // Whoever lost the race is no longer worth waiting on, and
             // coroutineScope will not return while they are still running.
@@ -243,6 +257,9 @@ object LyricsRepository {
      * worse failure than a fuzzy match.
      */
     private const val IDENTIFY_TIMEOUT_MS = 2_500L
+
+    /** See [Result.isShort]. */
+    private const val SHORT_LINES = 2
 
     /**
      * The one request made before the race: which recording is this?

@@ -6,4 +6,6 @@ enum class LyricsProviderState {
     FETCHING,
     FOUND,
     NOT_FOUND,
+    /** Answered, but with two lines or fewer, and short answers are being ignored. */
+    TOO_SHORT,
 }

@@ -1165,12 +1165,14 @@ private fun BitChordApp(
     val syncedLyricsEnabled by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val lyricsSources by AppSettings.lyricsSources.collectAsStateWithLifecycle()
     val preferWordSyncedLyrics by AppSettings.prioritizeSyllableSync.collectAsStateWithLifecycle()
+    val ignoreShortLyrics by AppSettings.ignoreShortLyrics.collectAsStateWithLifecycle()
     LaunchedEffect(
         player.song?.videoId,
         player.durationMs,
         syncedLyricsEnabled,
         lyricsSources,
         preferWordSyncedLyrics,
+        ignoreShortLyrics,
     ) {
         player.song?.let {
             viewModel.loadLyrics(
@@ -2724,6 +2726,8 @@ private fun BitChordApp(
             onSelectAutomaticLyrics = viewModel::selectAutomaticLyrics,
             preferWordSyncedLyrics = preferWordSyncedLyrics,
             onPreferWordSyncedLyricsChange = AppSettings::setPrioritizeSyllableSync,
+            ignoreShortLyrics = ignoreShortLyrics,
+            onIgnoreShortLyricsChange = AppSettings::setIgnoreShortLyrics,
             wordSyncedLyricsProviders = lyricsWordSyncedProviders,
             lyricsInstrumental = lyricsInstrumental,
             onToggleLyricsInstrumental = viewModel::toggleLyricsInstrumental,

@@ -520,6 +520,9 @@ object AppSettings {
      */
     val prioritizeSyllableSync = MutableStateFlow(false)
 
+    /** Treat an answer of two lines or fewer as no answer: almost always a stub or a wrong match. */
+    val ignoreShortLyrics = MutableStateFlow(false)
+
     /** User-issued credential required by api.paxsenix.org. */
     val paxSenixApiKey = MutableStateFlow("")
 
@@ -879,6 +882,7 @@ object AppSettings {
         preferredLyricsSource.value = prefs.getString(KEY_PREFERRED_LYRICS_SOURCE, null)
             ?.let { name -> LyricsSource.offered.firstOrNull { it.name == name } }
         prioritizeSyllableSync.value = prefs.getBoolean(KEY_PRIORITIZE_SYLLABLE_SYNC, false)
+        ignoreShortLyrics.value = prefs.getBoolean(KEY_IGNORE_SHORT_LYRICS, false)
         paxSenixApiKey.value = prefs.getString(KEY_PAXSENIX_API_KEY, "").orEmpty()
         com.music.bitchord.data.lyrics.PaxSenix.setApiKey(paxSenixApiKey.value)
         audioCacheLimitBytes.value = clampCacheLimit(prefs.getLong(KEY_CACHE_LIMIT, DEFAULT_CACHE_LIMIT_BYTES))
@@ -1407,6 +1411,12 @@ object AppSettings {
         setLyricsSources(LyricsSource.offered.toSet())
         setLyricsSourceOrder(LyricsSource.offered)
         setPrioritizeSyllableSync(false)
+        setIgnoreShortLyrics(false)
+    }
+
+    fun setIgnoreShortLyrics(value: Boolean) {
+        ignoreShortLyrics.value = value
+        prefs.edit().putBoolean(KEY_IGNORE_SHORT_LYRICS, value).apply()
     }
 
     fun setAnimatedCanvas(value: Boolean) {
@@ -2017,6 +2027,7 @@ object AppSettings {
     private const val KEY_PREFERRED_LYRICS_SOURCE = "preferred_lyrics_source"
     private const val KEY_INSTRUMENTAL_TRACKS = "instrumental_tracks"
     private const val KEY_PRIORITIZE_SYLLABLE_SYNC = "prioritize_syllable_sync"
+    private const val KEY_IGNORE_SHORT_LYRICS = "ignore_short_lyrics"
     private const val KEY_PAXSENIX_API_KEY = "paxsenix_api_key"
     private const val KEY_REPLAY_GENRES = "replay_genres"
     private const val KEY_FILTER_NON_MUSIC_AUDIO = "filter_non_music_audio"

@@ -362,7 +362,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * than leaving the last answer sitting on a player that would now find a
      * different one.
      */
-    private var lyricsFor: Triple<String, Set<LyricsSource>, Boolean>? = null
+    /** What a lookup was made under; any change to it looks the track up again. */
+    private data class LyricsKey(
+        val videoId: String,
+        val sources: Set<LyricsSource>,
+        val preferTimed: Boolean,
+        val ignoreShort: Boolean,
+    )
+
+    private var lyricsFor: LyricsKey? = null
 
     /**
      * Called as the playing track changes; cheap no-op when already loaded.
@@ -390,7 +398,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         // The word-by-word preference is part of the key, so flipping it from
         // the provider drawer looks the playing track up again under the new rule.
-        val key = Triple(videoId, sources, AppSettings.prioritizeSyllableSync.value)
+        val key = LyricsKey(
+            videoId,
+            sources,
+            AppSettings.prioritizeSyllableSync.value,
+            AppSettings.ignoreShortLyrics.value,
+        )
         if (lyricsFor == key) return
         // The duration lands a beat after the track, and a database match needs
         // it. Turned away here rather than inside the job below: claiming the
@@ -456,6 +469,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 preferred?.let { listOf(it) + (AppSettings.lyricsSourceOrder.value - it) }
                     ?: AppSettings.lyricsSourceOrder.value,
                 AppSettings.prioritizeSyllableSync.value,
+                ignoreShort = AppSettings.ignoreShortLyrics.value,
                 onSourceStarted = { source -> providerStarted(generation, source) },
                 onSourceResult = { source, result ->
                     providerFinished(generation, source, result)
@@ -483,7 +497,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         when (_lyricsProviderStates.value[source]) {
-            LyricsProviderState.FOUND -> {
+            LyricsProviderState.FOUND, LyricsProviderState.TOO_SHORT -> {
                 selectedLyricsSource = source
                 AppSettings.setPreferredLyricsSource(source)
                 lyricsProviderResults[source]?.let(::showLyricsResult)
@@ -531,7 +545,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         AppSettings.setPreferredLyricsSource(null)
         selectedLyricsSource = null
         LyricsSource.ordered(AppSettings.lyricsSourceOrder.value)
-            .firstNotNullOfOrNull(lyricsProviderResults::get)
+            .firstNotNullOfOrNull { source ->
+                lyricsProviderResults[source]
+                    ?.takeUnless { AppSettings.ignoreShortLyrics.value && it.isShort }
+            }
             ?.let(::showLyricsResult)
     }
 
@@ -577,7 +594,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         lyricsProviderResults[source] = result
         if (result.isWordSynced) _lyricsWordSyncedProviders.update { it + source }
-        _lyricsProviderStates.update { it + (source to LyricsProviderState.FOUND) }
+        val state = if (AppSettings.ignoreShortLyrics.value && result.isShort) {
+            LyricsProviderState.TOO_SHORT
+        } else {
+            LyricsProviderState.FOUND
+        }
+        _lyricsProviderStates.update { it + (source to state) }
         if (selectedLyricsSource == source) showLyricsResult(result)
     }
 

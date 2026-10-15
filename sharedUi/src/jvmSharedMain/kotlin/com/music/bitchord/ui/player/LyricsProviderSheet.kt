@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PriorityHigh
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -92,10 +93,13 @@ internal fun LyricsProviderSheet(
     preferWordSynced: Boolean = false,
     /**
      * Shown under the Automatic row when given: whether Automatic holds out
-     * for a word-by-word answer further down the order rather than taking the
-     * first line-synced one.
+     * for the best-timed answer anywhere in the order — per word, then per
+     * line, then untimed — rather than taking the first timed one.
      */
     onPreferWordSyncedChange: ((Boolean) -> Unit)? = null,
+    ignoreShort: Boolean = false,
+    /** Shown under the Automatic row when given: pass over answers of two lines or fewer. */
+    onIgnoreShortChange: ((Boolean) -> Unit)? = null,
     /** Providers whose answer for this track carries per-word timing; they get the crown. */
     wordSynced: Set<LyricsSource> = emptySet(),
     instrumental: Boolean = false,
@@ -124,9 +128,19 @@ internal fun LyricsProviderSheet(
                     onClick = onSelectAutomatic,
                 )
                 if (onPreferWordSyncedChange != null) {
-                    PreferWordSyncedRow(
+                    SwitchRow(
+                        title = stringResource(Res.string.lyrics_prefer_word_synced),
+                        detail = stringResource(Res.string.lyrics_prefer_word_synced_detail),
                         checked = preferWordSynced,
                         onToggle = { onPreferWordSyncedChange(!preferWordSynced) },
+                    )
+                }
+                if (onIgnoreShortChange != null) {
+                    SwitchRow(
+                        title = stringResource(Res.string.lyrics_ignore_short),
+                        detail = stringResource(Res.string.lyrics_ignore_short_detail),
+                        checked = ignoreShort,
+                        onToggle = { onIgnoreShortChange(!ignoreShort) },
                     )
                 }
             }
@@ -435,7 +449,9 @@ private fun AutomaticProviderRow(
 }
 
 @Composable
-private fun PreferWordSyncedRow(
+private fun SwitchRow(
+    title: String,
+    detail: String,
     checked: Boolean,
     onToggle: () -> Unit,
 ) {
@@ -457,14 +473,14 @@ private fun PreferWordSyncedRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = stringResource(Res.string.lyrics_prefer_word_synced),
+                text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color.White.copy(alpha = 0.85f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = stringResource(Res.string.lyrics_prefer_word_synced_detail),
+                text = detail,
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.5f),
                 maxLines = 2,
@@ -496,6 +512,7 @@ private fun LyricsProviderRow(
     onClick: () -> Unit,
 ) {
     val haptics = rememberHaptics()
+    val short = !current && state == LyricsProviderState.TOO_SHORT
     val found = current || state == LyricsProviderState.FOUND
     val missing = !found && state == LyricsProviderState.NOT_FOUND
     // A running automatic request can still be selected: it is marked as the
@@ -505,6 +522,7 @@ private fun LyricsProviderRow(
         current -> stringResource(Res.string.lyrics_provider_current)
         state == LyricsProviderState.FOUND -> stringResource(Res.string.lyrics_provider_found)
         state == LyricsProviderState.NOT_FOUND -> stringResource(Res.string.lyrics_provider_not_found)
+        state == LyricsProviderState.TOO_SHORT -> stringResource(Res.string.lyrics_provider_too_short)
         state == LyricsProviderState.FETCHING -> stringResource(Res.string.lyrics_provider_fetching)
         else -> stringResource(Res.string.lyrics_provider_not_fetched)
     }
@@ -533,6 +551,7 @@ private fun LyricsProviderRow(
                     when {
                         found -> FOUND_GREEN.copy(alpha = if (current) 0.32f else 0.22f)
                         missing -> MISSING_RED.copy(alpha = 0.20f)
+                        short -> SHORT_ORANGE.copy(alpha = 0.22f)
                         else -> Color.White.copy(alpha = 0.08f)
                     },
                 ),
@@ -555,6 +574,12 @@ private fun LyricsProviderRow(
                     contentDescription = null,
                     tint = FOUND_GREEN,
                     modifier = Modifier.size(21.dp),
+                )
+                short -> Icon(
+                    imageVector = Icons.Rounded.PriorityHigh,
+                    contentDescription = null,
+                    tint = SHORT_ORANGE,
+                    modifier = Modifier.size(20.dp),
                 )
                 missing -> Icon(
                     imageVector = Icons.Rounded.Close,
@@ -609,6 +634,7 @@ private fun LyricsProviderRow(
 private val FOUND_GREEN = Color(0xFF30D158)
 private val MISSING_RED = Color(0xFFFF453A)
 private val CROWN_GOLD = Color(0xFFFFD60A)
+private val SHORT_ORANGE = Color(0xFFFF9F0A)
 
 private val PROVIDER_ROW_GAP = 6.dp
 private const val PROVIDER_SWAP_THRESHOLD = 0.6f
