@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import com.music.bitchord.ui.components.AlphabetIndexer
 import com.music.bitchord.ui.components.indexSortKey
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -41,6 +43,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
@@ -72,6 +76,8 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +102,8 @@ import coil3.compose.AsyncImage
 import com.music.bitchord.data.AlbumArtChoices
 import com.music.bitchord.data.LibraryArtists
 import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.ui.theme.LocalNowPlayingTint
+import dev.chrisbanes.haze.HazeState
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
@@ -199,6 +207,12 @@ fun LocalMusicScreen(
      * [LibraryFolderSearchField]), so it is held by the app as well.
      */
     searchQuery: String,
+    /**
+     * Where each tab is scrolled to. Held by the app while the page is open,
+     * so a page opened from one of its rows and closed again comes back to
+     * the same place in the list rather than the top of it.
+     */
+    scroll: LibraryFolderScroll = remember { LibraryFolderScroll() },
     modifier: Modifier = Modifier,
 ) {
     val sortOrder by if (isDownloads) {
@@ -304,16 +318,19 @@ fun LocalMusicScreen(
         }
 
         // ── Tab row ──────────────────────────────────────────────────────────
+        // The picked tab wears the playing song's colour, as the Library's
+        // own marks and menu do.
+        val tabAccent = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary
         TabRow(
             selectedTabIndex = selectedTab,
             // Right under the top bar, which now carries the search field.
             modifier = if (selectingDownloads) Modifier else Modifier.padding(top = barHeight + 4.dp),
             containerColor = frostedSurfaceColor(MaterialTheme.colorScheme.background),
-            contentColor = MaterialTheme.colorScheme.primary,
+            contentColor = tabAccent,
             indicator = { tabPositions ->
                 TabRowDefaults.SecondaryIndicator(
                     modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = tabAccent,
                 )
             },
         ) {
@@ -425,6 +442,8 @@ fun LocalMusicScreen(
                         else sortedSongs.filter { it.matchesSearch(searchQuery) }
                     }
                     SongsTab(
+                        listState = scroll.list(LOCAL_TAB_SONGS),
+                        gridState = scroll.grid(LOCAL_TAB_SONGS),
                         songs = filteredSongs,
                         viewType = viewType,
                         selectedIds = selectedDownloadIds,
@@ -461,6 +480,8 @@ fun LocalMusicScreen(
                             .sortedBy { indexSortKey(it.key) }
                     }
                     ArtistsTab(
+                        listState = scroll.list(LOCAL_TAB_ARTISTS),
+                        gridState = scroll.grid(LOCAL_TAB_ARTISTS),
                         artists = artists,
                         viewType = viewType,
                         onArtistClick = { artist, artistSongs ->
@@ -488,6 +509,8 @@ fun LocalMusicScreen(
                         }
                     }
                     AlbumsTab(
+                        listState = scroll.list(LOCAL_TAB_ALBUMS),
+                        gridState = scroll.grid(LOCAL_TAB_ALBUMS),
                         albums = albums,
                         viewType = viewType,
                         selectedKeys = selectedAlbumKeys,
@@ -522,6 +545,21 @@ fun LocalMusicScreen(
     }
 }
 
+/**
+ * Where each of a library page's Songs, Artists and Albums tabs is scrolled
+ * to, as a list and as a grid. One per open page: two lists sharing one lazy
+ * state cannot both lay out against it.
+ */
+@Stable
+class LibraryFolderScroll {
+    private val lists = List(3) { LazyListState() }
+    private val grids = List(3) { LazyGridState() }
+
+    fun list(tab: Int): LazyListState = lists[tab.coerceIn(0, lists.lastIndex)]
+
+    fun grid(tab: Int): LazyGridState = grids[tab.coerceIn(0, grids.lastIndex)]
+}
+
 // ── Songs tab ─────────────────────────────────────────────────────────────────
 
 @Composable
@@ -537,9 +575,10 @@ private fun SongsTab(
     onSongMore: ((Song) -> Unit)? = null,
     onSongSwipe: (Song) -> Unit,
     contentPadding: PaddingValues,
+    listState: LazyListState = rememberLazyListState(),
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     if (viewType == LibraryViewType.GRID) {
-        val gridState = rememberLazyGridState()
         Box(Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 140.dp),
@@ -583,7 +622,6 @@ private fun SongsTab(
             )
         }
     } else {
-        val listState = rememberLazyListState()
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
@@ -716,9 +754,10 @@ private fun ArtistsTab(
     onArtistClick: (String, List<Song>) -> Unit,
     onArtistLongPress: ((String, List<Song>) -> Unit)?,
     contentPadding: PaddingValues,
+    listState: LazyListState = rememberLazyListState(),
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     if (viewType == LibraryViewType.GRID) {
-        val gridState = rememberLazyGridState()
         Box(Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 130.dp),
@@ -760,7 +799,6 @@ private fun ArtistsTab(
             )
         }
     } else {
-        val listState = rememberLazyListState()
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
@@ -1019,9 +1057,10 @@ private fun AlbumsTab(
     onAlbumClick: (AlbumEntry) -> Unit,
     onAlbumLongPress: ((AlbumEntry) -> Unit)?,
     contentPadding: PaddingValues,
+    listState: LazyListState = rememberLazyListState(),
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     if (viewType == LibraryViewType.GRID) {
-        val gridState = rememberLazyGridState()
         Box(Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 140.dp),
@@ -1069,7 +1108,6 @@ private fun AlbumsTab(
             )
         }
     } else {
-        val listState = rememberLazyListState()
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
@@ -1608,26 +1646,18 @@ private fun List<Song>.sortedForLibrary(order: LocalMusicSort): List<Song> = whe
 fun LibraryFolderSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
-    isDownloads: Boolean,
     selectedTab: Int,
+    /** Opens [LibraryFolderSortMenu], which the app composes over the page. */
+    onOpenSort: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val sortOrder by if (isDownloads) {
-        AppSettings.downloadedMusicSort.collectAsStateWithLifecycle()
-    } else {
-        AppSettings.localMusicSort.collectAsStateWithLifecycle()
-    }
     val tabViews by com.music.bitchord.data.settings.CustomizationSettings.libraryTabViews
         .collectAsStateWithLifecycle()
     val viewType = tabViews.getOrElse(selectedTab) { LibraryViewType.LIST }
     LocalSearchField(
         query = query,
         onQueryChange = onQueryChange,
-        sortOrder = sortOrder,
-        onSortOrderChange = {
-            if (isDownloads) AppSettings.setDownloadedMusicSort(it)
-            else AppSettings.setLocalMusicSort(it)
-        },
+        onOpenSort = onOpenSort,
         viewType = viewType,
         onViewTypeToggle = {
             val next = if (viewType == LibraryViewType.GRID) LibraryViewType.LIST else LibraryViewType.GRID
@@ -1641,14 +1671,18 @@ fun LibraryFolderSearchField(
 private fun LocalSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
-    sortOrder: LocalMusicSort,
-    onSortOrderChange: (LocalMusicSort) -> Unit,
+    onOpenSort: () -> Unit,
     viewType: LibraryViewType,
     onViewTypeToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var sortMenuOpen by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
+    // The playing song's colour for the cursor and a selection, as for the
+    // tab under the field.
+    val accent = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary
+    val selectionColors = remember(accent) {
+        TextSelectionColors(handleColor = accent, backgroundColor = accent.copy(alpha = 0.4f))
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -1665,16 +1699,18 @@ private fun LocalSearchField(
         )
         Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f)) {
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onBackground,
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onBackground,
+                    ),
+                    cursorBrush = SolidColor(accent),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
         if (query.isNotEmpty()) {
             Box(
@@ -1713,48 +1749,54 @@ private fun LocalSearchField(
             )
         }
         Spacer(Modifier.width(2.dp))
-        Box {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .clickable { sortMenuOpen = true },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Rounded.Sort,
-                    contentDescription = stringResource(R.string.sort_music),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-            DropdownMenu(
-                expanded = sortMenuOpen,
-                onDismissRequest = { sortMenuOpen = false },
-            ) {
-                LocalMusicSort.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.localizedLabel()) },
-                        trailingIcon = if (option == sortOrder) {
-                            {
-                                Icon(
-                                    Icons.Rounded.Check,
-                                    contentDescription = stringResource(R.string.selected),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                        onClick = {
-                            onSortOrderChange(option)
-                            sortMenuOpen = false
-                        },
-                    )
-                }
-            }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onOpenSort),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Sort,
+                contentDescription = stringResource(R.string.sort_music),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(19.dp),
+            )
         }
     }
+}
+
+/**
+ * How a library folder's songs are ordered, on the same liquid glass the
+ * Library's "…" menu opens on. Composed by the app over the page rather than
+ * inside the top bar's field, so the glass has the page under it to bend.
+ */
+@Composable
+fun LibraryFolderSortMenu(
+    visible: Boolean,
+    isDownloads: Boolean,
+    hazeState: HazeState,
+    onDismiss: () -> Unit,
+) {
+    val sortOrder by if (isDownloads) {
+        AppSettings.downloadedMusicSort.collectAsStateWithLifecycle()
+    } else {
+        AppSettings.localMusicSort.collectAsStateWithLifecycle()
+    }
+    val options = LocalMusicSort.entries
+    LibraryChoiceMenu(
+        visible = visible,
+        title = stringResource(R.string.sort_music),
+        options = options.map { it.localizedLabel() },
+        selected = options.indexOf(sortOrder),
+        hazeState = hazeState,
+        onSelect = { index ->
+            val picked = options[index]
+            if (isDownloads) AppSettings.setDownloadedMusicSort(picked) else AppSettings.setLocalMusicSort(picked)
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable
@@ -1846,7 +1888,7 @@ private fun LocalTab(
             if (!selected) haptics.play(Haptic.Select)
             onClick()
         },
-        selectedContentColor = MaterialTheme.colorScheme.primary,
+        selectedContentColor = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary,
         unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
     ) {
         Row(

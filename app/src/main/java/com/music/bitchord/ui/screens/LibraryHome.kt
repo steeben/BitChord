@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -103,6 +104,7 @@ import com.music.bitchord.ui.components.longPressMenuClickable
 import com.music.bitchord.ui.components.popupSurface
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.icons.BitChordIcons
+import com.music.bitchord.ui.theme.LocalNowPlayingTint
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -610,6 +612,138 @@ fun LibraryMenu(
     onOpenHistory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    GlassMenuPanel(visible = visible, hazeState = hazeState, onDismiss = onDismiss) {
+        MenuHeading(stringResource(R.string.choose_library))
+        LibrarySource.entries.forEach { source ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .clickable(role = Role.Button) { onSelect(source) }
+                    .padding(start = 18.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+            ) {
+                LibrarySourceIcon(
+                    source = source,
+                    tint = if (source == selected) accent else LocalContentColor.current,
+                    modifier = Modifier.size(26.dp),
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f, fill = false).padding(end = 16.dp)) {
+                    Text(source.label(), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = stringResource(
+                            when (source) {
+                                LibrarySource.YOUTUBE_MUSIC -> if (signedIn) {
+                                    R.string.library_source_youtube_music_subtitle
+                                } else {
+                                    R.string.library_source_youtube_music_signed_out
+                                }
+                                LibrarySource.LOCAL -> R.string.library_source_local_subtitle
+                                LibrarySource.ALL -> R.string.library_source_all_subtitle
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalContentColor.current.copy(alpha = .7f),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.size(22.dp)) {
+                    if (source == selected) {
+                        Icon(Icons.Rounded.Check, contentDescription = null, tint = accent)
+                    }
+                }
+            }
+        }
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = LocalContentColor.current.copy(alpha = .2f),
+            modifier = Modifier.padding(vertical = 6.dp),
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onOpenHistory)
+                .padding(start = 18.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+        ) {
+            Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(26.dp))
+            Spacer(Modifier.width(14.dp))
+            Text(stringResource(R.string.view_song_history), style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+/**
+ * A short list to pick one of — a sort order — on the same glass as
+ * [LibraryMenu], the pick marked in the playing song's colour.
+ */
+@Composable
+fun LibraryChoiceMenu(
+    visible: Boolean,
+    title: String?,
+    options: List<String>,
+    selected: Int,
+    hazeState: HazeState,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val accent = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary
+    GlassMenuPanel(visible = visible, hazeState = hazeState, onDismiss = onDismiss) {
+        if (title != null) MenuHeading(title)
+        options.forEachIndexed { index, label ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp)
+                    .clickable(role = Role.Button) { onSelect(index) }
+                    .padding(start = 20.dp, end = 18.dp, top = 8.dp, bottom = 8.dp),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (index == selected) accent else LocalContentColor.current,
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 20.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.size(22.dp)) {
+                    if (index == selected) {
+                        Icon(
+                            Icons.Rounded.Check,
+                            contentDescription = stringResource(R.string.selected),
+                            tint = accent,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuHeading(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = LocalContentColor.current.copy(alpha = .6f),
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 4.dp),
+    )
+}
+
+/**
+ * The card the Library's menus open on: liquid glass where the device draws
+ * it, the app's frosted popup otherwise, grown out of the top bar's right end
+ * where the buttons that open them sit.
+ */
+@Composable
+private fun GlassMenuPanel(
+    visible: Boolean,
+    hazeState: HazeState,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val shape = MaterialTheme.shapes.extraLarge
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val glass = isGlassSupported() && !reduceDynamicBlur
@@ -640,72 +774,7 @@ fun LibraryMenu(
                     onClick = {},
                 ),
         ) {
-            Column(Modifier.padding(vertical = 8.dp)) {
-                Text(
-                    text = stringResource(R.string.choose_library),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LocalContentColor.current.copy(alpha = .6f),
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 4.dp),
-                )
-                LibrarySource.entries.forEach { source ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .clickable(role = Role.Button) { onSelect(source) }
-                            .padding(start = 18.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
-                    ) {
-                        LibrarySourceIcon(
-                            source = source,
-                            tint = if (source == selected) accent else LocalContentColor.current,
-                            modifier = Modifier.size(26.dp),
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f, fill = false).padding(end = 16.dp)) {
-                            Text(source.label(), style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                text = stringResource(
-                                    when (source) {
-                                        LibrarySource.YOUTUBE_MUSIC -> if (signedIn) {
-                                            R.string.library_source_youtube_music_subtitle
-                                        } else {
-                                            R.string.library_source_youtube_music_signed_out
-                                        }
-                                        LibrarySource.LOCAL -> R.string.library_source_local_subtitle
-                                        LibrarySource.ALL -> R.string.library_source_all_subtitle
-                                    },
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = LocalContentColor.current.copy(alpha = .7f),
-                            )
-                        }
-                        Spacer(Modifier.weight(1f))
-                        Box(Modifier.size(22.dp)) {
-                            if (source == selected) {
-                                Icon(Icons.Rounded.Check, contentDescription = null, tint = accent)
-                            }
-                        }
-                    }
-                }
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = LocalContentColor.current.copy(alpha = .2f),
-                    modifier = Modifier.padding(vertical = 6.dp),
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .clickable(role = Role.Button, onClick = onOpenHistory)
-                        .padding(start = 18.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
-                ) {
-                    Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(26.dp))
-                    Spacer(Modifier.width(14.dp))
-                    Text(stringResource(R.string.view_song_history), style = MaterialTheme.typography.bodyLarge)
-                }
-            }
+            Column(Modifier.padding(vertical = 8.dp), content = content)
         }
     }
 }

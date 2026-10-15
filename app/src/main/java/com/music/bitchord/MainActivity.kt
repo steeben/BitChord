@@ -226,6 +226,8 @@ import com.music.bitchord.ui.components.ambientCompanion
 import com.music.bitchord.ui.screens.libraryExtraLinks
 import com.music.bitchord.ui.screens.LibraryHomeScreen
 import com.music.bitchord.ui.screens.LibraryMenu
+import com.music.bitchord.ui.screens.LibraryChoiceMenu
+import com.music.bitchord.ui.screens.LibraryFolderSortMenu
 import com.music.bitchord.ui.screens.LibraryFeed
 import com.music.bitchord.ui.screens.LibrarySuggestion
 import com.music.bitchord.ui.screens.LIBRARY_GROUP_PREFIX
@@ -233,6 +235,7 @@ import com.music.bitchord.ui.screens.dealLibraryFeed
 import com.music.bitchord.ui.screens.libraryGroupId
 import com.music.bitchord.ui.screens.rememberLibraryFeedLabels
 import com.music.bitchord.ui.screens.LibraryFolderSearchField
+import com.music.bitchord.ui.screens.LibraryFolderScroll
 import com.music.bitchord.ui.screens.browseId
 import com.music.bitchord.ui.screens.LOCAL_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.ALL_LIBRARY_BROWSE_ID
@@ -750,6 +753,8 @@ private fun BitChordApp(
     var libraryShowAll by remember { mutableStateOf<HomeShelf?>(null) }
     var detailActiveShelf by remember { mutableStateOf<HomeShelf?>(null) }
     var librarySortMenuOpen by remember { mutableStateOf(false) }
+    // The library folder whose sort menu is up, if one is.
+    var folderSortMenuFor by remember { mutableStateOf<String?>(null) }
     var showLyricsSources by remember { mutableStateOf(false) }
     var showAppLanguage by remember { mutableStateOf(false) }
     var showTranslationLanguage by remember { mutableStateOf(false) }
@@ -1317,8 +1322,13 @@ private fun BitChordApp(
     val detailListState = detail?.browseId?.let { browseId ->
         detailListStates.getOrPut(browseId) { LazyListState() }
     } ?: remember { LazyListState() }
+    // The same for a library's Songs / Artists / Albums page, whose tabs each
+    // keep their place while an artist or album opened from them is up.
+    val folderScrolls = remember { mutableMapOf<String, LibraryFolderScroll>() }
     LaunchedEffect(detailStack.map { it.browseId }) {
-        detailListStates.keys.retainAll(detailStack.mapTo(HashSet()) { it.browseId })
+        val open = detailStack.mapTo(HashSet()) { it.browseId }
+        detailListStates.keys.retainAll(open)
+        folderScrolls.keys.retainAll(open)
     }
     val detailTitleDrop = with(LocalDensity.current) { DETAIL_TITLE_DROP.toPx() }
     val detailScrolled by remember(detailListState, detailTitleDrop) {
@@ -3347,9 +3357,14 @@ private fun BitChordApp(
                             contentPadding = listPadding,
                         )
                     } else if (key == "library_show_all") {
+                        // Held for its own exit, as `held` is for a detail page:
+                        // back clears `libraryShowAll` before the page has slid
+                        // off, and without this it would slide off blank.
+                        val heldShowAll = remember(key) { mutableStateOf(libraryShowAll) }
+                        libraryShowAll?.let { heldShowAll.value = it }
                         // The Playlists page is read live, so a playlist made or
                         // imported from its own New Playlist tile turns up on it.
-                        libraryShowAll?.let { opened ->
+                        heldShowAll.value?.let { opened ->
                             if (opened.title == YtMusicRepository.PLAYLISTS_SHELF) libraryPlaylists else opened
                         }?.let { shelf ->
                             LibraryGridPage(
@@ -3544,6 +3559,9 @@ private fun BitChordApp(
                             }
                         }
                         LocalMusicScreen(
+                            scroll = remember(page.browseId) {
+                                folderScrolls.getOrPut(page.browseId) { LibraryFolderScroll() }
+                            },
                             songs = localSongs,
                             selectedTab = folderTabs[page.browseId] ?: 0,
                             onSelectedTabChange = { folderTabs[page.browseId] = it },
@@ -4369,8 +4387,8 @@ private fun BitChordApp(
                         LibraryFolderSearchField(
                             query = folderQueries[folderId].orEmpty(),
                             onQueryChange = { folderQueries[folderId] = it },
-                            isDownloads = folderId == "local:downloads",
                             selectedTab = folderTabs[folderId] ?: 0,
+                            onOpenSort = { folderSortMenuFor = folderId },
                         )
                     }
                 }
@@ -4588,32 +4606,15 @@ private fun BitChordApp(
                             // folder offers (see `LocalSearchField`), adapted to
                             // the one thing a playlist or album card carries: a
                             // title.
+                            // The menu is a [LibraryChoiceMenu], composed with
+                            // the other overlays below.
                             if (libraryShowAll != null && detail == null && !showStats) {
-                                Box {
-                                    IconButton(onClick = { librarySortMenuOpen = true }) {
-                                        Icon(
-                                            Icons.Rounded.Sort,
-                                            contentDescription = stringResource(R.string.sort_library),
-                                            tint = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = librarySortMenuOpen,
-                                        onDismissRequest = { librarySortMenuOpen = false },
-                                    ) {
-                                        LibrarySort.entries.forEach { option ->
-                                            DropdownMenuItem(
-                                                text = { Text(option.localizedLabel()) },
-                                                trailingIcon = if (option == librarySort) {
-                                                    { Icon(Icons.Rounded.Check, contentDescription = null) }
-                                                } else null,
-                                                onClick = {
-                                                    AppSettings.setLibrarySort(option)
-                                                    librarySortMenuOpen = false
-                                                },
-                                            )
-                                        }
-                                    }
+                                IconButton(onClick = { librarySortMenuOpen = true }) {
+                                    Icon(
+                                        Icons.Rounded.Sort,
+                                        contentDescription = stringResource(R.string.sort_library),
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                    )
                                 }
                             }
                             // Left of the account photo, and only on an album or
@@ -4753,9 +4754,9 @@ private fun BitChordApp(
                         ?.let { (it.likedSongs + it.librarySongs).distinctBy { song -> song.videoId } }
                         .orEmpty()
                 }
-                val onLibraryPage = pageKey == "library_show_all" ||
-                    pageKey == "$TAB_KEY$TAB_LIBRARY" ||
-                    pageKey == "$TAB_KEY$TAB_PLAYLISTS"
+                // Not on the Library page itself, nor the Playlists page its menu
+                // opens: the button belongs to the lists of songs, below.
+                val onLibraryPage = pageKey == "$TAB_KEY$TAB_PLAYLISTS"
                 // A library's Songs, Artists or Albums page shuffles what it
                 // holds: that library's songs, as the page has them.
                 val folderPage = detail?.takeIf { pageKey == it.browseId && it.browseId.isDeviceFolder() }
@@ -4773,7 +4774,22 @@ private fun BitChordApp(
                 } else {
                     onLibraryPage && (librarySource != LibrarySource.YOUTUBE_MUSIC || libraryShuffleSongs.isNotEmpty())
                 }
-                if (showLibraryShuffle) {
+                // Pops in as one of those pages comes up, and away as it goes.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showLibraryShuffle,
+                    enter = scaleIn(
+                        androidx.compose.animation.core.spring(
+                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+                        ),
+                        initialScale = 0.4f,
+                    ) + fadeIn(tween(140)),
+                    exit = androidx.compose.animation.scaleOut(tween(160), targetScale = 0.6f) + fadeOut(tween(160)),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset { IntOffset(0, -floatingBarsHeight.intValue) }
+                        .padding(end = 16.dp, bottom = 16.dp),
+                ) {
                     LibraryShuffleButton(
                         onClick = {
                             when {
@@ -4798,10 +4814,6 @@ private fun BitChordApp(
                             }
                         },
                         hazeState = hazeState,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .offset { IntOffset(0, -floatingBarsHeight.intValue) }
-                            .padding(end = 16.dp, bottom = 16.dp),
                     )
                 }
                 FloatingBarsTapGuard(
@@ -6084,6 +6096,37 @@ private fun BitChordApp(
             LyricsSourcesDialog(
                 hazeState = hazeState,
                 onDismiss = { showLyricsSources = false },
+            )
+        }
+
+        run {
+            BackHandler(enabled = librarySortMenuOpen) { librarySortMenuOpen = false }
+            val sorts = LibrarySort.entries
+            LibraryChoiceMenu(
+                visible = librarySortMenuOpen,
+                title = stringResource(R.string.sort_library),
+                options = sorts.map { it.localizedLabel() },
+                selected = sorts.indexOf(librarySort),
+                hazeState = hazeState,
+                onSelect = { index ->
+                    AppSettings.setLibrarySort(sorts[index])
+                    librarySortMenuOpen = false
+                },
+                onDismiss = { librarySortMenuOpen = false },
+            )
+        }
+
+        run {
+            // Held while it closes, so the menu fades out still saying what it
+            // sorted rather than switching to the other folder's setting.
+            val sortingFolder = remember { mutableStateOf<String?>(null) }
+            folderSortMenuFor?.let { sortingFolder.value = it }
+            BackHandler(enabled = folderSortMenuFor != null) { folderSortMenuFor = null }
+            LibraryFolderSortMenu(
+                visible = folderSortMenuFor != null,
+                isDownloads = sortingFolder.value == "local:downloads",
+                hazeState = hazeState,
+                onDismiss = { folderSortMenuFor = null },
             )
         }
 
