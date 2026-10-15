@@ -777,6 +777,12 @@ fun NowPlayingScreen(
     preferWordSyncedLyrics: Boolean = false,
     /** Null hides the drawer's word-by-word switch. */
     onPreferWordSyncedLyricsChange: ((Boolean) -> Unit)? = null,
+    /** Providers whose answer for this track is word-synced; crowned in the drawer. */
+    wordSyncedLyricsProviders: Set<LyricsSource> = emptySet(),
+    /** The track is marked instrumental: the lyric strip is hidden. */
+    lyricsInstrumental: Boolean = false,
+    /** Null hides the drawer's Mark as instrumental row. */
+    onToggleLyricsInstrumental: (() -> Unit)? = null,
     lyricsUnavailable: Boolean,
     lyricsOffsetOpen: Boolean,
     onDismissLyricsOffset: () -> Unit,
@@ -847,6 +853,8 @@ fun NowPlayingScreen(
     val openListenTogetherMembers: () -> Unit = { showListenTogetherMembers = true }
 
     val syncedLyricsEnabled by PlayerSettings.syncedLyrics.collectAsStateWithLifecycle()
+    // Off in Settings or marked instrumental, the current-line strip goes.
+    val lyricStripShown = syncedLyricsEnabled && !lyricsInstrumental
     val lyricsOffsetMs by PlayerSettings.lyricsOffsetMs.collectAsStateWithLifecycle()
     // A lambda, not a value: read by the lyric strip and panel in scopes of
     // their own, so a tick recomposes them and not the player around them.
@@ -1662,6 +1670,9 @@ fun NowPlayingScreen(
                 onSelectAutomatic = onSelectAutomaticLyrics,
                 preferWordSynced = preferWordSyncedLyrics,
                 onPreferWordSyncedChange = onPreferWordSyncedLyricsChange,
+                wordSynced = wordSyncedLyricsProviders,
+                instrumental = lyricsInstrumental,
+                onToggleInstrumental = onToggleLyricsInstrumental,
             )
         }
         if (showAudioPipeline) {
@@ -2016,7 +2027,7 @@ fun NowPlayingScreen(
                                 onOpenArtist = onOpenArtist,
                             )
                         },
-                        lyricStrip = if (syncedLyricsEnabled) {
+                        lyricStrip = if (lyricStripShown) {
                             {
                                 CurrentLyricStrip(
                                     lines = lyricsTranslation.displayedLyrics,
@@ -2082,7 +2093,9 @@ fun NowPlayingScreen(
                 lyricsPane = {
                     LandscapeLyricsPane(
                         hasLyrics = lyricsTranslation.displayedLyrics.isNotEmpty(),
-                        placeholder = if (lyricsUnavailable) {
+                        placeholder = if (lyricsInstrumental) {
+                            stringResource(Res.string.lyrics_instrumental)
+                        } else if (lyricsUnavailable) {
                             stringResource(Res.string.lyrics_not_available)
                         } else {
                             lyricsLoadingText
@@ -3755,7 +3768,7 @@ fun NowPlayingScreen(
             // accompanied by a dedicated lyrics button in the bottom row. Its
             // one-line slot remains, invisibly, so opening lyrics cannot grow
             // the half-player merely to make room for the source label.
-            if (!lyricsOpen && syncedLyricsEnabled) {
+            if (!lyricsOpen && lyricStripShown) {
                 CurrentLyricStrip(
                     lines = lyricsTranslation.displayedLyrics,
                     trackKey = song.videoId,
@@ -3771,7 +3784,7 @@ fun NowPlayingScreen(
                     onClick = openLyrics,
                 )
             }
-            if (!lyricsOpen && !syncedLyricsEnabled) {
+            if (!lyricsOpen && !lyricStripShown) {
                 Text(
                     text = "\u00A0",
                     style = MaterialTheme.typography.titleMedium,

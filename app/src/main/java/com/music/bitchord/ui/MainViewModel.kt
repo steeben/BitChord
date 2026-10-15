@@ -317,6 +317,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val lyricsProviderStates: StateFlow<Map<LyricsSource, LyricsProviderState>> =
         _lyricsProviderStates.asStateFlow()
 
+    /** Providers whose answer for the playing track is timed word by word. */
+    private val _lyricsWordSyncedProviders = MutableStateFlow<Set<LyricsSource>>(emptySet())
+    val lyricsWordSyncedProviders: StateFlow<Set<LyricsSource>> = _lyricsWordSyncedProviders.asStateFlow()
+
+    /** Whether the playing track is marked instrumental, so the player shows no lyrics for it. */
+    private val _lyricsInstrumental = MutableStateFlow(false)
+    val lyricsInstrumental: StateFlow<Boolean> = _lyricsInstrumental.asStateFlow()
+
+    /** The last [loadLyrics] call, replayed when a track is unmarked as instrumental. */
+    private var reloadLyrics: (() -> Unit)? = null
+
     /** Completed hits are retained for the playing track so choosing one is instant. */
     private val lyricsProviderResults = ConcurrentHashMap<LyricsSource, LyricsRepository.Result>()
 
@@ -358,6 +369,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         album: String? = null,
         localUri: String? = null,
     ) {
+        reloadLyrics = { loadLyrics(videoId, title, artist, durationMs, album, localUri) }
         val sources = if (AppSettings.syncedLyrics.value) {
             AppSettings.lyricsSources.value
         } else {
@@ -388,9 +400,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lyricsProviderResults.clear()
         _lyricsProviderStates.value =
             LyricsSource.entries.associateWith { LyricsProviderState.NOT_FETCHED }
+        _lyricsWordSyncedProviders.value = emptySet()
         _lyrics.value = null
         _lyricsSource.value = null
         lyricsJob?.cancel()
+        _lyricsInstrumental.value = videoId in AppSettings.instrumentalTracks.value
+        if (_lyricsInstrumental.value) {
+            // Marked instrumental: nothing to look up and nothing to show.
+            _lyricsChecked.value = true
+            return
+        }
         if (sources.isEmpty()) {
             // Switched off, or every source unticked. Nothing to look up, and
             // nothing to say about it — the player drops the lyric strip
@@ -443,6 +462,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun selectLyricsProvider(source: LyricsSource) {
         val request = currentLyricsRequest ?: return
+        if (_lyricsInstrumental.value) {
+            // Picking a provider on an instrumental track means it has words
+            // after all: unmark it and look it up with that provider first.
+            AppSettings.setPreferredLyricsSource(source)
+            toggleLyricsInstrumental()
+            return
+        }
         when (_lyricsProviderStates.value[source]) {
             LyricsProviderState.FOUND -> {
                 selectedLyricsSource = source
@@ -468,6 +494,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * already in hand by the Settings order, and the next one is looked up as
      * though nothing had ever been picked.
      */
+    /** Marks or unmarks the playing track as instrumental, from the provider drawer. */
+    fun toggleLyricsInstrumental() {
+        val videoId = currentLyricsRequest?.videoId ?: return
+        val marking = !_lyricsInstrumental.value
+        AppSettings.setInstrumental(videoId, marking)
+        if (marking) {
+            lyricsJob?.cancel()
+            manualLyricsJobs.values.forEach(Job::cancel)
+            manualLyricsJobs.clear()
+            lyricsGeneration += 1
+            _lyricsInstrumental.value = true
+            _lyrics.value = null
+            _lyricsSource.value = null
+            _lyricsChecked.value = true
+        } else {
+            lyricsFor = null
+            reloadLyrics?.invoke()
+        }
+    }
+
     fun selectAutomaticLyrics() {
         AppSettings.setPreferredLyricsSource(null)
         selectedLyricsSource = null
@@ -517,6 +563,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         lyricsProviderResults[source] = result
+        if (result.isWordSynced) _lyricsWordSyncedProviders.update { it + source }
         _lyricsProviderStates.update { it + (source to LyricsProviderState.FOUND) }
         if (selectedLyricsSource == source) showLyricsResult(result)
     }

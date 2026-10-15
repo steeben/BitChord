@@ -84,6 +84,10 @@
     <string name="lyrics_offset_reset">Reset</string>
     <string name="lyrics_provider_current">Current provider</string>
     <string name="lyrics_provider_automatic">Automatic</string>
+    <string name="lyrics_mark_instrumental">Mark as instrumental</string>
+    <string name="lyrics_mark_instrumental_detail">Hide lyrics for this song on the player</string>
+    <string name="lyrics_instrumental">Instrumental</string>
+    <string name="lyrics_provider_reorder">Drag to change priority</string>
     <string name="lyrics_provider_automatic_detail">Best match in your Settings order</string>
     <string name="lyrics_prefer_word_synced">Prefer word-by-word</string>
     <string name="lyrics_prefer_word_synced_detail">On Automatic, skip line-only lyrics when a provider has per-word timing</string>

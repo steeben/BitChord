@@ -172,6 +172,8 @@ interface PlayerSettingsSource {
 
     fun setLastPlayerScreen(value: LastPlayerScreen)
     fun setLyricsOffsetMs(value: Int)
+    /** Saves a provider priority reordered from the player's provider drawer. */
+    fun setLyricsSourceOrder(value: List<LyricsSource>) = Unit
 }
 
 /** The player's name for the installed host's settings, read where AppSettings used to be. */

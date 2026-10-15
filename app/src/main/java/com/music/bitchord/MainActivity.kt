@@ -933,6 +933,8 @@ private fun BitChordApp(
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
     val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()
     val lyricsProviderStates by viewModel.lyricsProviderStates.collectAsStateWithLifecycle()
+    val lyricsWordSyncedProviders by viewModel.lyricsWordSyncedProviders.collectAsStateWithLifecycle()
+    val lyricsInstrumental by viewModel.lyricsInstrumental.collectAsStateWithLifecycle()
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
     val searchSuggestions by viewModel.suggestions.collectAsStateWithLifecycle()
     val searchLoadingMore by viewModel.searchLoadingMore.collectAsStateWithLifecycle()
@@ -2695,6 +2697,9 @@ private fun BitChordApp(
             onSelectAutomaticLyrics = viewModel::selectAutomaticLyrics,
             preferWordSyncedLyrics = preferWordSyncedLyrics,
             onPreferWordSyncedLyricsChange = AppSettings::setPrioritizeSyllableSync,
+            wordSyncedLyricsProviders = lyricsWordSyncedProviders,
+            lyricsInstrumental = lyricsInstrumental,
+            onToggleLyricsInstrumental = viewModel::toggleLyricsInstrumental,
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
             lyricsOffsetOpen = showLyricsOffset,
             onDismissLyricsOffset = { showLyricsOffset = false },
