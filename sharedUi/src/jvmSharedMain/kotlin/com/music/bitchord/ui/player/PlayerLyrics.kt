@@ -98,6 +98,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import org.jetbrains.compose.resources.stringArrayResource
@@ -137,6 +140,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -377,13 +381,16 @@ private const val LYRIC_SETTLE_MS = 400
  * sliding rigidly is a list being scrolled; the same lines arriving one behind
  * another is the panel handing over.
  *
- * Deliberately under half of what the renderer this came from uses. Its lines
- * carry the whole scroll themselves, so a long delay only means arriving late;
- * here the list has already moved underneath them, and the same delay reads as
- * the rows being dragged rather than following.
+ * Spread across most of a screen's worth of rows, so a handover reads line by
+ * line: the line being scrolled to arrives first and each one under it follows
+ * a beat later, rather than the stack moving as a block with only its first
+ * few rows trailing. Reduce Animation turns the fan off.
  */
-private const val STAGGER_STEPS = 3
-private const val STAGGER_FRACTION = 0.06f
+private const val STAGGER_STEPS = 7
+private const val STAGGER_FRACTION = 0.09f
+
+/** How long a hand scroll holds the panel after the reader's last touch. */
+private const val BROWSE_IDLE_MS = 5_000L
 
 /** One handover: how far the panel is going, and how long it is taking. */
 private class ScrollRun(val id: Int, val delta: Float, val durationMs: Int) {
@@ -1675,26 +1682,36 @@ internal fun LyricsPanel(
         onHide = onHideControls,
     )
 
-    val currentLine by rememberUpdatedState(focusLine)
-    val activeOnScreen by remember(listState) {
-        derivedStateOf {
-            listState.layoutInfo.visibleItemsInfo.any { it.index == currentLine }
-        }
-    }
+    // A hand scroll holds the panel until the reader has left it alone for
+    // [BROWSE_IDLE_MS]: no finger down, no fling still running, no wheel. Each
+    // touch restarts the count, so reading back over a verse a flick at a time
+    // is never interrupted by the song pulling the list away mid-read.
+    //
     // Paused, there is no song to follow back to, so a hand scroll should sit
-    // wherever it was left rather than snapping back on these timers.
-    LaunchedEffect(browsingByDrag, activeOnScreen, listState.isScrollInProgress, panelPlaying) {
-        if (panelPlaying && browsingByDrag && activeOnScreen && !listState.isScrollInProgress) {
-            delay(600)
-            browsingByDrag = false
+    // wherever it was left rather than snapping back on this timer.
+    //
+    // Read only inside the flow below, never in composition: the tick moves on
+    // every pointer event of a drag, and the panel must not recompose with it.
+    var inputTick by remember { mutableIntStateOf(0) }
+    var pressing by remember { mutableStateOf(false) }
+    val followPlaying by rememberUpdatedState(panelPlaying)
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val idle = followPlaying && browsingByDrag &&
+                !listState.isScrollInProgress && !pressing
+            if (idle) inputTick else -1
+        }.collectLatest { tick ->
+            if (tick >= 0) {
+                delay(BROWSE_IDLE_MS)
+                browsingByDrag = false
+            }
         }
     }
-
-    LaunchedEffect(browsingByDrag, listState.isScrollInProgress, panelPlaying) {
-        if (panelPlaying && browsingByDrag && !listState.isScrollInProgress) {
-            delay(5_000)
-            browsingByDrag = false
-        }
+    // Tapping a line is the reader choosing where to go, so the panel follows
+    // from there straight away rather than sitting out the idle count.
+    val seekToLine: (Long) -> Unit = { timeMs ->
+        browsingByDrag = false
+        onSeekToLine(timeMs)
     }
 
     // The panel's own journey, published so each row can work out how far
@@ -1783,6 +1800,24 @@ internal fun LyricsPanel(
             .bleedHorizontally(PLAYER_GUTTER)
             .nestedScroll(controlsOnScroll)
             .nestedScroll(keepScroll)
+            // Watched, never consumed: every press, drag and wheel turn inside
+            // the list counts as the reader still being here. A wheel never
+            // starts a drag, so on desktop this is also what starts a browse.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        pressing = event.changes.any { it.pressed }
+                        when {
+                            event.type == PointerEventType.Scroll -> {
+                                browsingByDrag = true
+                                inputTick++
+                            }
+                            pressing || event.type == PointerEventType.Release -> inputTick++
+                        }
+                    }
+                }
+            }
             // Browsing leaves taps to each lyric row's seek action throughout
             // the list — and picking leaves them nothing at all: the gesture
             // below takes taps at the initial pass, so while a pick is open it
@@ -1912,7 +1947,7 @@ internal fun LyricsPanel(
                         // A gap is nothing to pick, so it only ever seeks — and
                         // not even that while a pick is open, where a stray tap
                         // in the silence would jump the song.
-                        .clickable(enabled = isSynced && !picking) { onSeekToLine(line.timeMs) }
+                        .clickable(enabled = isSynced && !picking) { seekToLine(line.timeMs) }
                         // Matches the inset every sung line carries, so the
                         // rhythm of the list doesn't break at a break.
                         .padding(GLOW_ROOM)
@@ -1984,8 +2019,11 @@ internal fun LyricsPanel(
                 // Rows behind the one being scrolled to are the ones that
                 // fan out; the ones it is moving away from arrive together.
                 val behind = if (run.delta >= 0f) index - focusLine else focusLine - index
-                val staggerDelay = behind.coerceIn(0, STAGGER_STEPS) *
-                    STAGGER_FRACTION * run.durationMs
+                val staggerDelay = if (reduceAnimation) {
+                    0f
+                } else {
+                    behind.coerceIn(0, STAGGER_STEPS) * STAGGER_FRACTION * run.durationMs
+                }
                 val interaction = remember { MutableInteractionSource() }
                 val pressed by interaction.collectIsPressedAsState()
                 val scale by animateFloatAsState(
@@ -2082,7 +2120,7 @@ internal fun LyricsPanel(
                                     if (picking) {
                                         onTogglePick(index)
                                     } else {
-                                        onSeekToLine(line.timeMs)
+                                        seekToLine(line.timeMs)
                                     }
                                 },
                             )
@@ -2095,7 +2133,7 @@ internal fun LyricsPanel(
                                 enabled = isSynced,
                                 interactionSource = interaction,
                                 indication = LocalIndication.current,
-                            ) { onSeekToLine(line.timeMs) }
+                            ) { seekToLine(line.timeMs) }
                         },
                     )
                 // Lead and answering vocal are one row: they are one line of
