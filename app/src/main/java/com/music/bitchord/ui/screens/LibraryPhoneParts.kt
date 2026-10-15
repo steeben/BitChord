@@ -125,6 +125,13 @@ const val LOCAL_LIBRARY_BROWSE_ID = "local:library"
 /** The All library: YouTube Music's and the device's songs together, duplicates hidden by default. */
 const val ALL_LIBRARY_BROWSE_ID = "local:everything"
 
+/**
+ * The page id an album or artist made of a library's own rows opens under —
+ * see [libraryGroupId]. Opened with its songs already in hand, as a release
+ * page rather than one of the tabbed device folders.
+ */
+const val LIBRARY_GROUP_PREFIX = "local:group:"
+
 /** The page holding every song in [this] library, with its Songs / Artists / Albums tabs. */
 val LibrarySource.browseId: String
     get() = when (this) {

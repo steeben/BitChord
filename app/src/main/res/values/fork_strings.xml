@@ -112,6 +112,16 @@
     <string name="library_source_empty">Nothing in this library yet</string>
     <string name="choose_library">Choose library</string>
     <string name="hide_combined_duplicates">Hide detected duplicates in the combined library</string>
-    <string name="hide_combined_duplicates_subtitle">In the All library, a song that is both in YouTube Music and on this device shows once</string>
+    <string name="hide_combined_duplicates_subtitle">In the All library, a song that is both in YouTube Music and on this device shows once, and plays from this device</string>
     <string name="import_from_spotify">Import from Spotify</string>
+    <string name="library_radio">Radio</string>
+    <string name="library_radio_named">%s Radio</string>
+    <string name="library_mix_named">%s Mix</string>
+    <string name="library_recently_added">Recently added</string>
+    <string name="library_recently_played">Recently played</string>
+    <string name="library_most_played">Most played</string>
+    <string name="library_albums_for_you">Albums</string>
+    <string name="library_rediscover">Rediscover</string>
+    <string name="view_song_history">View song history</string>
+    <string name="library_menu">Library options</string>
 </resources>

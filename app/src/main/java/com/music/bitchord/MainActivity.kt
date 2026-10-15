@@ -24,6 +24,14 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.rememberTransition
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -69,6 +77,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Sort
@@ -101,6 +110,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -163,6 +173,7 @@ import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.innertube.InnertubeParser
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.SubscriptionState
+import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.PlaybackSourceType
@@ -177,6 +188,11 @@ import com.music.bitchord.data.model.EntityType
 import com.music.bitchord.data.model.SearchHistoryEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
@@ -207,9 +223,14 @@ import com.music.bitchord.ui.components.rememberAmbientBlobs
 import com.music.bitchord.ui.components.ambientCompanion
 import com.music.bitchord.ui.screens.libraryExtraLinks
 import com.music.bitchord.ui.screens.LibraryHomeScreen
-import com.music.bitchord.ui.screens.LibrarySourcePicker
+import com.music.bitchord.ui.screens.LibraryMenu
+import com.music.bitchord.ui.screens.LibraryFeed
+import com.music.bitchord.ui.screens.LibrarySuggestion
+import com.music.bitchord.ui.screens.LIBRARY_GROUP_PREFIX
+import com.music.bitchord.ui.screens.dealLibraryFeed
+import com.music.bitchord.ui.screens.libraryGroupId
+import com.music.bitchord.ui.screens.rememberLibraryFeedLabels
 import com.music.bitchord.ui.screens.LibraryFolderSearchField
-import com.music.bitchord.ui.screens.rememberLibrarySuggestions
 import com.music.bitchord.ui.screens.browseId
 import com.music.bitchord.ui.screens.LOCAL_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.ALL_LIBRARY_BROWSE_ID
@@ -388,6 +409,17 @@ private const val TOP_FADE_RAMP = 0.3f
 private const val EXPLORE_VEIL_MS = 360
 
 private const val INITIAL_RADIO_TRACKS = 24
+
+/** How long the Library page waits on its songs and shelves before dealing without them. */
+private const val LIBRARY_DEAL_WAIT_MS = 15_000L
+
+/** A Library page sliding in or out, side by side with the one it replaces. */
+private const val PAGE_SLIDE_MS = 340
+
+/** Switching tabs: the old page fading out, then the new one fading and growing in. */
+private const val TAB_FADE_OUT_MS = 90
+private const val TAB_FADE_IN_MS = 220
+private const val TAB_FADE_IN_SCALE = 0.96f
 
 internal fun shouldSkipAfterDislike(
     previousStatus: LikeStatus,
@@ -841,10 +873,15 @@ private fun BitChordApp(
     val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
     val homeTitleText by CustomizationSettings.homeTitle.collectAsStateWithLifecycle()
     var editingHomeTitle by remember { mutableStateOf(false) }
-    // Which library the Library tab reads from — picked from its logo and
-    // remembered — and whether that picker is up.
+    // Which library the Library tab reads from — picked from the "…" menu in
+    // its top bar and remembered — and whether that menu is up.
     val librarySource by CustomizationSettings.librarySource.collectAsStateWithLifecycle()
-    var librarySourcePickerOpen by remember { mutableStateOf(false) }
+    var libraryMenuOpen by remember { mutableStateOf(false) }
+    // The Library page's grid and rows, dealt once for the picked library and
+    // kept as they are until a pull asks for a new hand — see the deal below.
+    var libraryFeed by remember { mutableStateOf<LibraryFeed?>(null) }
+    var libraryDeals by remember { mutableIntStateOf(0) }
+    var libraryRedealing by remember { mutableStateOf(false) }
     // A library folder's Songs / Artists / Albums tab and its search, by page
     // id: held here because the Library menu opens a folder on any of its tabs
     // and the search field is drawn in the top bar, not on the page.
@@ -1224,11 +1261,6 @@ private fun BitChordApp(
     }
     // The lead shelf is listening history, so opening Home after playing
     // something is exactly when it needs re-fetching.
-    // The YouTube Music library's songs are fetched ahead of the first tap on
-    // the Library menu, whenever the picked library includes them.
-    LaunchedEffect(signedIn, librarySource) {
-        if (signedIn) viewModel.prefetchLibrarySongs()
-    }
 
     LaunchedEffect(currentFeed) {
         if (currentFeed == MainViewModel.Feed.HOME) viewModel.onHomeShown()
@@ -2975,20 +3007,86 @@ private fun BitChordApp(
                         if (librarySource != LibrarySource.YOUTUBE_MUSIC) addAll(libraryDeviceCards)
                     },
                 )
-                val pageKey = when {
+                // The Library page's hand: dealt for the picked library once its
+                // songs are in, and dealt again only when a pull asks for it, or
+                // the library or the account changes. Coming back to the page
+                // shows the same six it showed last time. Reading the songs for
+                // it also has them in hand before the Songs, Artists and Albums
+                // pages are first opened.
+                val libraryFeedLabels = rememberLibraryFeedLabels()
+                val currentLibraryDeviceCards by rememberUpdatedState(libraryDeviceCards)
+                val currentCustomCovers by rememberUpdatedState(customCovers)
+                LaunchedEffect(librarySource, signedIn, libraryDeals) {
+                    val source = librarySource
+                    if (libraryFeed?.source != source) libraryFeed = null
+                    try {
+                        coroutineScope {
+                            val songs = async {
+                                withTimeoutOrNull(LIBRARY_DEAL_WAIT_MS) {
+                                    suspendCancellableCoroutine<List<Song>> { continuation ->
+                                        viewModel.collectSongs(source.browseId) { result ->
+                                            continuation.resumeWith(Result.success(result.getOrDefault(emptyList())))
+                                        }
+                                    }
+                                }.orEmpty()
+                            }
+                            val ytShelves = async {
+                                if (source == LibrarySource.LOCAL || !signedIn) return@async emptyList<HomeShelf>()
+                                val state = withTimeoutOrNull(LIBRARY_DEAL_WAIT_MS) {
+                                    viewModel.library.first { it !is UiState.Loading }
+                                }
+                                (state?.withCustomCovers(currentCustomCovers) as? UiState.Success)
+                                    ?.data?.shelves.orEmpty()
+                            }
+                            // YouTube Music's own rows, minus the two dials Home
+                            // builds out of its feed.
+                            val homeShelves = async {
+                                if (source == LibrarySource.LOCAL) return@async emptyList<HomeShelf>()
+                                val state = withTimeoutOrNull(LIBRARY_DEAL_WAIT_MS) {
+                                    viewModel.home.first { it !is UiState.Loading }
+                                }
+                                (state as? UiState.Success)?.data.orEmpty().filterNot { shelf ->
+                                    shelf.title.equals(CustomizationSettings.SPEED_DIAL_TITLE, ignoreCase = true) ||
+                                        shelf.title.equals(ARTIST_DIAL_SHELF_TITLE, ignoreCase = true)
+                                }
+                            }
+                            libraryFeed = dealLibraryFeed(
+                                source = source,
+                                songs = songs.await(),
+                                ytShelves = ytShelves.await(),
+                                deviceItems = currentLibraryDeviceCards,
+                                homeShelves = homeShelves.await(),
+                                labels = libraryFeedLabels,
+                                random = kotlin.random.Random(System.nanoTime()),
+                            )
+                        }
+                    } finally {
+                        libraryRedealing = false
+                    }
+                }
+                // The page a given set of these would put on screen. Asked of
+                // the state as it stands for [pageKey], and of the state one
+                // back step would leave for the predictive back below, which
+                // has to show that page before the step is taken.
+                fun pageKeyFor(
+                    top: DetailPage? = detail,
+                    spotify: Boolean = showSpotify,
+                    showAll: HomeShelf? = libraryShowAll,
+                    history: Boolean = showHistory,
+                ): String = when {
                     // Over everything it was opened on, under the Replay and
                     // Settings it can open in turn.
                     showStats && !showReplay && !showSettings && settingsSubScreen == null -> "stats"
-                    showSpotify && detail == null -> "spotify"
+                    spotify && top == null -> "spotify"
                     showDiscord -> "discord"
-                    showHistory -> "history"
-                    // `&& detail == null`: a card opened from the grid
+                    history -> "history"
+                    // `&& top == null`: a card opened from the grid
                     // stacks a detail page over it exactly as one opened
                     // from the Library tab does — see
                     // [onLibraryItemClick] — so with both set this must
-                    // give way to the `detail != null` branch below it
+                    // give way to the `top != null` branch below it
                     // rather than keep showing the grid underneath.
-                    libraryShowAll != null && detail == null -> "library_show_all"
+                    showAll != null && top == null -> "library_show_all"
                     // When a sub-screen overlay is active, keep SettingsSheet
                     // mounted so its scroll position survives.  The overlay is
                     // rendered below the AnimatedContent block.
@@ -3003,39 +3101,118 @@ private fun BitChordApp(
                     // was live, hit, and changed nothing on screen.
                     showSettings -> "settings"
                     showReplay -> "replay"
-                    detail != null -> detail.browseId
+                    top != null -> top.browseId
                     else -> "$TAB_KEY$selectedTab"
                 }
-                AnimatedContent(
-                    targetState = pageKey,
-                    // Tabs swap outright; everything else crossfades.
+                val pageKey = pageKeyFor()
+                // How deep into the Library tab's own pages this one is: the
+                // tab itself, then what its menu opens (Playlists, Spotify, a
+                // library's Songs / Artists / Albums, the song history), then
+                // whatever those open in turn. Null off that tab, or for the
+                // overlays that open over any page. Pages with a depth slide
+                // in and out sideways, and swipe back with predictive back.
+                val libraryDepth: Int? = when {
+                    selectedTab != TAB_LIBRARY || selectedMoodGenre != null -> null
+                    pageKey == "$TAB_KEY$TAB_LIBRARY" -> 0
+                    pageKey == "library_show_all" || pageKey == "spotify" || pageKey == "history" -> 1
+                    detail != null && pageKey == detail.browseId ->
+                        1 + detailStack.size + if (libraryShowAll != null || showSpotify) 1 else 0
+                    else -> null
+                }
+                // Remembered by page, for the transition to compare the page
+                // leaving with the one arriving. Forgotten off the tab, so the
+                // same album opened from Home later fades in as it always has.
+                val libraryDepths = remember { HashMap<String, Int>() }
+                if (libraryDepth != null) libraryDepths[pageKey] = libraryDepth else libraryDepths.remove(pageKey)
+                // What one back step from a Library page shows, and the step.
+                val libraryBack: Pair<String, () -> Unit>? = when {
+                    libraryDepth == null || libraryDepth == 0 || detailActiveShelf != null -> null
+                    pageKey == "history" -> pageKeyFor(history = false) to { showHistory = false }
+                    pageKey == "spotify" -> pageKeyFor(spotify = false) to { showSpotify = false }
+                    pageKey == "library_show_all" -> pageKeyFor(showAll = null) to { libraryShowAll = null }
+                    detail != null -> pageKeyFor(top = detailStack.getOrNull(detailStack.size - 2)) to
+                        { viewModel.closeDetail(); Unit }
+                    else -> null
+                }
+                // Seekable, so a back swipe can draw the page underneath sliding
+                // in while the finger is still down, rather than only once the
+                // page has been let go of.
+                val pageTransitionState = remember { SeekableTransitionState(pageKey) }
+                LaunchedEffect(pageKey) {
+                    if (pageTransitionState.targetState != pageKey || pageTransitionState.currentState != pageKey) {
+                        pageTransitionState.animateTo(pageKey)
+                    }
+                }
+                val currentLibraryBack by rememberUpdatedState(libraryBack)
+                // Library pages: the swipe slides this page off to the right and
+                // the one under it in from the left, following the finger;
+                // letting go finishes the slide, cancelling slides it back.
+                PredictiveBackHandler(
+                    enabled = libraryBack != null && !showSettings && !showAccountScrobbling && !showSources &&
+                        !showListenTogether && !showEqualizer && !showReplay && !showStats && !showDiscord,
+                ) { events ->
+                    val back = currentLibraryBack
+                    val leaving = pageKey
+                    try {
+                        events.collect { event ->
+                            if (back != null) {
+                                pageTransitionState.seekTo(event.progress.coerceIn(0f, 1f), back.first)
+                            }
+                        }
+                        back?.second?.invoke()
+                    } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                        withContext(NonCancellable) {
+                            val from = pageTransitionState.fraction
+                            if (from > 0f) {
+                                val durationNanos = (from * PAGE_SLIDE_MS * 1_000_000L).toLong()
+                                val start = withFrameNanos { it }
+                                while (true) {
+                                    val elapsed = withFrameNanos { it } - start
+                                    val t = (elapsed.toFloat() / durationNanos).coerceIn(0f, 1f)
+                                    pageTransitionState.seekTo(from * (1f - FastOutSlowInEasing.transform(t)))
+                                    if (t >= 1f) break
+                                }
+                            }
+                            pageTransitionState.snapTo(leaving)
+                        }
+                        throw cancelled
+                    }
+                }
+                rememberTransition(pageTransitionState, label = "content").AnimatedContent(
+                    // Library pages pan: one pushed from the Library slides in
+                    // from the right as the page it was opened from goes off to
+                    // the left, and back reverses it. Side by side, never one
+                    // over the other — no page paints a background of its own,
+                    // so two overlapping would show through each other.
                     //
-                    // A tab is not a place you travel to — the bar is the whole
-                    // navigation and it carries its own movement — so a fade
-                    // between two of them only ever reads as a stutter. And it
-                    // cannot read as anything else: neither page paints a
-                    // background, so a crossfade dissolves both through to the
-                    // window and the switch dips through a dimmer frame in the
-                    // middle. Pushing a page or raising Settings is a real
-                    // change of context and keeps the fade.
+                    // Tabs fade through: the page leaving fades quickly, then
+                    // the new one fades and settles in from a touch smaller.
+                    // Not a crossfade, for the same reason: two pages at half
+                    // strength over each other read as neither.
                     //
-                    // "Show all" swapping with the Library tab underneath it is
-                    // the same case as a tab swap, not a pushed page: it's still
-                    // that tab, just laid out as a grid instead of a row, sharing
-                    // its background rather than painting its own — so this one
-                    // pair gets the tab's no-fade swap too, in both directions, or
-                    // the dip through a dim frame shows up on every hold of a
-                    // card there. A card opened *from* the grid is a real page
-                    // and keeps the fade, same as one opened from the row.
+                    // Everything else — a page pushed outside the Library,
+                    // Settings, the overlays — keeps its short crossfade.
                     transitionSpec = {
+                        val from = libraryDepths[initialState]
+                        val to = libraryDepths[targetState]
                         val tabSwap = initialState.startsWith(TAB_KEY) && targetState.startsWith(TAB_KEY)
-                        val libraryTabKey = "$TAB_KEY$TAB_LIBRARY"
-                        val libraryShowAllSwap = (initialState == "library_show_all" && targetState == libraryTabKey) ||
-                            (targetState == "library_show_all" && initialState == libraryTabKey)
-                        if (tabSwap || libraryShowAllSwap) {
-                            EnterTransition.None togetherWith ExitTransition.None
-                        } else {
-                            fadeIn(tween(180)) togetherWith fadeOut(tween(180))
+                        when {
+                            from != null && to != null && from != to -> {
+                                val forward = to > from
+                                val slide = tween<IntOffset>(PAGE_SLIDE_MS, easing = FastOutSlowInEasing)
+                                slideInHorizontally(slide) { if (forward) it else -it } togetherWith
+                                    slideOutHorizontally(slide) { if (forward) -it else it }
+                            }
+                            tabSwap -> {
+                                (
+                                    fadeIn(tween(TAB_FADE_IN_MS, delayMillis = TAB_FADE_OUT_MS, easing = LinearOutSlowInEasing)) +
+                                        scaleIn(
+                                            tween(TAB_FADE_IN_MS, delayMillis = TAB_FADE_OUT_MS, easing = LinearOutSlowInEasing),
+                                            initialScale = TAB_FADE_IN_SCALE,
+                                        )
+                                    ) togetherWith fadeOut(tween(TAB_FADE_OUT_MS, easing = FastOutLinearInEasing))
+                            }
+                            else -> fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                         }
                     },
                     modifier = Modifier
@@ -3075,7 +3252,6 @@ private fun BitChordApp(
                                 renderEffect = BlurEffect(radius, radius, TileMode.Decal)
                             }
                         },
-                    label = "content",
                 ) { key ->
                     // Every branch below reads `key` rather than the state that
                     // produced it. The two are the same thing only for the page
@@ -3083,8 +3259,12 @@ private fun BitChordApp(
                     // and asking it what is selected *now* has it redraw itself
                     // as its own replacement — which then fades out from under
                     // the identical copy fading in behind it.
-                    val live = detailStack.lastOrNull()?.takeIf {
-                        it.browseId == key && key != "settings" && key != "account_scrobbling" &&
+                    //
+                    // Looked for anywhere in the stack, not only at its top: a
+                    // back swipe draws the page under the top one while the top
+                    // one is still there.
+                    val live = detailStack.lastOrNull { it.browseId == key }?.takeIf {
+                        key != "settings" && key != "account_scrobbling" &&
                             key != "discord" && key != "replay" && key != "history" &&
                             key != "library_show_all"
                     }
@@ -3403,6 +3583,19 @@ private fun BitChordApp(
                                 } else {
                                     null
                                 },
+                            // An album or artist opens as a page of its own, laid out
+                            // as every other album and artist page is, with the rows
+                            // it groups already in hand.
+                            onOpenCollection = { title, subtitle, art, grouped, type ->
+                                viewModel.openSongGroup(
+                                    browseId = libraryGroupId(type, title, subtitle),
+                                    title = title,
+                                    subtitle = subtitle,
+                                    thumbnailUrl = art,
+                                    type = type,
+                                    songs = grouped,
+                                )
+                            },
                             // An album or artist here is a grouping of rows rather than
                             // a page, so the menu is handed the rows themselves — there
                             // is no id anything could be fetched with.
@@ -3491,7 +3684,9 @@ private fun BitChordApp(
                             // the download record groups them under.
                             onMore = { songs ->
                                 browseActions = BrowseTarget(
-                                    browseId = page.browseId,
+                                    // A library grouping has no id anything can
+                                    // fetch, save or share with; its rows are here.
+                                    browseId = page.browseId.takeUnless { it.startsWith(LIBRARY_GROUP_PREFIX) },
                                     title = page.title,
                                     subtitle = page.subtitle,
                                     thumbnailUrl = page.thumbnailUrl,
@@ -3879,17 +4074,78 @@ private fun BitChordApp(
                             LibraryHomeScreen(
                                 source = librarySource,
                                 signedIn = signedIn,
-                                suggestions = rememberLibrarySuggestions(
-                                    source = librarySource,
-                                    ytShelves = libraryShelves,
-                                    deviceItems = libraryDeviceCards,
-                                ),
+                                feed = libraryFeed?.takeIf { it.source == librarySource },
                                 accent = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary,
                                 listState = libraryListState,
-                                onSourceClick = { librarySourcePickerOpen = true },
-                                onSuggestionClick = onLibraryItemClick,
-                                // The same menu a card on any shelf has.
-                                onSuggestionLongPress = onBrowseLongPress,
+                                currentSong = player.song,
+                                onSuggestionClick = { suggestion, rowTitle ->
+                                    val item = suggestion.item
+                                    val seed = suggestion.seed
+                                    val songs = suggestion.songs
+                                    val groupType = suggestion.groupType
+                                    val browseId = item.browseId
+                                    val song = shelfSong(item)
+                                    when {
+                                        // A station off a YouTube Music track.
+                                        suggestion.radio && seed != null -> startRadioFrom(seed, false)
+                                        // A mix of what is on the device, played
+                                        // in the order it was dealt in.
+                                        suggestion.radio && songs != null -> playFrom(
+                                            songs,
+                                            0,
+                                            QueueSource(item.title, PlaybackSourceType.BROWSE),
+                                        )
+                                        groupType != null && songs != null && browseId != null ->
+                                            viewModel.openSongGroup(
+                                                browseId,
+                                                item.title,
+                                                item.subtitle,
+                                                item.thumbnailUrl,
+                                                groupType,
+                                                songs,
+                                            )
+                                        // A song off one of YouTube Music's rows
+                                        // plays the way it does on Home.
+                                        song != null -> playRadio(
+                                            song,
+                                            QueueSource(rowTitle.ifBlank { libraryLabel }, PlaybackSourceType.HOME),
+                                        )
+                                        browseId != null -> viewModel.openDetail(
+                                            browseId = browseId,
+                                            title = item.title,
+                                            subtitle = item.subtitle,
+                                            thumbnailUrl = item.thumbnailUrl,
+                                            type = if (suggestion.round) BrowseType.ARTIST else BrowseType.OTHER,
+                                        )
+                                    }
+                                },
+                                onSuggestionLongPress = { suggestion ->
+                                    val seed = suggestion.seed
+                                    val songs = suggestion.songs
+                                    when {
+                                        seed != null -> openSongMenu(seed)
+                                        songs != null -> openBrowseMenu(
+                                            BrowseTarget(
+                                                browseId = null,
+                                                title = suggestion.item.title,
+                                                subtitle = suggestion.item.subtitle,
+                                                thumbnailUrl = suggestion.item.thumbnailUrl,
+                                                type = suggestion.groupType ?: BrowseType.PLAYLIST,
+                                                songs = songs,
+                                            ),
+                                        )
+                                        // The same menu a card on any shelf has.
+                                        else -> onShelfLongPress(suggestion.item)
+                                    }
+                                },
+                                onSongClick = { songs, index, rowTitle ->
+                                    playFrom(
+                                        songs,
+                                        index,
+                                        QueueSource(rowTitle, PlaybackSourceType.BROWSE, librarySource.browseId),
+                                    )
+                                },
+                                onSongLongPress = openSongMenu,
                                 onOpenPlaylists = { libraryShowAll = libraryPlaylists },
                                 onOpenArtists = { openLibraryTab(1) },
                                 onOpenAlbums = { openLibraryTab(2) },
@@ -3898,8 +4154,12 @@ private fun BitChordApp(
                                 extraLinks = libraryExtraLinks(),
                                 onLinkClick = onLibraryItemClick,
                                 onSignIn = { webSession = WebSessionMode.SIGN_IN },
-                                refreshing = MainViewModel.Feed.LIBRARY in refreshing,
-                                onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
+                                refreshing = libraryRedealing || MainViewModel.Feed.LIBRARY in refreshing,
+                                onRefresh = {
+                                    libraryRedealing = true
+                                    viewModel.refresh(MainViewModel.Feed.LIBRARY)
+                                    libraryDeals++
+                                },
                                 pullState = libraryPull,
                                 contentPadding = listPadding,
                             )
@@ -4080,6 +4340,9 @@ private fun BitChordApp(
                     libraryShowAll == null && !showSpotify && !showDiscord && !showHistory &&
                     !showSettings && !showAccountScrobbling && !showSources && !showListenTogether &&
                     !showEqualizer && !showReplay && !showStats
+                // The Library with nothing opened over it, whose heading carries
+                // the same mark and the same pull as Home's.
+                val libraryRoot = pageKey == "$TAB_KEY$TAB_LIBRARY"
                 // Explore scrolls under the bar and the mark beside it: a soft
                 // blur with a touch of shade along the top, eased in as the
                 // page comes up and out again on the way back to the dials.
@@ -4171,8 +4434,10 @@ private fun BitChordApp(
                         detail != null -> detailScrolled
                         else -> scrolled || selectedTab == TAB_SEARCH || selectedTab == TAB_PLAYLISTS
                     },
-                    refreshing = !homeRoot && currentFeed != null && currentFeed in refreshing,
-                    pullFraction = { if (homeRoot) 0f else currentPull?.distanceFraction ?: 0f },
+                    // Home and the Library show a pull in their own marks, so
+                    // the bar's puck stays put on both.
+                    refreshing = !homeRoot && !libraryRoot && currentFeed != null && currentFeed in refreshing,
+                    pullFraction = { if (homeRoot || libraryRoot) 0f else currentPull?.distanceFraction ?: 0f },
                     onBack = when {
                         showStats && !showReplay && !showSettings && settingsSubScreen == null -> ({ showStats = false })
                         showSpotify && detail == null -> ({ showSpotify = false })
@@ -4310,21 +4575,17 @@ private fun BitChordApp(
                         }
                         if (!showSettings && !showAccountScrobbling) {
                             // Left of the account photo, and only on Library itself:
-                            // a history is a record of what was played, which reads
-                            // as that tab's business rather than every tab's.
-                            if (!showHistory && !showReplay && !showStats && !showDiscord && libraryShowAll == null &&
-                                detail == null && selectedTab == TAB_LIBRARY
+                            // which library the page reads, and the song history —
+                            // a record of what was played, which reads as that
+                            // tab's business rather than every tab's. The menu is
+                            // [LibraryMenu], composed with the other overlays below.
+                            if (!showHistory && !showReplay && !showStats && !showDiscord && !showSpotify &&
+                                libraryShowAll == null && detail == null && selectedTab == TAB_LIBRARY
                             ) {
-                                IconButton(
-                                    onClick = {
-                                        showHistory = true
-                                        historyMode = HistoryMode.YOUTUBE
-                                        viewModel.loadHistory()
-                                    },
-                                ) {
+                                IconButton(onClick = { libraryMenuOpen = true }) {
                                     Icon(
-                                        Icons.Rounded.History,
-                                        contentDescription = stringResource(R.string.listening_history),
+                                        Icons.Rounded.MoreHoriz,
+                                        contentDescription = stringResource(R.string.library_menu),
                                         tint = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
@@ -4468,7 +4729,7 @@ private fun BitChordApp(
                                     color = MaterialTheme.colorScheme.onBackground,
                                     fontFamily = Metropolis,
                                     fontWeight = FontWeight.W800,
-                                    fontSize = 28.sp,
+                                    fontSize = 30.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = if (page == HomePage.DIAL) {
@@ -5814,18 +6075,24 @@ private fun BitChordApp(
         }
 
         run {
-            BackHandler(enabled = librarySourcePickerOpen) { librarySourcePickerOpen = false }
-            LibrarySourcePicker(
-                visible = librarySourcePickerOpen,
+            BackHandler(enabled = libraryMenuOpen) { libraryMenuOpen = false }
+            LibraryMenu(
+                visible = libraryMenuOpen,
                 selected = librarySource,
                 signedIn = signedIn,
                 hazeState = hazeState,
                 accent = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary,
                 onSelect = { picked ->
                     CustomizationSettings.setLibrarySource(picked)
-                    librarySourcePickerOpen = false
+                    libraryMenuOpen = false
                 },
-                onDismiss = { librarySourcePickerOpen = false },
+                onOpenHistory = {
+                    libraryMenuOpen = false
+                    historyMode = HistoryMode.YOUTUBE
+                    viewModel.loadHistory()
+                    showHistory = true
+                },
+                onDismiss = { libraryMenuOpen = false },
             )
         }
 
@@ -6356,7 +6623,8 @@ private fun SongSort.localizedLabel(): String = when (this) {
  * gets. See [Downloads.PLAYLIST_PREFIX] for why they share a namespace at all.
  */
 private fun String?.isDeviceFolder(): Boolean =
-    this != null && startsWith("local:") && !startsWith(Downloads.PLAYLIST_PREFIX)
+    this != null && startsWith("local:") && !startsWith(Downloads.PLAYLIST_PREFIX) &&
+        !startsWith(LIBRARY_GROUP_PREFIX)
 
 /**
  * Whether [videoId] is the track playing, and is known to be playing YouTube's

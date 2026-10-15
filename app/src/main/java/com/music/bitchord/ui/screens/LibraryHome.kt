@@ -1,5 +1,10 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -14,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,33 +30,36 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -58,13 +67,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.music.bitchord.R
+import com.music.bitchord.data.LibraryDuplicates
 import com.music.bitchord.data.YtMusicRepository
+import com.music.bitchord.data.canvas.AppleArtistArtRepository
+import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
+import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.LibrarySource
@@ -77,6 +91,8 @@ import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.PopupLayer
 import com.music.bitchord.ui.components.PullToRefresh
+import com.music.bitchord.ui.components.SQUARE_LOGO_ASPECT
+import com.music.bitchord.ui.components.SquareLogo
 import com.music.bitchord.ui.components.TopBarContentHeight
 import com.music.bitchord.ui.components.glassContentColor
 import com.music.bitchord.ui.components.isGlassSupported
@@ -93,25 +109,28 @@ import kotlin.random.Random
 
 /**
  * The Library tab, laid out after Apple Music's: "Library" with the picked
- * library's mark beside it, a 3×2 grid of things to go back to, then the
- * menu — Playlists, Artists, Albums, Songs, Spotify — and whichever extra
- * folders ([extraLinks]) are set up.
+ * library's mark beside it, a 3×2 grid of things to go back to, the menu —
+ * Playlists, Artists, Albums, Songs, Spotify, and whichever extra folders
+ * ([extraLinks]) are set up — then rows of songs and cards ([feed]'s rows).
  *
  * Which library everything here reads from is [source]: YouTube Music, the
- * device, or both. Tapping the mark opens [LibrarySourcePicker].
+ * device, or both, picked from the top bar's "…" menu ([LibraryMenu]).
+ * [feed] is dealt by [dealLibraryFeed] and only dealt again on a pull.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryHomeScreen(
     source: LibrarySource,
     signedIn: Boolean,
-    /** Null while listening history is still being read. */
-    suggestions: List<LibrarySuggestion>?,
+    /** Null while it is being dealt. */
+    feed: LibraryFeed?,
     accent: Color,
     listState: LazyListState,
-    onSourceClick: () -> Unit,
-    onSuggestionClick: (ShelfItem) -> Unit,
-    onSuggestionLongPress: (ShelfItem) -> Unit,
+    currentSong: Song?,
+    onSuggestionClick: (LibrarySuggestion, String) -> Unit,
+    onSuggestionLongPress: (LibrarySuggestion) -> Unit,
+    onSongClick: (List<Song>, Int, String) -> Unit,
+    onSongLongPress: (Song) -> Unit,
     onOpenPlaylists: () -> Unit,
     onOpenArtists: () -> Unit,
     onOpenAlbums: () -> Unit,
@@ -142,12 +161,17 @@ fun LibraryHomeScreen(
             contentPadding = PaddingValues(top = statusBar, bottom = contentPadding.calculateBottomPadding()),
         ) {
             item(key = "heading") {
-                LibraryHeading(source = source, accent = accent, onSourceClick = onSourceClick)
+                LibraryHeading(
+                    source = source,
+                    accent = accent,
+                    refreshing = refreshing,
+                    pullFraction = { pullState.distanceFraction },
+                )
             }
             item(key = "suggestions") {
                 SuggestionGrid(
-                    suggestions = suggestions,
-                    onClick = onSuggestionClick,
+                    suggestions = feed?.suggestions,
+                    onClick = { onSuggestionClick(it, "") },
                     onLongPress = onSuggestionLongPress,
                 )
             }
@@ -162,7 +186,7 @@ fun LibraryHomeScreen(
                         add(MenuRow(link.item.title, link.icon, onClick = { onLinkClick(link.item) }))
                     }
                 }
-                LibraryMenu(rows = rows, accent = accent)
+                LibraryMenuRows(rows = rows, accent = accent)
             }
             if (!signedIn && source == LibrarySource.YOUTUBE_MUSIC) {
                 item(key = "sign_in") {
@@ -173,48 +197,97 @@ fun LibraryHomeScreen(
                     )
                 }
             }
+            feed?.rows?.forEachIndexed { index, row ->
+                item(key = "row:$index:${row.title}") {
+                    FeedRow(
+                        row = row,
+                        currentSong = currentSong,
+                        onSongClick = { songs, at -> onSongClick(songs, at, row.title) },
+                        onSongLongPress = onSongLongPress,
+                        onItemClick = { onSuggestionClick(it, row.title) },
+                        onItemLongPress = onSuggestionLongPress,
+                    )
+                }
+            }
         }
     }
 }
 
+/**
+ * "Library", larger than a section title, with the picked library's mark
+ * before it. Pulled down, the mark gives way to the app's own square logo
+ * lighting up row by row, and spinning while the refresh runs — the same
+ * thing Home's mark does.
+ */
 @Composable
-private fun LibraryHeading(source: LibrarySource, accent: Color, onSourceClick: () -> Unit) {
+private fun LibraryHeading(
+    source: LibrarySource,
+    accent: Color,
+    refreshing: Boolean,
+    pullFraction: () -> Float,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .padding(bottom = 6.dp)
             .height(TopBarContentHeight)
-            // Clear of the history button and account photo at the other end.
+            // Clear of the "…" button and account photo at the other end.
             .padding(start = PAGE_GUTTER, end = 120.dp),
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .clickable(role = Role.Button, onClick = onSourceClick),
-        ) {
-            LibrarySourceIcon(source = source, tint = accent, modifier = Modifier.size(30.dp))
+        val pulling = refreshing || pullFraction() > 0.02f
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(34.dp)) {
+            AnimatedContent(
+                targetState = pulling || source == LibrarySource.ALL,
+                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(160)) },
+                label = "libraryMark",
+            ) { dial ->
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(34.dp)) {
+                    if (dial) {
+                        SquareLogo(
+                            color = accent,
+                            refreshing = refreshing,
+                            pullFraction = pullFraction,
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .aspectRatio(SQUARE_LOGO_ASPECT),
+                        )
+                    } else {
+                        LibrarySourceIcon(source = source, tint = accent, modifier = Modifier.size(30.dp))
+                    }
+                }
+            }
         }
         Spacer(Modifier.width(10.dp))
         Text(
             text = stringResource(R.string.library),
             style = MaterialTheme.typography.headlineLarge,
+            fontSize = (MaterialTheme.typography.headlineLarge.fontSize.value + 2f).sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onSourceClick,
-            ),
         )
     }
 }
 
-/** One cell of the grid: an album or playlist, or an artist drawn round. */
-data class LibrarySuggestion(val item: ShelfItem, val round: Boolean = false)
+// ── The grid ────────────────────────────────────────────────────────────────
+
+/**
+ * One card the Library deals: an album, playlist or artist page, one of the
+ * device's albums or artists ([songs] with [groupType]), or a station — a
+ * YouTube Music radio off [seed], or a mix played from [songs].
+ */
+data class LibrarySuggestion(
+    val item: ShelfItem,
+    val round: Boolean = false,
+    val radio: Boolean = false,
+    val seed: Song? = null,
+    val songs: List<Song>? = null,
+    val groupType: BrowseType? = null,
+) {
+    val key: String get() = item.browseId ?: item.videoId ?: (item.title + "\u0000" + item.subtitle)
+}
 
 private const val GRID_COLUMNS = 3
 private const val GRID_ROWS = 2
@@ -223,8 +296,8 @@ private const val GRID_SIZE = GRID_COLUMNS * GRID_ROWS
 @Composable
 private fun SuggestionGrid(
     suggestions: List<LibrarySuggestion>?,
-    onClick: (ShelfItem) -> Unit,
-    onLongPress: (ShelfItem) -> Unit,
+    onClick: (LibrarySuggestion) -> Unit,
+    onLongPress: (LibrarySuggestion) -> Unit,
 ) {
     // Nothing played yet and nothing saved: no grid at all, rather than six
     // grey squares that never fill in.
@@ -233,7 +306,7 @@ private fun SuggestionGrid(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = PAGE_GUTTER)
-            .padding(top = 8.dp, bottom = 10.dp),
+            .padding(top = 4.dp, bottom = 10.dp),
     ) {
         val cell = (maxWidth - LIBRARY_GRID_SPACING * (GRID_COLUMNS - 1)) / GRID_COLUMNS
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -242,11 +315,11 @@ private fun SuggestionGrid(
                     for (column in 0 until GRID_COLUMNS) {
                         val index = row * GRID_COLUMNS + column
                         if (suggestions == null) {
-                            SuggestionPlaceholder(cell)
+                            CardPlaceholder(cell)
                         } else {
                             val suggestion = suggestions.getOrNull(index)
                             if (suggestion != null) {
-                                SuggestionCell(suggestion, cell, onClick, onLongPress)
+                                SuggestionCard(suggestion, cell, centered = true, onClick, onLongPress)
                             } else {
                                 Spacer(Modifier.width(cell))
                             }
@@ -259,52 +332,84 @@ private fun SuggestionGrid(
 }
 
 @Composable
-private fun SuggestionCell(
+private fun SuggestionCard(
     suggestion: LibrarySuggestion,
     width: Dp,
-    onClick: (ShelfItem) -> Unit,
-    onLongPress: (ShelfItem) -> Unit,
+    centered: Boolean,
+    onClick: (LibrarySuggestion) -> Unit,
+    onLongPress: (LibrarySuggestion) -> Unit,
 ) {
     val shape = if (suggestion.round) CircleShape else RoundedCornerShape(10.dp)
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
         modifier = Modifier
             .width(width)
             .longPressMenuClickable(
-                onClick = { onClick(suggestion.item) },
-                onLongClick = { onLongPress(suggestion.item) },
+                onClick = { onClick(suggestion) },
+                onLongClick = { onLongPress(suggestion) },
             ),
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(shape)
-                .thumbnailBorder(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            AsyncImage(
-                model = suggestion.item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                contentDescription = null,
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(shape)
+                    .thumbnailBorder(shape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                AsyncImage(
+                    model = suggestion.item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (suggestion.radio) RadioBadge(Modifier.align(Alignment.BottomEnd))
         }
         Spacer(Modifier.height(6.dp))
         Text(
             text = suggestion.item.title,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground,
-            textAlign = TextAlign.Center,
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
+        )
+        if (!centered && suggestion.item.subtitle.isNotBlank()) {
+            Text(
+                text = suggestion.item.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** The mark on a station's card, in its bottom corner: it plays, it doesn't open. */
+@Composable
+private fun RadioBadge(modifier: Modifier = Modifier) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .padding(5.dp)
+            .size(22.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = .55f)),
+    ) {
+        Icon(
+            Icons.Rounded.Radio,
+            contentDescription = stringResource(R.string.library_radio),
+            tint = Color.White,
+            modifier = Modifier.size(14.dp),
         )
     }
 }
 
 @Composable
-private fun SuggestionPlaceholder(width: Dp) {
+private fun CardPlaceholder(width: Dp) {
     Column(Modifier.width(width)) {
         Box(
             Modifier
@@ -313,10 +418,11 @@ private fun SuggestionPlaceholder(width: Dp) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)),
         )
-        Spacer(Modifier.height(6.dp))
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(26.dp))
     }
 }
+
+// ── The menu ────────────────────────────────────────────────────────────────
 
 private class MenuRow(
     val title: String,
@@ -330,8 +436,8 @@ private val MENU_ICON_GAP = 16.dp
 
 /** Icon, name, chevron, hairlines between — the rows under the grid. */
 @Composable
-private fun LibraryMenu(rows: List<MenuRow>, accent: Color) {
-    Column(Modifier.padding(top = 4.dp, bottom = 22.dp)) {
+private fun LibraryMenuRows(rows: List<MenuRow>, accent: Color) {
+    Column(Modifier.padding(top = 4.dp, bottom = 18.dp)) {
         rows.forEachIndexed { index, row ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -383,19 +489,123 @@ private fun LibraryMenu(rows: List<MenuRow>, accent: Color) {
     }
 }
 
+// ── The rows ────────────────────────────────────────────────────────────────
+
+/** One row under the menu: songs to play ([songs]), or cards to open or play ([items]). */
+class LibraryFeedRow(
+    val title: String,
+    val songs: List<Song> = emptyList(),
+    val items: List<LibrarySuggestion> = emptyList(),
+)
+
+/** Everything [LibraryHomeScreen] deals: the grid's six, and the rows under the menu. */
+class LibraryFeed(
+    val source: LibrarySource,
+    val suggestions: List<LibrarySuggestion>,
+    val rows: List<LibraryFeedRow>,
+)
+
+private val FEED_CARD_WIDTH = 140.dp
+
+@Composable
+private fun FeedRow(
+    row: LibraryFeedRow,
+    currentSong: Song?,
+    onSongClick: (List<Song>, Int) -> Unit,
+    onSongLongPress: (Song) -> Unit,
+    onItemClick: (LibrarySuggestion) -> Unit,
+    onItemLongPress: (LibrarySuggestion) -> Unit,
+) {
+    Column(Modifier.padding(bottom = 22.dp)) {
+        Text(
+            text = row.title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = PAGE_GUTTER).padding(bottom = 10.dp),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+            horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING),
+        ) {
+            if (row.songs.isNotEmpty()) {
+                itemsIndexed(row.songs, key = { index, song -> "${song.videoId}:$index" }) { index, song ->
+                    SongCard(
+                        song = song,
+                        current = currentSong?.videoId == song.videoId,
+                        onClick = { onSongClick(row.songs, index) },
+                        onLongPress = { onSongLongPress(song) },
+                    )
+                }
+            } else {
+                itemsIndexed(row.items, key = { index, item -> "${item.key}:$index" }) { _, item ->
+                    SuggestionCard(item, FEED_CARD_WIDTH, centered = false, onItemClick, onItemLongPress)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SongCard(song: Song, current: Boolean, onClick: () -> Unit, onLongPress: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        Modifier
+            .width(FEED_CARD_WIDTH)
+            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(shape)
+                .thumbnailBorder(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            AsyncImage(
+                model = song.thumbnailUrl.artworkAt(CARD_ART_PX),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = song.title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = song.artist,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+// ── The "…" menu ────────────────────────────────────────────────────────────
+
 /**
- * The library switcher the Library heading's mark opens: YouTube Music, Local
- * (the device's files and the downloads) and All, on a liquid-glass panel
- * that grows out of the mark. Picking one is remembered for next time.
+ * What the Library's "…" button opens, on a liquid-glass panel that grows out
+ * of it: which library the page reads — YouTube Music, Local (the device's
+ * files and the downloads) or All — and the listening history. The pick is
+ * remembered for next time.
  */
 @Composable
-fun LibrarySourcePicker(
+fun LibraryMenu(
     visible: Boolean,
     selected: LibrarySource,
     signedIn: Boolean,
     hazeState: HazeState,
     accent: Color,
     onSelect: (LibrarySource) -> Unit,
+    onOpenHistory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val shape = MaterialTheme.shapes.extraLarge
@@ -405,15 +615,15 @@ fun LibrarySourcePicker(
     PopupLayer(
         visible = visible,
         onDismiss = onDismiss,
-        contentAlignment = Alignment.TopStart,
-        origin = TransformOrigin(0f, 0f),
+        contentAlignment = Alignment.TopEnd,
+        origin = TransformOrigin(1f, 0f),
     ) {
         Surface(
             color = Color.Transparent,
             contentColor = if (glass) glassContentColor() else MaterialTheme.colorScheme.onSurface,
             shape = shape,
             modifier = Modifier
-                .padding(top = statusBar + TopBarContentHeight, start = PAGE_GUTTER)
+                .padding(top = statusBar + TopBarContentHeight, end = PAGE_GUTTER)
                 .width(IntrinsicSize.Max)
                 .then(
                     if (isGlassSupported()) {
@@ -429,6 +639,12 @@ fun LibrarySourcePicker(
                 ),
         ) {
             Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    text = stringResource(R.string.choose_library),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LocalContentColor.current.copy(alpha = .6f),
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 4.dp),
+                )
                 LibrarySource.entries.forEach { source ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -440,7 +656,7 @@ fun LibrarySourcePicker(
                     ) {
                         LibrarySourceIcon(
                             source = source,
-                            tint = if (source == selected) accent else androidx.compose.material3.LocalContentColor.current,
+                            tint = if (source == selected) accent else LocalContentColor.current,
                             modifier = Modifier.size(26.dp),
                         )
                         Spacer(Modifier.width(14.dp))
@@ -459,7 +675,7 @@ fun LibrarySourcePicker(
                                     },
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = androidx.compose.material3.LocalContentColor.current.copy(alpha = .7f),
+                                color = LocalContentColor.current.copy(alpha = .7f),
                             )
                         }
                         Spacer(Modifier.weight(1f))
@@ -470,110 +686,173 @@ fun LibrarySourcePicker(
                         }
                     }
                 }
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = LocalContentColor.current.copy(alpha = .2f),
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable(role = Role.Button, onClick = onOpenHistory)
+                        .padding(start = 18.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+                ) {
+                    Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(26.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Text(stringResource(R.string.view_song_history), style = MaterialTheme.typography.bodyLarge)
+                }
             }
         }
     }
 }
 
-// ── Suggestions ─────────────────────────────────────────────────────────────
+// ── Dealing ─────────────────────────────────────────────────────────────────
 
-/** What has been played, read once from [ListeningStats] each time the page opens. */
-private class ListeningActivity(
-    /** Newest first. */
-    val recentAlbums: List<LibrarySuggestion>,
-    val recentArtists: List<LibrarySuggestion>,
-    /** Most played first. */
-    val topAlbums: List<LibrarySuggestion>,
-    val topArtists: List<LibrarySuggestion>,
-    /** Album names, folded, for matching against the device's releases. */
-    val recentAlbumNames: Set<String>,
-    val topAlbumNames: Set<String>,
+/** The row and card names [dealLibraryFeed] writes, resolved where strings are. */
+class LibraryFeedLabels(
+    val recentlyAdded: String,
+    val recentlyPlayed: String,
+    val mostPlayed: String,
+    val albums: String,
+    val artists: String,
+    val rediscover: String,
+    /** "%s Radio" */
+    val radio: String,
+    /** "%s Mix" */
+    val mix: String,
 )
 
-private fun String.folded(): String = lowercase(Locale.ROOT).trim()
+@Composable
+fun rememberLibraryFeedLabels(): LibraryFeedLabels {
+    val recentlyAdded = stringResource(R.string.library_recently_added)
+    val recentlyPlayed = stringResource(R.string.library_recently_played)
+    val mostPlayed = stringResource(R.string.library_most_played)
+    val albums = stringResource(R.string.library_albums_for_you)
+    val artists = stringResource(R.string.artists)
+    val rediscover = stringResource(R.string.library_rediscover)
+    val radio = stringResource(R.string.library_radio_named)
+    val mix = stringResource(R.string.library_mix_named)
+    return remember(recentlyAdded, recentlyPlayed, mostPlayed, albums, artists, rediscover, radio, mix) {
+        LibraryFeedLabels(recentlyAdded, recentlyPlayed, mostPlayed, albums, artists, rediscover, radio, mix)
+    }
+}
 
 /** A YouTube Music page id, rather than a device grouping or nothing. */
 private fun String?.isRemoteBrowseId(): Boolean =
     !isNullOrBlank() && !startsWith("local:") && !contains("://")
 
-private suspend fun readListeningActivity(): ListeningActivity = withContext(Dispatchers.IO) {
+/** A YouTube video id, which a station can be started off. */
+private fun String.isVideoId(): Boolean = length == 11 && none { it == ':' || it == '/' }
+
+/** A track that is a file on this device, rather than a stream. */
+private fun Song.onDevice(): Boolean =
+    localUri != null || localPath != null || localDateAddedSeconds != null
+
+private fun String.folded(): String = lowercase(Locale.ROOT).trim()
+
+private fun Song.matchKey(): String = LibraryDuplicates.titleKey(title) + "\u0000" + LibraryDuplicates.artistKey(artist)
+
+private const val RECENT_TRACKS = 120
+private const val TOP_ENTRIES = 12
+private const val ROW_LENGTH = 15
+private const val MIX_LENGTH = 40
+private const val MAX_ROWS = 5
+
+/** The page id a device album or artist opens under; see [LIBRARY_GROUP_PREFIX]. */
+fun libraryGroupId(type: BrowseType, title: String, artist: String = ""): String =
+    LIBRARY_GROUP_PREFIX + type.name.lowercase(Locale.ROOT) + ":" + title + "|" + artist
+
+/**
+ * Deals the Library page for [source]: six cards for the grid and the rows
+ * under the menu.
+ *
+ * The grid mixes what was played lately, what is played most, a playlist and
+ * a station, from YouTube Music's side (listening history, [ytShelves] — the
+ * account's library) and the device's ([songs] that are files, [deviceItems] —
+ * the releases downloaded whole and the app's own playlists) as [source]
+ * allows. The rows start with Recently added, then up to five more: rows off
+ * YouTube Music's home feed ([homeShelves]) for a library with YouTube Music
+ * in it, rows made from the device's songs for Local.
+ *
+ * Random, off [random]: the caller deals once and keeps the result until a
+ * pull asks for a new hand.
+ */
+suspend fun dealLibraryFeed(
+    source: LibrarySource,
+    songs: List<Song>,
+    ytShelves: List<HomeShelf>,
+    deviceItems: List<ShelfItem>,
+    homeShelves: List<HomeShelf>,
+    labels: LibraryFeedLabels,
+    random: Random,
+): LibraryFeed = withContext(Dispatchers.Default) {
+    val youTube = source != LibrarySource.LOCAL
+    val device = source != LibrarySource.YOUTUBE_MUSIC
     val summary = runCatching { ListeningStats.summary(ReplayPeriod.ALL_TIME) }.getOrNull()
     val recent = runCatching { ListeningStats.recentTracks(RECENT_TRACKS) }.getOrDefault(emptyList())
+
+    // ── YouTube Music's side ──
     val artistsById = summary?.artists.orEmpty()
         .filter { it.browseId.isRemoteBrowseId() }
         .associateBy { it.browseId!! }
-    val recentAlbums = recent
-        .filter { it.albumId.isRemoteBrowseId() && !it.album.isNullOrBlank() }
-        .distinctBy { it.albumId }
-        .map {
-            LibrarySuggestion(ShelfItem(it.album!!, it.artist, it.art, null, it.albumId))
+    val ytRecent = mutableListOf<LibrarySuggestion>()
+    val ytOften = mutableListOf<LibrarySuggestion>()
+    val ytRadios = mutableListOf<LibrarySuggestion>()
+    if (youTube) {
+        recent.filter { it.albumId.isRemoteBrowseId() && !it.album.isNullOrBlank() }
+            .distinctBy { it.albumId }
+            .take(TOP_ENTRIES)
+            .forEach { ytRecent += LibrarySuggestion(ShelfItem(it.album!!, it.artist, it.art, null, it.albumId)) }
+        // Only artists with a picture of their own: a round crop of a track's
+        // sleeve would pass for the artist and not be them.
+        recent.mapNotNull { track -> track.artistId?.let(artistsById::get) }
+            .distinctBy { it.browseId }
+            .filter { !it.artworkUrl.isNullOrBlank() }
+            .take(TOP_ENTRIES / 2)
+            .forEach {
+                ytRecent += LibrarySuggestion(
+                    ShelfItem(it.title, it.subtitle.orEmpty(), it.artworkUrl, null, it.browseId),
+                    round = true,
+                )
+            }
+        summary?.albums.orEmpty().filter { it.browseId.isRemoteBrowseId() }.take(TOP_ENTRIES).forEach {
+            ytOften += LibrarySuggestion(ShelfItem(it.title, it.subtitle.orEmpty(), it.artworkUrl, null, it.browseId))
         }
-    // Only artists with a picture of their own: a round crop of a track's
-    // sleeve would pass for the artist and not be them.
-    val recentArtists = recent
-        .mapNotNull { track -> track.artistId?.let(artistsById::get) }
-        .distinctBy { it.browseId }
-        .filter { !it.artworkUrl.isNullOrBlank() }
-        .map { LibrarySuggestion(ShelfItem(it.title, it.subtitle.orEmpty(), it.artworkUrl, null, it.browseId), round = true) }
-    val topAlbums = summary?.albums.orEmpty()
-        .filter { it.browseId.isRemoteBrowseId() }
-        .take(TOP_ENTRIES)
-        .map { LibrarySuggestion(ShelfItem(it.title, it.subtitle.orEmpty(), it.artworkUrl, null, it.browseId)) }
-    val topArtists = artistsById.values
-        .filter { !it.artworkUrl.isNullOrBlank() }
-        .sortedByDescending { it.ms }
-        .take(TOP_ENTRIES)
-        .map { LibrarySuggestion(ShelfItem(it.title, it.subtitle.orEmpty(), it.artworkUrl, null, it.browseId), round = true) }
-    ListeningActivity(
-        recentAlbums = recentAlbums,
-        recentArtists = recentArtists,
-        topAlbums = topAlbums,
-        topArtists = topArtists,
-        recentAlbumNames = recent.mapNotNull { it.album?.folded() }.toSet(),
-        topAlbumNames = summary?.albums.orEmpty().take(TOP_ENTRIES * 2).map { it.title.folded() }.toSet(),
-    )
-}
-
-private const val RECENT_TRACKS = 80
-private const val TOP_ENTRIES = 12
-
-/** How many of the six each kind of pick gets before the rest are filled at random. */
-private const val PER_KIND = 2
-
-/**
- * The six cells of the grid, for [source]: a mix of what was played lately,
- * what is played most, and playlists, drawn from YouTube Music's side
- * ([ytShelves], the account's library) and the device's ([deviceItems], the
- * releases downloaded whole and the app's own playlists) as [source] allows.
- *
- * Dealt afresh each time the page opens — the seed is held for as long as the
- * page is on screen, so a refresh underneath doesn't reshuffle what is being
- * looked at. Null until listening history has been read.
- */
-@Composable
-fun rememberLibrarySuggestions(
-    source: LibrarySource,
-    ytShelves: List<HomeShelf>,
-    deviceItems: List<ShelfItem>,
-): List<LibrarySuggestion>? {
-    var activity by remember { mutableStateOf<ListeningActivity?>(null) }
-    LaunchedEffect(Unit) { activity = readListeningActivity() }
-    val seed = remember { Random.nextLong() }
-    return remember(activity, source, ytShelves, deviceItems, seed) {
-        activity?.let { dealSuggestions(it, source, ytShelves, deviceItems, Random(seed)) }
+        artistsById.values.filter { !it.artworkUrl.isNullOrBlank() }
+            .sortedByDescending { it.ms }
+            .take(TOP_ENTRIES)
+            .forEach {
+                ytOften += LibrarySuggestion(
+                    ShelfItem(it.title, it.subtitle.orEmpty(), it.artworkUrl, null, it.browseId),
+                    round = true,
+                )
+            }
+        // Stations: off a song played lately or often, and off a favourite
+        // artist's most played song.
+        val streamed = recent.filter { it.id.isVideoId() }
+        streamed.take(TOP_ENTRIES).forEach { track ->
+            val seed = Song(videoId = track.id, title = track.title, artist = track.artist, thumbnailUrl = track.art)
+            ytRadios += LibrarySuggestion(
+                ShelfItem(labels.radio.format(track.title), track.artist, track.art, track.id, null),
+                radio = true,
+                seed = seed,
+            )
+        }
+        artistsById.values.filter { !it.artworkUrl.isNullOrBlank() }
+            .sortedByDescending { it.ms }
+            .take(TOP_ENTRIES / 2)
+            .forEach { artist ->
+                val lead = streamed.firstOrNull { it.artistId == artist.browseId } ?: return@forEach
+                ytRadios += LibrarySuggestion(
+                    ShelfItem(labels.radio.format(artist.title), "", artist.artworkUrl, lead.id, null),
+                    round = true,
+                    radio = true,
+                    seed = Song(videoId = lead.id, title = lead.title, artist = lead.artist, thumbnailUrl = lead.art),
+                )
+            }
     }
-}
-
-private fun dealSuggestions(
-    activity: ListeningActivity,
-    source: LibrarySource,
-    ytShelves: List<HomeShelf>,
-    deviceItems: List<ShelfItem>,
-    random: Random,
-): List<LibrarySuggestion> {
-    val youTube = source != LibrarySource.LOCAL
-    val device = source != LibrarySource.YOUTUBE_MUSIC
-
     fun shelf(title: String) = ytShelves.firstOrNull { it.title == title }?.items.orEmpty()
     val ytPlaylists = if (youTube) shelf(YtMusicRepository.PLAYLISTS_SHELF).map { LibrarySuggestion(it) } else emptyList()
     val ytSaved = if (youTube) {
@@ -582,39 +861,180 @@ private fun dealSuggestions(
     } else {
         emptyList()
     }
+
+    // ── The device's side ──
+    val local = if (device) songs.filter { it.onDevice() } else emptyList()
+    val localAlbums = local
+        .filter { !it.albumName.isNullOrBlank() }
+        .groupBy { it.albumName!!.folded() }
+        .values
+        .filter { it.size >= 2 }
+        .map { tracks ->
+            val first = tracks.first()
+            val artist = tracks.groupingBy { it.artist }.eachCount().maxByOrNull { it.value }?.key.orEmpty()
+            LibrarySuggestion(
+                ShelfItem(
+                    title = first.albumName!!,
+                    subtitle = artist,
+                    thumbnailUrl = tracks.firstNotNullOfOrNull { it.thumbnailUrl },
+                    videoId = null,
+                    browseId = libraryGroupId(BrowseType.ALBUM, first.albumName!!, artist),
+                ),
+                songs = tracks,
+                groupType = BrowseType.ALBUM,
+            )
+        }
+    val localArtists = local
+        .groupBy { LibraryDuplicates.artistKey(it.artist) }
+        .values
+        .filter { it.size >= 2 }
+        .map { tracks ->
+            val name = tracks.first().artist
+            LibrarySuggestion(
+                ShelfItem(
+                    title = name,
+                    subtitle = "",
+                    thumbnailUrl = AppleArtistArtRepository.cached(name)?.heroUrl
+                        ?: tracks.firstNotNullOfOrNull { it.thumbnailUrl },
+                    videoId = null,
+                    browseId = libraryGroupId(BrowseType.ARTIST, name),
+                ),
+                round = true,
+                songs = tracks,
+                groupType = BrowseType.ARTIST,
+            )
+        }
+    val recentNames = recent.mapNotNull { it.album?.folded() }.toSet()
+    val topNames = summary?.albums.orEmpty().take(TOP_ENTRIES * 2).map { it.title.folded() }.toSet()
+    val recentArtistKeys = recent.map { LibraryDuplicates.artistKey(it.artist) }.toSet()
+    val topArtistKeys = summary?.artists.orEmpty().take(TOP_ENTRIES * 2).map { LibraryDuplicates.artistKey(it.title) }.toSet()
+    val localByKey = local.associateBy { it.matchKey() }
+    val localById = local.associateBy { it.videoId }
+    fun localMatch(id: String, title: String, artist: String): Song? =
+        localById[id] ?: localByKey[LibraryDuplicates.titleKey(title) + "\u0000" + LibraryDuplicates.artistKey(artist)]
+    val recentlyPlayedLocal = recent.mapNotNull { localMatch(it.id, it.title, it.artist) }.distinctBy { it.videoId }
+    val mostPlayedLocal = summary?.songs.orEmpty()
+        .mapNotNull { ranked -> localMatch(ranked.song.videoId, ranked.song.title, ranked.song.artist) }
+        .distinctBy { it.videoId }
     val deviceCards = if (device) deviceItems.map { LibrarySuggestion(it) } else emptyList()
 
-    val recent = buildList {
-        if (youTube) {
-            addAll(activity.recentAlbums.take(TOP_ENTRIES))
-            addAll(activity.recentArtists.take(TOP_ENTRIES / 2))
+    // Mixes: the device's answer to a station, played from what is on it.
+    val localMixes = buildList {
+        localArtists.forEach { artist ->
+            val tracks = artist.songs.orEmpty()
+            if (tracks.size >= 3) {
+                add(
+                    artist.copy(
+                        item = artist.item.copy(title = labels.mix.format(artist.item.title), browseId = null),
+                        radio = true,
+                        songs = tracks.shuffled(random).take(MIX_LENGTH),
+                        groupType = null,
+                    ),
+                )
+            }
         }
-        addAll(deviceCards.filter { it.item.title.folded() in activity.recentAlbumNames })
-    }
-    val often = buildList {
-        if (youTube) {
-            addAll(activity.topAlbums)
-            addAll(activity.topArtists)
+        (recentlyPlayedLocal.take(TOP_ENTRIES) + mostPlayedLocal.take(TOP_ENTRIES)).distinctBy { it.videoId }.forEach { seed ->
+            val kin = local.filter {
+                it.videoId != seed.videoId &&
+                    (LibraryDuplicates.artistKey(it.artist) == LibraryDuplicates.artistKey(seed.artist) ||
+                        (it.albumName != null && it.albumName == seed.albumName))
+            }.shuffled(random)
+            val kinIds = kin.mapTo(HashSet()) { it.videoId }
+            val rest = local.filter { it.videoId != seed.videoId && it.videoId !in kinIds }.shuffled(random)
+            add(
+                LibrarySuggestion(
+                    ShelfItem(labels.mix.format(seed.title), seed.artist, seed.thumbnailUrl, seed.videoId, null),
+                    radio = true,
+                    songs = (listOf(seed) + kin + rest).take(MIX_LENGTH),
+                ),
+            )
         }
-        addAll(deviceCards.filter { it.item.title.folded() in activity.topAlbumNames })
     }
-    val playlists = ytPlaylists + deviceCards
-    val rest = ytSaved
+
+    val recentPool = ytRecent +
+        localAlbums.filter { it.item.title.folded() in recentNames } +
+        localArtists.filter { LibraryDuplicates.artistKey(it.item.title) in recentArtistKeys } +
+        deviceCards.filter { it.item.title.folded() in recentNames }
+    val oftenPool = ytOften +
+        localAlbums.filter { it.item.title.folded() in topNames } +
+        localArtists.filter { LibraryDuplicates.artistKey(it.item.title) in topArtistKeys } +
+        deviceCards.filter { it.item.title.folded() in topNames }
+    val playlistPool = ytPlaylists + deviceCards
+    val radioPool = ytRadios + localMixes
+    val restPool = ytSaved + localAlbums + localArtists
 
     val picked = LinkedHashMap<String, LibrarySuggestion>()
     fun take(pool: List<LibrarySuggestion>, count: Int) {
         var added = 0
         for (candidate in pool.shuffled(random)) {
             if (added >= count || picked.size >= GRID_SIZE) return
-            val id = candidate.item.browseId ?: continue
-            if (id in picked) continue
-            picked[id] = candidate
+            if (candidate.key in picked) continue
+            picked[candidate.key] = candidate
             added++
         }
     }
-    take(recent, PER_KIND)
-    take(often, PER_KIND)
-    take(playlists, PER_KIND)
-    take(recent + often + playlists + rest, GRID_SIZE)
-    return picked.values.toList().shuffled(random)
+    take(recentPool, 2)
+    take(oftenPool, 2)
+    take(playlistPool, 1)
+    take(radioPool, 1)
+    take(recentPool + oftenPool + playlistPool + radioPool + restPool, GRID_SIZE)
+    val suggestions = picked.values.toList().shuffled(random)
+
+    // ── Rows ──
+    val rows = mutableListOf<LibraryFeedRow>()
+    val recentlyAdded = when (source) {
+        LibrarySource.YOUTUBE_MUSIC -> songs.take(ROW_LENGTH)
+        LibrarySource.LOCAL -> local.sortedByDescending { it.localDateAddedSeconds ?: Long.MIN_VALUE }.take(ROW_LENGTH)
+        LibrarySource.ALL -> {
+            // Nothing dates both sides alike, so the newest of each take turns.
+            val newestLocal = songs.filter { it.onDevice() }
+                .sortedByDescending { it.localDateAddedSeconds ?: Long.MIN_VALUE }
+            val newestStreamed = songs.filterNot { it.onDevice() }
+            buildList {
+                var i = 0
+                while (size < ROW_LENGTH && (i < newestLocal.size || i < newestStreamed.size)) {
+                    newestStreamed.getOrNull(i)?.let(::add)
+                    newestLocal.getOrNull(i)?.let(::add)
+                    i++
+                }
+            }.take(ROW_LENGTH)
+        }
+    }
+    if (recentlyAdded.isNotEmpty()) rows += LibraryFeedRow(labels.recentlyAdded, songs = recentlyAdded)
+
+    if (youTube) {
+        homeShelves
+            .filter { shelf -> shelf.items.size >= 3 && shelf.title.isNotBlank() }
+            .shuffled(random)
+            .take(MAX_ROWS)
+            .forEach { shelf ->
+                rows += LibraryFeedRow(
+                    title = shelf.title,
+                    items = shelf.items.take(ROW_LENGTH).map { item ->
+                        LibrarySuggestion(item, round = item.browseId?.startsWith("UC") == true)
+                    },
+                )
+            }
+    } else {
+        val localRows = buildList {
+            if (recentlyPlayedLocal.isNotEmpty()) {
+                add(LibraryFeedRow(labels.recentlyPlayed, songs = recentlyPlayedLocal.take(ROW_LENGTH)))
+            }
+            if (mostPlayedLocal.isNotEmpty()) {
+                add(LibraryFeedRow(labels.mostPlayed, songs = mostPlayedLocal.take(ROW_LENGTH)))
+            }
+            if (localAlbums.isNotEmpty()) {
+                add(LibraryFeedRow(labels.albums, items = localAlbums.shuffled(random).take(ROW_LENGTH)))
+            }
+            if (localArtists.isNotEmpty()) {
+                add(LibraryFeedRow(labels.artists, items = localArtists.shuffled(random).take(ROW_LENGTH)))
+            }
+            // What hasn't been played in a while, or ever.
+            val heard = recentlyPlayedLocal.map { it.videoId }.toSet()
+            val forgotten = local.filter { it.videoId !in heard }.shuffled(random).take(ROW_LENGTH)
+            if (forgotten.isNotEmpty()) add(LibraryFeedRow(labels.rediscover, songs = forgotten))
+        }
+        rows += localRows.take(MAX_ROWS)
+    }
+    LibraryFeed(source, suggestions, rows)
 }

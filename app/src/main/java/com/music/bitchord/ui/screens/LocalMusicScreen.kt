@@ -93,6 +93,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
@@ -158,6 +159,13 @@ fun LocalMusicScreen(
      * here has a browse id to fetch, so this is the only way these get one.
      */
     onCollectionLongPress: ((String, List<Song>) -> Unit)? = null,
+    /**
+     * One of the Artists / Albums groupings, tapped: opens it as a page of its
+     * own — title, subtitle, cover, its rows and whether it is an artist, an
+     * album or a playlist — the way any other album or artist opens. Null
+     * keeps the in-place list this screen drills down to instead.
+     */
+    onOpenCollection: ((String, String, String?, List<Song>, BrowseType) -> Unit)? = null,
     /**
      * The albums and playlists that were downloaded *as* albums and playlists.
      *
@@ -452,9 +460,13 @@ fun LocalMusicScreen(
                         artists = artists,
                         viewType = viewType,
                         onArtistClick = { artist, artistSongs ->
-                            drillDownLabel = artist
-                            drillDownSongs = artistSongs
-                            drillDownArt = null
+                            if (onOpenCollection != null) {
+                                onOpenCollection(artist, "", null, artistSongs, BrowseType.ARTIST)
+                            } else {
+                                drillDownLabel = artist
+                                drillDownSongs = artistSongs
+                                drillDownArt = null
+                            }
                         },
                         onArtistLongPress = onCollectionLongPress,
                         contentPadding = bodyContentPadding,
@@ -477,6 +489,14 @@ fun LocalMusicScreen(
                         onAlbumClick = { entry ->
                             if (selectingDownloads) {
                                 toggleAlbumSelection(entry)
+                            } else if (onOpenCollection != null) {
+                                onOpenCollection(
+                                    entry.title,
+                                    entry.artist,
+                                    entry.thumbnailUrl,
+                                    entry.songs,
+                                    if (entry.playlist) BrowseType.PLAYLIST else BrowseType.ALBUM,
+                                )
                             } else {
                                 drillDownLabel = entry.title
                                 drillDownSongs = entry.songs
@@ -1637,13 +1657,6 @@ private fun LocalSearchField(
         )
         Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f)) {
-            if (query.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.search_this_folder),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             BasicTextField(
                 value = query,
                 onValueChange = onQueryChange,

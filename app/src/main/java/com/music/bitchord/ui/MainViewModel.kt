@@ -92,6 +92,8 @@ import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.YT_MUSIC_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.LOCAL_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.ALL_LIBRARY_BROWSE_ID
+import com.music.bitchord.ui.screens.LIBRARY_GROUP_PREFIX
+import com.music.bitchord.ui.screens.libraryGroupId
 import com.music.bitchord.data.LibraryDuplicates
 import com.music.bitchord.data.settings.LibrarySource
 import com.music.bitchord.data.settings.CustomizationSettings
@@ -1801,7 +1803,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (feed) {
                 Feed.HOME -> refreshHome(identity)
                 Feed.EXPLORE -> fetchExplore()
-                Feed.LIBRARY -> fetchLibrary(identity)
+                Feed.LIBRARY -> {
+                    // A pull on the Library deals its rows again, Recently
+                    // added among them, so the songs are read afresh too.
+                    ytLibraryCache = null
+                    fetchLibrary(identity)
+                }
             }
             _refreshing.value = _refreshing.value - feed
         }
@@ -2823,6 +2830,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             openSpotifyPage(browseId, title, subtitle, thumbnailUrl)
             return
         }
+        // An album card on a library artist's page: its rows were put by when
+        // the artist's page was, since nothing can fetch them by this id.
+        if (browseId.startsWith(LIBRARY_GROUP_PREFIX)) {
+            songGroups[browseId]?.let { page ->
+                if (_detailStack.value.lastOrNull()?.browseId != browseId) _detailStack.value += page
+            }
+            return
+        }
         val resolved = browseTypeOf(browseId, type)
         // Opened recently: shown straight from memory, without asking again.
         if (cachedDetailFresh(browseId)) {
@@ -3307,6 +3322,66 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * The pages [openSongGroup] has built, by id, so an album card on a library
+     * artist's page can open the album's page through [openDetail] as any
+     * other card does.
+     */
+    private val songGroups = java.util.concurrent.ConcurrentHashMap<String, DetailPage>()
+
+    /**
+     * Opens an album or artist made of a library's own rows — [songs], already
+     * in hand — as a release or artist page like any other, rather than as a
+     * list inside the library's tabs. An artist's page carries that artist's
+     * albums under its songs, each of which opens the same way.
+     *
+     * [browseId] is [libraryGroupId]'s, which nothing can fetch with: the page
+     * is whole as it is pushed.
+     */
+    fun openSongGroup(
+        browseId: String,
+        title: String,
+        subtitle: String,
+        thumbnailUrl: String?,
+        type: BrowseType,
+        songs: List<Song>,
+    ) {
+        if (_detailStack.value.lastOrNull()?.browseId == browseId) return
+        val cover = thumbnailUrl ?: songs.firstNotNullOfOrNull { it.thumbnailUrl }
+        val sections = if (type == BrowseType.ARTIST) {
+            val albums = songs
+                .filter { !it.albumName.isNullOrBlank() }
+                .groupBy { it.albumName!!.trim() }
+                .map { (album, tracks) ->
+                    val albumId = libraryGroupId(BrowseType.ALBUM, album, title)
+                    val albumCover = tracks.firstNotNullOfOrNull { it.thumbnailUrl }
+                    songGroups[albumId] = DetailPage(
+                        browseId = albumId,
+                        title = album,
+                        subtitle = title,
+                        thumbnailUrl = albumCover,
+                        songs = UiState.Success(tracks),
+                        type = BrowseType.ALBUM,
+                    )
+                    ShelfItem(album, title, albumCover, null, albumId)
+                }
+            if (albums.isEmpty()) emptyList() else listOf(HomeShelf(text(R.string.albums), albums))
+        } else {
+            emptyList()
+        }
+        val page = DetailPage(
+            browseId = browseId,
+            title = title,
+            subtitle = subtitle,
+            thumbnailUrl = cover,
+            songs = if (songs.isEmpty()) UiState.Error(text(R.string.no_tracks_here)) else UiState.Success(songs),
+            type = type,
+            sections = sections,
+        )
+        songGroups[browseId] = page
+        _detailStack.value += page
+    }
+
     /** Pops one page; returns false when there was nothing to pop. */
     fun closeDetail(): Boolean {
         val stack = _detailStack.value
@@ -3683,19 +3758,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _detailStack.value = _detailStack.value.map {
                 if (it.browseId == YT_MUSIC_LIBRARY_BROWSE_ID) it.copy(songs = UiState.Success(songs)) else it
             }
-        }
-    }
-
-    /**
-     * Fetches the YouTube Music library's songs ahead of time while the Library
-     * tab shows a library that has them, so its Songs, Artists and Albums
-     * pages open on a list rather than a spinner.
-     */
-    fun prefetchLibrarySongs() {
-        if (!_signedIn.value || ytLibraryCache != null) return
-        if (CustomizationSettings.librarySource.value == LibrarySource.LOCAL) return
-        viewModelScope.launch {
-            YtMusicRepository.wholeLibrarySongs().onSuccess { ytLibraryCache = it }
         }
     }
 
