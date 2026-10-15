@@ -2,6 +2,8 @@ package com.music.bitchord
 
 import com.music.bitchord.data.lyrics.EnhancedLrc
 import com.music.bitchord.data.lyrics.KaraokeLrc
+import com.music.bitchord.data.lyrics.KuGou
+import com.music.bitchord.data.lyrics.PetitLyrics
 import com.music.bitchord.data.lyrics.LrcLib
 import com.music.bitchord.data.lyrics.LyricLine
 import com.music.bitchord.data.lyrics.LyricSyllable
@@ -21,7 +23,7 @@ class ProviderLyricsTest {
 
     @Test
     fun `the imported providers are exposed`() {
-        assertEquals(17, LyricsSource.entries.size)
+        assertEquals(19, LyricsSource.entries.size)
         assertTrue(LyricsSource.offered.containsAll(listOf(
             LyricsSource.BETTER_LYRICS_PORTATO,
             LyricsSource.PAXSENIX_SPOTIFY,
@@ -66,6 +68,29 @@ class ProviderLyricsTest {
         assertEquals("sing along", line.text)
         assertEquals(2, line.words.size)
         assertEquals(2_000L, line.words.last().endMs)
+    }
+
+    @Test
+    fun `KuGou KRC word offsets count from the line start`() {
+        val line = KuGou.parseKrc("[language:abc]\n[5000,900]<0,400,0>sing <400,500,0>along")
+            .single { !it.isGap }
+        assertEquals("sing along", line.text)
+        assertEquals(listOf(5_000L, 5_400L), line.words.map { it.startMs })
+        assertEquals(5_900L, line.words.last().endMs)
+    }
+
+    @Test
+    fun `PetitLyrics word sync keeps each word's timing`() {
+        val document = """
+            <wsy><line><linestring>sing along</linestring>
+            <word><starttime>1000</starttime><endtime>1400</endtime><wordstring>sing </wordstring></word>
+            <word><starttime>1400</starttime><endtime>2000</endtime><wordstring>along</wordstring></word>
+            </line></wsy>
+        """.trimIndent()
+        val line = PetitLyrics.parse(document).single { !it.isGap }
+        assertEquals("sing along", line.text)
+        assertEquals(listOf(1_000L, 1_400L), line.words.map { it.startMs })
+        assertTrue(line.isWordSynced)
     }
 
     @Test

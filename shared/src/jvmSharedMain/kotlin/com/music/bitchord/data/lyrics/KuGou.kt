@@ -5,12 +5,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import java.io.ByteArrayOutputStream
 import java.util.Base64
+import java.util.zip.Inflater
 import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * Line-synced lyrics from KuGou's public mobile/lyrics endpoints — a Chinese
+ * Lyrics from KuGou's public mobile/lyrics endpoints — a Chinese
  * catalogue, but one that also carries a great many English and Hindi tracks
  * that the other four sources simply don't have.
  *
@@ -18,6 +20,9 @@ import kotlin.math.min
  * fingerprint (`hash`), search lyrics candidates against that hash, then
  * download the winning candidate. A search by keyword alone (skipping the
  * hash) is kept as the fallback that catches everything the first two miss.
+ *
+ * The candidate is asked for KRC first, KuGou's karaoke format, which times
+ * every word; a candidate that only has an LRC falls back to whole lines.
  */
 object KuGou {
 
@@ -37,9 +42,60 @@ object KuGou {
         } ?: searchLyrics(keyword = keyword, seconds = seconds)?.firstOrNull()
             ?: return@withContext null
 
-        val lrc = download(candidate.id, candidate.accesskey) ?: return@withContext null
+        download(candidate.id, candidate.accesskey, "krc")
+            ?.let(::decodeKrc)
+            ?.let(::parseKrc)
+            ?.stripCredits()
+            ?.takeIf { lines -> lines.any { it.isWordSynced } }
+            ?.let { return@withContext it }
+
+        val lrc = download(candidate.id, candidate.accesskey, "lrc")
+            ?.let { String(it, Charsets.UTF_8).stripCredits() }
+            ?: return@withContext null
         LrcLib.parseLrc(lrc).takeIf { it.isNotEmpty() }
     }
+
+    /**
+     * A KRC file as it comes down the wire: "krc1", then the document XORed
+     * with a fixed key and deflated. Null for anything that is not one.
+     */
+    private fun decodeKrc(bytes: ByteArray): String? = runCatching {
+        if (bytes.size <= 4 || String(bytes, 0, 4, Charsets.US_ASCII) != "krc1") return null
+        val body = ByteArray(bytes.size - 4) { i -> (bytes[i + 4].toInt() xor KRC_KEY[i % KRC_KEY.size]).toByte() }
+        val inflater = Inflater()
+        inflater.setInput(body)
+        val out = ByteArrayOutputStream(body.size * 4)
+        val buffer = ByteArray(8 * 1024)
+        while (!inflater.finished()) {
+            val read = inflater.inflate(buffer)
+            if (read == 0 && (inflater.needsInput() || inflater.needsDictionary())) break
+            out.write(buffer, 0, read)
+        }
+        inflater.end()
+        out.toString(Charsets.UTF_8.name()).removePrefix("\uFEFF")
+    }.getOrNull()
+
+    /**
+     * KRC lines are `[start,duration]<offset,duration,0>word…`, the word stamps
+     * counted from the line's own start. Rewritten with absolute starts they
+     * are the same `(start,duration,0)word` runs QRC and YRC use, and parsed
+     * as those.
+     */
+    fun parseKrc(krc: String): List<LyricLine> {
+        val converted = krc.lineSequence().mapNotNull { raw ->
+            val line = KRC_LINE.matchEntire(raw.trim()) ?: return@mapNotNull null
+            val lineStart = line.groupValues[1].toLong()
+            val body = KRC_WORD.replace(line.groupValues[3]) { word ->
+                "(${lineStart + word.groupValues[1].toLong()},${word.groupValues[2]},0)"
+            }
+            "[${line.groupValues[1]},${line.groupValues[2]}]$body"
+        }.joinToString("\n")
+        return KaraokeLrc.parse(converted)
+    }
+
+    private val KRC_LINE = Regex("""^\[(\d+),(\d+)](.*)$""")
+    private val KRC_WORD = Regex("""<(\d+),(\d+),\d+>""")
+    private val KRC_KEY = intArrayOf(64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105)
 
     /**
      * Song hashes worth trying, restricted to cuts within
@@ -81,9 +137,9 @@ object KuGou {
         return response?.candidates
     }
 
-    private fun download(id: String, accessKey: String): String? {
+    private fun download(id: String, accessKey: String, format: String): ByteArray? {
         val url = "https://lyrics.kugou.com/download".toHttpUrl().newBuilder()
-            .addQueryParameter("fmt", "lrc")
+            .addQueryParameter("fmt", format)
             .addQueryParameter("charset", "utf8")
             .addQueryParameter("client", "pc")
             .addQueryParameter("ver", "1")
@@ -93,10 +149,8 @@ object KuGou {
         val body = lyricsGet(url.toString()) ?: return null
         val response = runCatching { lyricsJson.decodeFromString<DownloadResponse>(body) }.getOrNull()
             ?: return null
-        val decoded = runCatching {
-            Base64.getDecoder().decode(response.content).toString(Charsets.UTF_8)
-        }.getOrNull() ?: return null
-        return decoded.stripCredits()
+        return runCatching { Base64.getDecoder().decode(response.content) }.getOrNull()
+            ?.takeIf { it.isNotEmpty() }
     }
 
     private fun keyword(title: String, artist: String, album: String?) = Keyword(

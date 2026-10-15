@@ -21,6 +21,8 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +66,13 @@ internal fun LyricsProviderSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onSelectAutomatic: (() -> Unit)? = null,
+    preferWordSynced: Boolean = false,
+    /**
+     * Shown under the Automatic row when given: whether Automatic holds out
+     * for a word-by-word answer further down the order rather than taking the
+     * first line-synced one.
+     */
+    onPreferWordSyncedChange: ((Boolean) -> Unit)? = null,
 ) {
     val savedOrder by PlayerSettings.lyricsSourceOrder.collectAsStateWithLifecycle()
     val preferredSource by PlayerSettings.preferredLyricsSource.collectAsStateWithLifecycle()
@@ -91,6 +100,12 @@ internal fun LyricsProviderSheet(
                         onDismiss()
                     },
                 )
+                if (onPreferWordSyncedChange != null) {
+                    PreferWordSyncedRow(
+                        checked = preferWordSynced,
+                        onToggle = { onPreferWordSyncedChange(!preferWordSynced) },
+                    )
+                }
             }
             sources.forEach { source ->
                 LyricsProviderRow(
@@ -164,6 +179,58 @@ private fun AutomaticProviderRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+@Composable
+private fun PreferWordSyncedRow(
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    val haptics = rememberHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ROW_SHAPE)
+            .background(Color.White.copy(alpha = 0.05f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                haptics.play(Haptic.Select)
+                onToggle()
+            }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(Res.string.lyrics_prefer_word_synced),
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(Res.string.lyrics_prefer_word_synced_detail),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.5f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = { onToggle() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.Black,
+                checkedTrackColor = Color.White,
+                uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                uncheckedTrackColor = Color.White.copy(alpha = 0.12f),
+                uncheckedBorderColor = Color.White.copy(alpha = 0.3f),
+            ),
+        )
     }
 }
 

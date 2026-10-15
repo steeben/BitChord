@@ -2,6 +2,7 @@ package com.music.bitchord.data.lyrics
 
 import com.music.bitchord.data.Http
 import kotlinx.serialization.json.Json
+import okhttp3.FormBody
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
@@ -81,3 +82,39 @@ internal fun lyricsGetAuthorized(url: String, bearer: String): String? = runCatc
         if (response.isSuccessful) response.body?.string() else null
     }
 }.getOrNull()
+
+/**
+ * [lyricsGet] with headers of the provider's own choosing — the Chinese
+ * catalogues answer an unknown client with an empty page, and only a browser's
+ * `Referer` and cookie get the real one.
+ */
+internal fun lyricsGetWithHeaders(url: String, headers: Map<String, String>): String? = runCatching {
+    val request = Request.Builder().url(url)
+        .header("User-Agent", BROWSER_AGENT)
+        .apply { headers.forEach { (name, value) -> header(name, value) } }
+        .build()
+    client.newCall(request).execute().use { response ->
+        if (response.isSuccessful) response.body?.string() else null
+    }
+}.getOrNull()
+
+/** A form POST, for the providers whose search only takes one. Null for any failure. */
+internal fun lyricsPostForm(
+    url: String,
+    fields: Map<String, String>,
+    headers: Map<String, String> = emptyMap(),
+): String? = runCatching {
+    val body = FormBody.Builder().apply { fields.forEach { (name, value) -> add(name, value) } }.build()
+    val request = Request.Builder().url(url)
+        .header("User-Agent", BROWSER_AGENT)
+        .apply { headers.forEach { (name, value) -> header(name, value) } }
+        .post(body)
+        .build()
+    client.newCall(request).execute().use { response ->
+        if (response.isSuccessful) response.body?.string() else null
+    }
+}.getOrNull()
+
+private const val BROWSER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/124.0 Safari/537.36"

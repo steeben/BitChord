@@ -1142,7 +1142,14 @@ private fun BitChordApp(
     // the track already playing rather than only the next one.
     val syncedLyricsEnabled by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val lyricsSources by AppSettings.lyricsSources.collectAsStateWithLifecycle()
-    LaunchedEffect(player.song?.videoId, player.durationMs, syncedLyricsEnabled, lyricsSources) {
+    val preferWordSyncedLyrics by AppSettings.prioritizeSyllableSync.collectAsStateWithLifecycle()
+    LaunchedEffect(
+        player.song?.videoId,
+        player.durationMs,
+        syncedLyricsEnabled,
+        lyricsSources,
+        preferWordSyncedLyrics,
+    ) {
         player.song?.let {
             viewModel.loadLyrics(
                 it.videoId,
@@ -2686,6 +2693,8 @@ private fun BitChordApp(
             lyricsProviderStates = lyricsProviderStates,
             onSelectLyricsProvider = viewModel::selectLyricsProvider,
             onSelectAutomaticLyrics = viewModel::selectAutomaticLyrics,
+            preferWordSyncedLyrics = preferWordSyncedLyrics,
+            onPreferWordSyncedLyricsChange = AppSettings::setPrioritizeSyllableSync,
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
             lyricsOffsetOpen = showLyricsOffset,
             onDismissLyricsOffset = { showLyricsOffset = false },

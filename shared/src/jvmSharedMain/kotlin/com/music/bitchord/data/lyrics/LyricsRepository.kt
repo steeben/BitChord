@@ -26,8 +26,10 @@ import java.util.concurrent.ConcurrentHashMap
  *  - [SimpMusicLyrics] — keyed on the video id, so it can't fetch the wrong edit.
  *  - [Unison] — contributed rather than licensed; thin, and occasionally the
  *    only place a track exists.
- *  - [LrcLib], [Musixmatch], [KuGou] — line-synced only, but between them
- *    almost always up, and [KuGou] carries a lot that the others don't.
+ *  - [NetEase] and [PetitLyrics] — word-timed catalogues of their own, for
+ *    the Chinese and Japanese releases the Apple hosts are thinnest on.
+ *  - [KuGou] — word-timed where it has KRC, line-timed where it doesn't.
+ *  - [LrcLib], [Musixmatch] — line-synced only, but almost always up.
  *
  * Every enabled source is asked *at the same time*, but their answers are
  * taken in [order]: the loop awaits them one at a time in that sequence, so a
@@ -211,6 +213,8 @@ object LyricsRepository {
             LyricsSource.PAXSENIX_SPOTIFY -> PaxSenix.spotifyLyrics(title, artist, durationMs)
             LyricsSource.PAXSENIX_MUSIXMATCH -> PaxSenix.musixmatchLyrics(title, artist, durationMs)
             LyricsSource.KUGOU -> KuGou.lyrics(title, artist, durationMs, album)
+            LyricsSource.NETEASE -> NetEase.lyrics(title, artist, durationMs, album)
+            LyricsSource.PETIT_LYRICS -> PetitLyrics.lyrics(title, artist, durationMs, album)
             LyricsSource.MEGALOBIZ -> Megalobiz.lyrics(title, artist)
             LyricsSource.GENIUS -> Genius.lyrics(title, artist)
         }

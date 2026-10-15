@@ -91,6 +91,18 @@ enum class LyricsSource(
         detail = "Contributed by listeners, so it has what nobody licensed",
         wordSynced = true,
     ),
+    // Ahead of every line-only source, so a song the Apple hosts miss is still
+    // looked for word by word before anything settles for whole lines.
+    NETEASE(
+        label = "NetEase",
+        detail = "Word by word, strong on Chinese and English releases",
+        wordSynced = true,
+    ),
+    PETIT_LYRICS(
+        label = "PetitLyrics",
+        detail = "Word by word, strongest on Japanese releases",
+        wordSynced = true,
+    ),
     YOUTUBE_TRANSCRIPT(
         label = "YouTube captions",
         detail = "Timed captions matched to the exact playing video",
@@ -109,8 +121,8 @@ enum class LyricsSource(
     ),
     KUGOU(
         label = "KuGou",
-        detail = "Whole lines, strong outside the English catalogue",
-        wordSynced = false,
+        detail = "Word by word where it has KRC, strong outside the English catalogue",
+        wordSynced = true,
     ),
     LRCLIB(
         label = "LRCLIB",

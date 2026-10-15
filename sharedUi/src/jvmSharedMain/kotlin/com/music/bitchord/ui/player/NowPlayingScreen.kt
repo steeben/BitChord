@@ -773,6 +773,10 @@ fun NowPlayingScreen(
     onSelectLyricsProvider: (LyricsSource) -> Unit,
     /** Forgets a remembered provider; null hides the drawer's Automatic row. */
     onSelectAutomaticLyrics: (() -> Unit)? = null,
+    /** Whether Automatic holds out for word-by-word lyrics over line-synced ones. */
+    preferWordSyncedLyrics: Boolean = false,
+    /** Null hides the drawer's word-by-word switch. */
+    onPreferWordSyncedLyricsChange: ((Boolean) -> Unit)? = null,
     lyricsUnavailable: Boolean,
     lyricsOffsetOpen: Boolean,
     onDismissLyricsOffset: () -> Unit,
@@ -1656,6 +1660,8 @@ fun NowPlayingScreen(
                 onSelect = onSelectLyricsProvider,
                 onDismiss = { showLyricsProviders = false },
                 onSelectAutomatic = onSelectAutomaticLyrics,
+                preferWordSynced = preferWordSyncedLyrics,
+                onPreferWordSyncedChange = onPreferWordSyncedLyricsChange,
             )
         }
         if (showAudioPipeline) {

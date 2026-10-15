@@ -338,7 +338,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * than leaving the last answer sitting on a player that would now find a
      * different one.
      */
-    private var lyricsFor: Pair<String, Set<LyricsSource>>? = null
+    private var lyricsFor: Triple<String, Set<LyricsSource>, Boolean>? = null
 
     /**
      * Called as the playing track changes; cheap no-op when already loaded.
@@ -363,7 +363,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             emptySet()
         }
-        val key = videoId to sources
+        // The word-by-word preference is part of the key, so flipping it from
+        // the provider drawer looks the playing track up again under the new rule.
+        val key = Triple(videoId, sources, AppSettings.prioritizeSyllableSync.value)
         if (lyricsFor == key) return
         // The duration lands a beat after the track, and a database match needs
         // it. Turned away here rather than inside the job below: claiming the
