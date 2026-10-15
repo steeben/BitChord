@@ -1026,6 +1026,7 @@ fun NowPlayingScreen(
         lyricsUnavailable = lyricsUnavailable,
         loadingText = lyricsLoadingText,
         haptics = haptics,
+        instrumental = lyricsInstrumental,
     )
     // The drawer holding the finished card, set the moment Share is confirmed.
     // Nothing is drawn here: the picture is a bitmap and a canvas, which is the
@@ -2145,6 +2146,7 @@ fun NowPlayingScreen(
                                 trackKey = song.videoId,
                                 playhead = lyricsPlayhead,
                                 looking = !lyricsUnavailable,
+                                instrumental = lyricsInstrumental,
                                 isPlaying = isPlaying && position.advancing,
                                 onSeekToLine = seekToLyric,
                                 controlsOpen = true,
@@ -3575,6 +3577,7 @@ fun NowPlayingScreen(
                                 trackKey = song.videoId,
                                 playhead = lyricsPlayhead,
                                 looking = !lyricsUnavailable,
+                                instrumental = lyricsInstrumental,
                                 isPlaying = isPlaying && position.advancing,
                                 active = lyricsPanelVisible,
                                 onSeekToLine = seekToLyric,

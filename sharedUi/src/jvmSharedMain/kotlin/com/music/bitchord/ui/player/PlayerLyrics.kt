@@ -1560,6 +1560,8 @@ internal fun LyricsPanel(
     playhead: LyricPlayhead,
     /** Whether a lookup for this track is still in flight. */
     looking: Boolean,
+    /** The track is marked instrumental, so an empty panel says so instead of "no lyrics". */
+    instrumental: Boolean = false,
     isPlaying: Boolean,
     /** False while the panel is retained offscreen solely as a warm layout. */
     active: Boolean = true,
@@ -1780,12 +1782,14 @@ internal fun LyricsPanel(
         val empty = modifier.revealLyricsControlsOnTap(!controlsOpen, onBottomHalfTap)
         // "None" is a finding, and it is only worth reporting once the lookup
         // has actually come back with it.
-        if (looking) {
+        if (looking && !instrumental) {
             LyricsSkeleton(empty)
         } else {
             Box(empty, contentAlignment = Alignment.Center) {
                 Text(
-                    text = stringResource(Res.string.no_lyrics_for_track),
+                    text = stringResource(
+                        if (instrumental) Res.string.lyrics_instrumental else Res.string.no_lyrics_for_track,
+                    ),
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.6f),
                 )
@@ -2753,6 +2757,8 @@ internal fun rememberLyricsTranslation(
     /** What the status line says while the lyrics are still being looked up. */
     loadingText: String,
     haptics: Haptics,
+    /** Marked instrumental: the status line says so rather than "no lyrics found". */
+    instrumental: Boolean = false,
 ): LyricsTranslationUi {
     val reduceTranslationMotion by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
     val configuredLocale = appLanguageTag()
@@ -2945,6 +2951,7 @@ internal fun rememberLyricsTranslation(
         romanizationState is LyricsTranslationUiState.SameLanguage ->
             stringResource(Res.string.lyrics_already_romanized)
         lyricsSource != null -> stringResource(Res.string.lyrics_by, lyricsSource.label)
+        instrumental -> stringResource(Res.string.lyrics_instrumental)
         lyricsUnavailable -> stringResource(Res.string.no_lyrics_found)
         lyrics.isNullOrEmpty() -> loadingText
         else -> stringResource(Res.string.lyrics_saved_with_download)
