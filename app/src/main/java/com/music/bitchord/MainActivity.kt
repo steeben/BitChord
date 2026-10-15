@@ -213,8 +213,6 @@ import com.music.bitchord.ui.screens.rememberLibrarySuggestions
 import com.music.bitchord.ui.screens.browseId
 import com.music.bitchord.ui.screens.LOCAL_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.ALL_LIBRARY_BROWSE_ID
-import com.music.bitchord.ui.theme.NowPlayingArtwork
-import com.music.bitchord.ui.theme.nowPlayingAccent
 import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.ui.screens.ListenTogetherScreen
 import com.music.bitchord.ui.screens.PartyServerEditor
@@ -1229,10 +1227,7 @@ private fun BitChordApp(
     LaunchedEffect(signedIn, librarySource) {
         if (signedIn) viewModel.prefetchLibrarySongs()
     }
-    // The playing song's artwork, for everything tinted after it.
-    LaunchedEffect(player.song?.thumbnailUrl) {
-        NowPlayingArtwork.url.value = player.song?.thumbnailUrl
-    }
+
     LaunchedEffect(currentFeed) {
         if (currentFeed == MainViewModel.Feed.HOME) viewModel.onHomeShown()
         // Likewise for Library: a playlist created or a song liked since it
@@ -3885,7 +3880,7 @@ private fun BitChordApp(
                                     ytShelves = libraryShelves,
                                     deviceItems = libraryDeviceCards,
                                 ),
-                                accent = nowPlayingAccent(),
+                                accent = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary,
                                 listState = libraryListState,
                                 onSourceClick = { librarySourcePickerOpen = true },
                                 onSuggestionClick = onLibraryItemClick,
@@ -4107,7 +4102,7 @@ private fun BitChordApp(
                 val folderSearchId = detail?.browseId?.takeIf {
                     isLocalDetail && detailActiveShelf == null && !showDiscord && !showHistory &&
                         settingsSubScreen == null && !showAccountScrobbling && !showSources &&
-                        !showListenTogether && !showEqualizer && !showSettings && !showReplay
+                        !showListenTogether && !showEqualizer && !showSettings && !showReplay && !showStats
                 }
                 val folderSearch: (@Composable () -> Unit)? = folderSearchId?.let { folderId ->
                     @Composable {
@@ -5821,7 +5816,7 @@ private fun BitChordApp(
                 selected = librarySource,
                 signedIn = signedIn,
                 hazeState = hazeState,
-                accent = nowPlayingAccent(),
+                accent = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary,
                 onSelect = { picked ->
                     CustomizationSettings.setLibrarySource(picked)
                     librarySourcePickerOpen = false
