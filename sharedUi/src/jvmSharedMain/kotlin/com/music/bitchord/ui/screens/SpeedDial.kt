@@ -179,6 +179,10 @@ internal fun SpeedDialShelf(
     isPlaying: Boolean,
     /** The die, on the speed dial when it is switched on. */
     lucky: SpeedDialLucky? = null,
+    /** Tiles (by video or browse id) drawn without their title. */
+    hiddenLabels: Set<String> = emptySet(),
+    /** Whether pinned tiles carry the pin badge. */
+    showPinIcon: Boolean = true,
 ) {
     if (shelf.items.isEmpty()) return
     val perPage = SPEED_DIAL_COLUMNS * rows
@@ -456,7 +460,8 @@ internal fun SpeedDialShelf(
                                 } else {
                                     SpeedDialTile(
                                         item = item,
-                                        pinned = pinnedTile,
+                                        pinned = pinnedTile && showPinIcon,
+                                        showLabel = id !in hiddenLabels,
                                         current = currentSong != null && item.videoId == currentSong.videoId,
                                         isPlaying = isPlaying,
                                         onClick = { onItemClick(item) },
@@ -481,7 +486,8 @@ internal fun SpeedDialShelf(
                     order.firstOrNull { it.dialId() == liftedId }?.let { item ->
                         SpeedDialTile(
                             item = item,
-                            pinned = true,
+                            pinned = showPinIcon,
+                            showLabel = liftedId !in hiddenLabels,
                             current = false,
                             isPlaying = false,
                             onClick = {},
@@ -578,6 +584,7 @@ internal fun SpeedDialMoreHint() {
 private fun SpeedDialTile(
     item: ShelfItem,
     pinned: Boolean,
+    showLabel: Boolean = true,
     current: Boolean,
     isPlaying: Boolean,
     onClick: () -> Unit,
@@ -605,23 +612,25 @@ private fun SpeedDialTile(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .align(Alignment.BottomCenter)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
-        )
-        Text(
-            text = item.title,
-            style = MaterialTheme.typography.labelLarge,
-            color = Color.White,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
+        if (showLabel) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
+            )
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
         if (pinned) {
             Icon(
                 imageVector = BitChordIcons.Pin,
@@ -653,8 +662,9 @@ private fun DimOverlay(dim: () -> Float) {
 
 /**
  * The "I'm Feeling Lucky" tile: a die of nine squares, like the app's own mark,
- * resting on three. Tapped, its lights chase round the edge like a spinner,
- * then it lands on a face from one to six.
+ * resting on three, on a dark ground with soft washes of colour drifting in
+ * from its edges. Tapped, its lights chase round the edge like a spinner, then
+ * it lands on a face from one to six. [label] is only read out, not drawn.
  */
 @Composable
 private fun LuckyDiceTile(
@@ -672,13 +682,11 @@ private fun LuckyDiceTile(
     val spin = remember { Animatable(0f) }
     val settle = remember { Animatable(1f) }
     var rolling by remember { mutableStateOf(false) }
-    val lit = MaterialTheme.colorScheme.onSurface
-    val unlit = lit.copy(alpha = 0.13f)
     Box(
         modifier
             .clip(shape)
             .thumbnailBorder(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(DICE_GROUND)
             .clickable(onClickLabel = label) {
                 if (rolling) return@clickable
                 rolling = true
@@ -699,11 +707,28 @@ private fun LuckyDiceTile(
             },
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            val gridSide = size.minDimension * 0.5f
-            val gap = gridSide * 0.1f
-            val cellSide = (gridSide - gap * 2) / 3f
-            val left = (size.width - gridSide) / 2f
-            val top = size.height * 0.42f - gridSide / 2f
+            val w = size.width
+            val h = size.height
+            // The washes: crimson in from the upper left, violet from the
+            // lower right, a little cyan at the upper right.
+            DICE_WASHES.forEach { wash ->
+                val center = Offset(w * wash.x, h * wash.y)
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(wash.color.copy(alpha = wash.alpha), wash.color.copy(alpha = 0f)),
+                        center = center,
+                        radius = size.maxDimension * wash.radius,
+                    ),
+                )
+            }
+            // The grid as the reference draws it: three squares of 80 with
+            // gaps of 30 on a 512 ground, dead centre.
+            val unit = size.minDimension / 512f
+            val cellSide = 80f * unit
+            val gap = 30f * unit
+            val gridSide = cellSide * 3 + gap * 2
+            val left = (w - gridSide) / 2f
+            val top = (h - gridSide) / 2f
             val head = spin.value % DICE_RING.size
             val toFace = settle.value
             val pips = DICE_FACES[face - 1]
@@ -720,29 +745,42 @@ private fun LuckyDiceTile(
                 // A lit square swells a touch with the landing's overshoot.
                 val pop = if (pip > 0f && toFace > 1f) 1f + (toFace - 1f) * 0.6f else 1f
                 val side = cellSide * pop
-                val x = left + (i % 3) * (cellSide + gap) - (side - cellSide) / 2f
-                val y = top + (i / 3) * (cellSide + gap) - (side - cellSide) / 2f
+                val cx = left + (i % 3) * (cellSide + gap) + cellSide / 2f
+                val cy = top + (i / 3) * (cellSide + gap) + cellSide / 2f
+                if (level > 0f) {
+                    // The soft glow round a lit square.
+                    drawCircle(
+                        Brush.radialGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.45f * level), Color.White.copy(alpha = 0f)),
+                            center = Offset(cx, cy),
+                            radius = side * 1.05f,
+                        ),
+                        radius = side * 1.05f,
+                        center = Offset(cx, cy),
+                    )
+                }
                 drawRoundRect(
-                    color = lerp(unlit, lit, level),
-                    topLeft = Offset(x, y),
+                    color = lerp(DICE_UNLIT, Color.White, level),
+                    topLeft = Offset(cx - side / 2f, cy - side / 2f),
                     size = Size(side, side),
-                    cornerRadius = CornerRadius(side * 0.24f),
+                    cornerRadius = CornerRadius(side * 0.08f),
                 )
             }
         }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
         DimOverlay(dim)
     }
 }
+
+/** A soft wash of colour on the die's ground: where (as fractions of the tile), how big, how strong. */
+private class DiceWash(val color: Color, val x: Float, val y: Float, val radius: Float, val alpha: Float)
+
+private val DICE_WASHES = listOf(
+    DiceWash(Color(0xFFFA5A72), 0f, 0.15f, 0.62f, 0.26f),
+    DiceWash(Color(0xFF8B5CF6), 1f, 0.85f, 0.68f, 0.26f),
+    DiceWash(Color(0xFF38BDF8), 1f, 0.1f, 0.5f, 0.18f),
+)
+private val DICE_GROUND = Color(0xFF141414)
+private val DICE_UNLIT = Color(0xFF262626)
 
 /** The die's squares round its edge, clockwise from the top left (row by row, 0–8). */
 private val DICE_RING = intArrayOf(0, 1, 2, 5, 8, 7, 6, 3)

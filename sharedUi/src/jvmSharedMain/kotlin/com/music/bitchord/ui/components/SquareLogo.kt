@@ -1,5 +1,7 @@
 package com.music.bitchord.ui.components
 
+import com.music.bitchord.ui.screens.ARTIST_DIAL_PAGE_KEY
+import com.music.bitchord.ui.screens.SPEED_DIAL_PAGE_KEYS
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -204,8 +206,9 @@ val HOME_LOGO_SMALL = 34.dp
 val HOME_LOGO_RESERVE = 72.dp
 
 /**
- * The mark on Home: in the list's first row at rest, shrinking as the list
- * scrolls and then staying at the top left, level with the account button.
+ * The mark on Home: in the list's first row at rest, and there for both
+ * dials; scrolled on past them, it rides up to the top left, level with the
+ * account button, at the same size.
  *
  * Meant to be drawn above the top bar, which is why it is not part of the list:
  * the fade the bar lays over scrolled content would otherwise wash it out.
@@ -235,12 +238,19 @@ fun HomeStickyLogo(
             .height(HOME_LOGO_LARGE)
             .graphicsLayer {
                 val travel = (restTop - pinnedTop).toPx()
-                val scrolled = if (listState.firstVisibleItemIndex == 0) {
-                    listState.firstVisibleItemScrollOffset.toFloat()
-                } else {
-                    travel
+                // Measured from the last dial page showing, so the mark stays
+                // put while the dials turn (both rest in the same place under
+                // it) and only rides up once the list goes on past them.
+                val rest = HOME_LOGO_RESERVE.toPx()
+                val dial = listState.layoutInfo.visibleItemsInfo.lastOrNull {
+                    it.index <= 2 && (it.key == ARTIST_DIAL_PAGE_KEY || it.key in SPEED_DIAL_PAGE_KEYS)
                 }
-                translationY = restTop.toPx() - scrolled.coerceAtMost(travel)
+                val scrolled = when {
+                    dial != null -> rest - dial.offset
+                    listState.firstVisibleItemIndex == 0 -> listState.firstVisibleItemScrollOffset.toFloat()
+                    else -> travel
+                }
+                translationY = restTop.toPx() - scrolled.coerceIn(0f, travel)
             },
     ) {
         SquareLogo(

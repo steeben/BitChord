@@ -164,6 +164,10 @@ fun HomeScreen(
     onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     /** "I'm Feeling Lucky"'s die on the speed dial, or null for none. */
     speedDialLucky: SpeedDialLucky? = null,
+    /** Dial tiles (by video or browse id) drawn without their title. */
+    dialHiddenLabels: Set<String> = emptySet(),
+    /** Whether pinned dial tiles carry the pin badge. */
+    dialPinIcon: Boolean = true,
     /**
      * The saved section layout, for the loading placeholders: whether the speed
      * dial leads Home, and whether Recents is shown at all.
@@ -206,18 +210,11 @@ fun HomeScreen(
         // viewport, so nothing below it is composed, or loads its artwork, until
         // the list is scrolled to it.
         val dialPageHeight: Dp? = if (title != null) (maxHeight - dialTop).coerceAtLeast(0.dp) else null
-        // The artists' dial below it: a page that rests just under the top bar,
-        // running to the foot of the screen, fitted above the miniplayer the
-        // same way.
-        val artistPageHeight: Dp? = if (title != null) {
-            (maxHeight - contentPadding.calculateTopPadding()).coerceAtLeast(0.dp)
-        } else {
-            null
-        }
-        val artistMaxHeight: Dp? = artistPageHeight?.let { page ->
-            (page - DIAL_CHEVRON_ROOM - (maxOf(contentPadding.calculateBottomPadding(), DIAL_BOTTOM_RESERVE) - DIAL_BOTTOM_TRIM))
-                .coerceAtLeast(0.dp)
-        }
+        // The artists' dial below it: a copy of the speed dial's page, resting
+        // in the same place under the logo, so turning to it changes the
+        // tiles and the title and nothing else.
+        val artistPageHeight: Dp? = dialPageHeight
+        val artistMaxHeight: Dp? = dialMaxHeight
         val holdSpeedDial = state is UiState.Success && recentlyPlayedLoading && skeletonSpeedDialFirst
         val dialLeads = title != null && when (state) {
             is UiState.Success -> holdSpeedDial || state.data.firstOrNull()?.title == SPEED_DIAL_SHELF_TITLE
@@ -233,6 +230,9 @@ fun HomeScreen(
             }
         }
         val density = LocalDensity.current
+        val artistPageShown by rememberUpdatedState(
+            (state as? UiState.Success)?.data?.getOrNull(1)?.title == ARTIST_DIAL_SHELF_TITLE,
+        )
         val defaultFling = ScrollableDefaults.flingBehavior()
         val dialFling = remember(listState, defaultFling, density) {
             DialPageFling(
@@ -240,6 +240,7 @@ fun HomeScreen(
                 fallback = defaultFling,
                 restOffsetPx = { with(density) { HOME_LOGO_RESERVE.roundToPx() } },
                 nextOffsetPx = { with(density) { HOME_TITLE_LIFT.roundToPx() } },
+                artistPageFollows = { artistPageShown },
             )
         }
         LazyColumn(
@@ -318,6 +319,8 @@ fun HomeScreen(
                         artistDialPinned = artistDialPinned,
                         onArtistDialReorder = onArtistDialReorder,
                         speedDialLucky = speedDialLucky,
+                        dialHiddenLabels = dialHiddenLabels,
+                        dialPinIcon = dialPinIcon,
                         afterLead = if (dialLeads && !holdSpeedDial) bannerItem else null,
                         onSpeedDialReorder = onSpeedDialReorder,
                         recentsViewType = recentsViewType,
@@ -396,6 +399,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     artistDialPinned: Set<String> = emptySet(),
     onArtistDialReorder: ((List<ShelfItem>) -> Unit)? = null,
     speedDialLucky: SpeedDialLucky? = null,
+    dialHiddenLabels: Set<String> = emptySet(),
+    dialPinIcon: Boolean = true,
     /** Items to put straight after the lead page (or pages: the dials). */
     afterLead: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
     onSpeedDialReorder: ((List<ShelfItem>) -> Unit)? = null,
@@ -423,6 +428,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                         onReorder = onArtistDialReorder,
                         currentSong = null,
                         isPlaying = false,
+                        hiddenLabels = dialHiddenLabels,
+                        showPinIcon = dialPinIcon,
                     )
                 } else if (shelf.title == SPEED_DIAL_SHELF_TITLE) {
                     SpeedDialShelf(
@@ -439,6 +446,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                         currentSong = currentSong,
                         isPlaying = isPlaying,
                         lucky = speedDialLucky,
+                        hiddenLabels = dialHiddenLabels,
+                        showPinIcon = dialPinIcon,
                     )
                 } else if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                     RecentShelf(

@@ -23,32 +23,36 @@ const val ARTIST_DIAL_PAGE_KEY = ARTIST_DIAL_SHELF_TITLE + "1"
  * that page or the next thing below it, like turning a page. Anywhere else it
  * is [fallback], the list's ordinary fling.
  *
- * [restOffsetPx] is where the speed dial sits with the list at its top,
- * measured from the content's start (the room the logo leaves above it);
- * [nextOffsetPx] is where anything after it comes to rest, clear of the top
- * bar — the artists' page included.
+ * [restOffsetPx] is where a dial page sits, measured from the content's start
+ * (the room the logo leaves above it) — both dials rest there, so the artists'
+ * dial sits exactly where the speed dial does. [nextOffsetPx] is where
+ * anything after the dials comes to rest, clear of the top bar.
+ * [artistPageFollows] says whether the speed dial has the artists' dial after it.
  */
 internal class DialPageFling(
     private val listState: LazyListState,
     private val fallback: FlingBehavior,
     private val restOffsetPx: () -> Int,
     private val nextOffsetPx: () -> Int,
+    private val artistPageFollows: () -> Boolean = { false },
 ) : FlingBehavior {
     override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+        val dialRest = restOffsetPx()
         val next = nextOffsetPx()
+        fun isDial(key: Any) = key in SPEED_DIAL_PAGE_KEYS || key == ARTIST_DIAL_PAGE_KEY
+        // Where whatever follows a dial page comes to rest.
+        fun followingRest(key: Any) =
+            if (key in SPEED_DIAL_PAGE_KEYS && artistPageFollows()) dialRest else next
         // The page that holds the top of the screen: its own resting place at
         // or above where it is now, and some of it still showing below where
         // the following item would rest.
         val page = listState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
-            val rest = if (item.key in SPEED_DIAL_PAGE_KEYS) restOffsetPx() else next
-            (item.key in SPEED_DIAL_PAGE_KEYS || item.key == ARTIST_DIAL_PAGE_KEY) &&
-                item.offset <= rest && item.offset + item.size > next
+            isDial(item.key) && item.offset <= dialRest && item.offset + item.size > followingRest(item.key)
         } ?: return with(fallback) { performFling(initialVelocity) }
-        val rest = if (page.key in SPEED_DIAL_PAGE_KEYS) restOffsetPx() else next
         // Scrolling by these brings the page back to rest, or what follows it
-        // up to the top.
-        val toTop = (page.offset - rest).toFloat()
-        val toNext = (page.offset + page.size - next).toFloat()
+        // up to its own.
+        val toTop = (page.offset - dialRest).toFloat()
+        val toNext = (page.offset + page.size - followingRest(page.key)).toFloat()
         val forward = when {
             initialVelocity > PAGE_FLING_VELOCITY -> true
             initialVelocity < -PAGE_FLING_VELOCITY -> false

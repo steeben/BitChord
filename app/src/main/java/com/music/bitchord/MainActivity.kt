@@ -806,6 +806,8 @@ private fun BitChordApp(
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
     // Tiles taken off the dials by hand, kept off until pinned again.
     val hiddenFromDial by CustomizationSettings.hiddenFromDial.collectAsStateWithLifecycle()
+    val dialHiddenLabels by CustomizationSettings.dialHiddenLabels.collectAsStateWithLifecycle()
+    val dialPinIcon by CustomizationSettings.dialPinIcon.collectAsStateWithLifecycle()
     var editingSpeedDial by remember { mutableStateOf(false) }
     val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
     val homeTitleText by CustomizationSettings.homeTitle.collectAsStateWithLifecycle()
@@ -3488,6 +3490,8 @@ private fun BitChordApp(
                                 CustomizationSettings.setArtistDialPins(reordered)
                             },
                             speedDialLucky = speedDialLucky,
+                            dialHiddenLabels = dialHiddenLabels,
+                            dialPinIcon = dialPinIcon,
                             skeletonSpeedDialFirst = homeSections.firstOrNull { it.enabled }?.item ==
                                 CustomizationSettings.SPEED_DIAL_TITLE,
                             skeletonShowRecents = homeSections.none { it.item == "Recents" && !it.enabled },
@@ -4858,6 +4862,13 @@ private fun BitChordApp(
                         showQueueNotice(context.getString(R.string.removed_from_dial))
                     }
                 },
+                onToggleDialLabel = dialMenuItem?.takeIf { it.videoId == song.videoId }?.let { item ->
+                    {
+                        songActions = null
+                        CustomizationSettings.toggleDialLabel(item)
+                    }
+                },
+                dialLabelHidden = song.videoId in dialHiddenLabels,
                 // Stays open: the row it replaces itself with is the
                 // progress, and closing the sheet would hide the only
                 // answer to "did that work?".
@@ -5373,6 +5384,13 @@ private fun BitChordApp(
                         showQueueNotice(context.getString(R.string.removed_from_dial))
                     }
                 },
+                onToggleDialLabel = dialMenuItem?.takeIf { it.browseId != null && it.browseId == target.browseId }?.let { item ->
+                    {
+                        browseActions = null
+                        CustomizationSettings.toggleDialLabel(item)
+                    }
+                },
+                dialLabelHidden = target.browseId in dialHiddenLabels,
             )
         }
         browseActions?.takeIf { browseMenuOrigin == null }?.let { target ->

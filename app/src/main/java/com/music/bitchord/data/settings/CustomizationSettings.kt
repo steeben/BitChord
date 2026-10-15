@@ -71,6 +71,12 @@ object CustomizationSettings {
 
     /** Ids taken off the dials with "Remove from dial", kept off until pinned again. */
     val hiddenFromDial = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Dial tiles drawn as artwork alone, without their title. */
+    val dialHiddenLabels = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Whether pinned tiles on the dials carry the little pin badge. */
+    val dialPinIcon = MutableStateFlow(true)
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
     /** How many rows of three tiles the speed dial shows per page: 3 or 4. */
@@ -156,6 +162,8 @@ object CustomizationSettings {
         lastSpeedDial.value = readPins(p.getString(KEY_LAST_SPEED_DIAL, null))
         artistDialPins.value = readPins(p.getString(KEY_ARTIST_DIAL_PINS, null))
         hiddenFromDial.value = p.getStringSet(KEY_HIDDEN_FROM_DIAL, emptySet())?.toSet().orEmpty()
+        dialHiddenLabels.value = p.getStringSet(KEY_DIAL_HIDDEN_LABELS, emptySet())?.toSet().orEmpty()
+        dialPinIcon.value = p.getBoolean(KEY_DIAL_PIN_ICON, true)
     }
 
     // ── Home sections ───────────────────────────────────────────────────
@@ -263,6 +271,21 @@ object CustomizationSettings {
         setSpeedDialPins(speedDialPins.value.filterNot { it.speedDialId == id })
         setArtistDialPins(artistDialPins.value.filterNot { it.speedDialId == id })
         setHiddenFromDial(hiddenFromDial.value + id)
+    }
+
+    /** Shows or hides a dial tile's title; returns whether it is now hidden. */
+    fun toggleDialLabel(item: ShelfItem): Boolean {
+        val id = item.speedDialId ?: return false
+        val hidden = id !in dialHiddenLabels.value
+        val value = if (hidden) dialHiddenLabels.value + id else dialHiddenLabels.value - id
+        dialHiddenLabels.value = value
+        prefs?.edit()?.putStringSet(KEY_DIAL_HIDDEN_LABELS, value)?.apply()
+        return hidden
+    }
+
+    fun setDialPinIcon(value: Boolean) {
+        dialPinIcon.value = value
+        prefs?.edit()?.putBoolean(KEY_DIAL_PIN_ICON, value)?.apply()
     }
 
     private fun setHiddenFromDial(value: Set<String>) {
@@ -499,6 +522,8 @@ object CustomizationSettings {
     private const val KEY_FEELING_LUCKY = "custom_feeling_lucky"
     private const val KEY_ARTIST_DIAL_PINS = "custom_artist_dial_pins"
     private const val KEY_HIDDEN_FROM_DIAL = "custom_hidden_from_dial"
+    private const val KEY_DIAL_HIDDEN_LABELS = "custom_dial_hidden_labels"
+    private const val KEY_DIAL_PIN_ICON = "custom_dial_pin_icon"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"

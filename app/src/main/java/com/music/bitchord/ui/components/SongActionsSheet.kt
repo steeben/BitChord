@@ -28,6 +28,8 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
+import androidx.compose.material.icons.rounded.Title
+import androidx.compose.material.icons.rounded.FormatClear
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Check
@@ -182,6 +184,9 @@ fun SongActionsSheet(
     inSpeedDial: Boolean = false,
     /** Opened off a Home dial: takes the tile off it. Null hides the row. */
     onRemoveFromDial: (() -> Unit)? = null,
+    /** Opened off a Home dial: shows or hides the tile's title there. Null hides the row. */
+    onToggleDialLabel: (() -> Unit)? = null,
+    dialLabelHidden: Boolean = false,
     /** Opens the timing control offered only by the main player's menu. */
     onLyricsOffset: (() -> Unit)? = null,
     /**
@@ -326,6 +331,14 @@ fun SongActionsSheet(
                 label = stringResource(
                     if (inSpeedDial) R.string.remove_from_speed_dial else R.string.add_to_speed_dial,
                 ),
+                accent = palette.accent,
+                onClick = it,
+            )
+        }
+        onToggleDialLabel?.let {
+            ActionRow(
+                icon = if (dialLabelHidden) Icons.Rounded.Title else Icons.Rounded.FormatClear,
+                label = stringResource(if (dialLabelHidden) R.string.show_dial_title else R.string.hide_dial_title),
                 accent = palette.accent,
                 onClick = it,
             )

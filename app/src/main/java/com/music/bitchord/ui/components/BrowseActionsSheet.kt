@@ -21,6 +21,8 @@ import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
+import androidx.compose.material.icons.rounded.Title
+import androidx.compose.material.icons.rounded.FormatClear
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Radio
@@ -198,6 +200,9 @@ fun BrowseActionsSheet(
     onToggleFavorite: (() -> Unit)? = null,
     /** Opened off a Home dial: takes the tile off it. Null hides the row. */
     onRemoveFromDial: (() -> Unit)? = null,
+    /** Opened off a Home dial: shows or hides the tile's title there. Null hides the row. */
+    onToggleDialLabel: (() -> Unit)? = null,
+    dialLabelHidden: Boolean = false,
 ) {
     // An artist's menu is about the artist, not a release: no queue rows,
     // downloads or shares — it is opened to go to them, play them or star them.
@@ -247,6 +252,13 @@ fun BrowseActionsSheet(
                         onClick = onToggleFavorite,
                     )
                 }
+                onToggleDialLabel?.let {
+                    ActionRow(
+                        if (dialLabelHidden) Icons.Rounded.Title else Icons.Rounded.FormatClear,
+                        stringResource(if (dialLabelHidden) R.string.show_dial_title else R.string.hide_dial_title),
+                        onClick = it,
+                    )
+                }
                 onRemoveFromDial?.let {
                     ActionRow(Icons.Rounded.RemoveCircleOutline, stringResource(R.string.remove_from_dial), onClick = it)
                 }
@@ -265,6 +277,13 @@ fun BrowseActionsSheet(
                 stringResource(R.string.add_to_queue),
                 onClick = onAddToQueue,
             )
+            onToggleDialLabel?.let {
+                ActionRow(
+                    if (dialLabelHidden) Icons.Rounded.Title else Icons.Rounded.FormatClear,
+                    stringResource(if (dialLabelHidden) R.string.show_dial_title else R.string.hide_dial_title),
+                    onClick = it,
+                )
+            }
             onRemoveFromDial?.let {
                 ActionRow(Icons.Rounded.RemoveCircleOutline, stringResource(R.string.remove_from_dial), onClick = it)
             }
