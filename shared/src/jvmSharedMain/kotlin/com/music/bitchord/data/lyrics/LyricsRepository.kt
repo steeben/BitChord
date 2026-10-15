@@ -69,7 +69,10 @@ import java.util.concurrent.ConcurrentHashMap
 object LyricsRepository {
 
     /** Lyrics, and which source they turned out to come from. */
-    data class Result(val source: LyricsSource, val lines: List<LyricLine>)
+    data class Result(val source: LyricsSource, val lines: List<LyricLine>) {
+        /** Whether this answer times individual words, not just whole lines. */
+        val isWordSynced: Boolean get() = lines.any { it.isWordSynced }
+    }
 
     /**
      * [sources] is the user's pick from Settings; anything not in it is not
@@ -165,7 +168,7 @@ object LyricsRepository {
                 if (lineSynced != null && source == LyricsSource.GENIUS) continue
 
                 val found = runCatching { job.await() }.getOrNull() ?: continue
-                if (found.lines.any { it.isWordSynced }) return@coroutineScope found
+                if (found.isWordSynced) return@coroutineScope found
                 if (!prioritizeSyllableSync && found.lines.any { it.timeMs > 0 }) {
                     return@coroutineScope found
                 }
