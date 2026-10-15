@@ -108,13 +108,6 @@ object CustomizationSettings {
     /** The library last picked from the Library page's logo; remembered across launches. */
     val librarySource = MutableStateFlow(LibrarySource.ALL)
 
-    /**
-     * Home page sections by title, in the order to show them, each shown or
-     * hidden. YouTube decides which sections exist, so titles are added here as
-     * the feed first shows them; see [learnHomeSections].
-     */
-    val homeSections = MutableStateFlow<List<OrderedToggle<String>>>(listOf(OrderedToggle(SPEED_DIAL_TITLE, true)))
-
     /** Items pinned to the speed dial, in the order they were pinned. */
     val speedDialPins = MutableStateFlow<List<ShelfItem>>(emptyList())
 
@@ -156,7 +149,6 @@ object CustomizationSettings {
         ambientFollowsArtwork.value = p.getBoolean(KEY_AMBIENT_FOLLOWS_ARTWORK, false)
         librarySource.value = LibrarySource.entries
             .firstOrNull { it.name == p.getString(KEY_LIBRARY_SOURCE, null) } ?: LibrarySource.ALL
-        homeSections.value = readHomeSections(p.getString(KEY_HOME_SECTIONS, null))
         speedDialPins.value = readPins(p.getString(KEY_SPEED_DIAL_PINS, null))
         lastSpeedDial.value = readPins(p.getString(KEY_LAST_SPEED_DIAL, null))
         artistDialPins.value = readPins(p.getString(KEY_ARTIST_DIAL_PINS, null))
@@ -165,59 +157,6 @@ object CustomizationSettings {
         dialPinIcon.value = p.getBoolean(KEY_DIAL_PIN_ICON, true)
         dialLabels.value = p.getBoolean(KEY_DIAL_LABELS, true)
     }
-
-    // ── Home sections ───────────────────────────────────────────────────
-
-    /** Adds any section titles not seen before, switched on, at the end of the list. */
-    fun learnHomeSections(titles: List<String>) {
-        val known = homeSections.value
-        val fresh = titles
-            .filter { title ->
-                title.isNotBlank() && known.none { it.item == title } &&
-                    !title.equals(SPEED_DIAL_TITLE, ignoreCase = true)
-            }
-            .distinct()
-        if (fresh.isEmpty()) return
-        setHomeSections((known + fresh.map { OrderedToggle(it, true) }).take(MAX_HOME_SECTIONS))
-    }
-
-    fun setHomeSections(value: List<OrderedToggle<String>>) {
-        homeSections.value = withDialFirst(value)
-        val json = JSONArray()
-        homeSections.value.forEach { json.put(JSONObject().put("t", it.item).put("on", it.enabled)) }
-        prefs?.edit()?.putString(KEY_HOME_SECTIONS, json.toString())?.apply()
-    }
-
-    /**
-     * The feed rearranged: sections switched off are dropped, the rest go in the
-     * saved order, and any the settings haven't seen yet keep their feed order
-     * after them.
-     */
-    fun arrangeHome(shelves: List<HomeShelf>, sections: List<OrderedToggle<String>> = homeSections.value): List<HomeShelf> {
-        val rank = sections.withIndex().associate { (index, entry) -> entry.item to index }
-        val hidden = sections.filterNot { it.enabled }.mapTo(HashSet()) { it.item }
-        return shelves
-            .filterNot { it.title in hidden }
-            .withIndex()
-            .sortedWith(compareBy({ rank[it.value.title] ?: Int.MAX_VALUE }, { it.index }))
-            .map { it.value }
-    }
-
-    private fun readHomeSections(stored: String?): List<OrderedToggle<String>> {
-        val default = listOf(OrderedToggle(SPEED_DIAL_TITLE, true))
-        if (stored.isNullOrBlank()) return default
-        return runCatching {
-            val json = JSONArray(stored)
-            (0 until json.length()).map { i ->
-                val entry = json.getJSONObject(i)
-                OrderedToggle(entry.getString("t"), entry.optBoolean("on", true))
-            }.distinctBy { it.item }
-        }.getOrDefault(default).let(::withDialFirst)
-    }
-
-    /** The speed dial is always on and always Home's first section; it can't be moved or hidden. */
-    private fun withDialFirst(list: List<OrderedToggle<String>>): List<OrderedToggle<String>> =
-        listOf(OrderedToggle(SPEED_DIAL_TITLE, true)) + list.filterNot { it.item == SPEED_DIAL_TITLE }
 
     // ── Speed dial ──────────────────────────────────────────────────────
 
@@ -507,10 +446,8 @@ object CustomizationSettings {
     const val DEFAULT_SPEED_DIAL_ROWS = 4
     const val DEFAULT_HOME_TITLE = "BitChord Dial"
     const val HOME_TITLE_MAX = 24
-    private const val MAX_HOME_SECTIONS = 60
 
     private const val KEY_NAV_TABS = "custom_nav_tabs"
-    private const val KEY_HOME_SECTIONS = "custom_home_sections"
     private const val KEY_COMPACT_CANVAS_CONTROLS = "custom_compact_canvas_controls"
     private const val KEY_AMBIENT_BACKGROUND = "custom_ambient_background"
     private const val KEY_LIBRARY_TAB_VIEWS = "custom_library_tab_views"

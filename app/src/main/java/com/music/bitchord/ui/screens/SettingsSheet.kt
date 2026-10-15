@@ -47,7 +47,6 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.BubbleChart
 import androidx.compose.material.icons.rounded.UnfoldMore
-import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -254,7 +253,6 @@ fun SettingsScreen(
     val artistDial by CustomizationSettings.artistDial.collectAsStateWithLifecycle()
 
     val feelingLucky by CustomizationSettings.feelingLucky.collectAsStateWithLifecycle()
-    val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val ambientBackground by CustomizationSettings.ambientBackground.collectAsStateWithLifecycle()
     val ambientFollowsArtwork by CustomizationSettings.ambientFollowsArtwork.collectAsStateWithLifecycle()
     val hideSongStatus by AppSettings.hideSongStatus.collectAsStateWithLifecycle()
@@ -1144,28 +1142,6 @@ fun SettingsScreen(
                         onDismiss = { editing = false },
                         // At least one tab beside Search stays on.
                         canDisable = { list, _ -> list.count { it.enabled } > 1 },
-                    )
-                }
-            }
-            val homeSectionsTitle = stringResource(R.string.home_sections)
-            row(homeSectionsTitle, "home", "shelves", "quick picks", "speed dial", "reorder", "hide") {
-                var editing by remember { mutableStateOf(false) }
-                SettingsRow(
-                    icon = Icons.Rounded.ViewAgenda,
-                    title = homeSectionsTitle,
-                    subtitle = stringResource(R.string.home_sections_subtitle),
-                    trailing = { Chevron() },
-                    onClick = { editing = true },
-                )
-                if (editing) {
-                    ReorderDialog(
-                        title = homeSectionsTitle,
-                        note = stringResource(R.string.home_sections_note),
-                        // Without the speed dial: it is always on, always first.
-                        items = homeSections.filterNot { it.item == CustomizationSettings.SPEED_DIAL_TITLE },
-                        label = { it },
-                        onChange = CustomizationSettings::setHomeSections,
-                        onDismiss = { editing = false },
                     )
                 }
             }

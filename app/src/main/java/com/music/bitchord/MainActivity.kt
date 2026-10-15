@@ -861,7 +861,6 @@ private fun BitChordApp(
     // dark artwork either way.
     SystemBarIcons(dark = !darkTheme && !showNowPlaying && !showReplay && replayStory == null)
 
-    val homeSections by CustomizationSettings.homeSections.collectAsStateWithLifecycle()
     val speedDialPins by CustomizationSettings.speedDialPins.collectAsStateWithLifecycle()
     val speedDialPinnedIds = remember(speedDialPins) { speedDialPins.mapNotNullTo(HashSet()) { it.speedDialId } }
     // Tiles taken off the dials by hand, kept off until pinned again.
@@ -906,7 +905,7 @@ private fun BitChordApp(
         )
     }
     // The feed as Home draws it — see [rememberHomeFeed].
-    val homeFeed = rememberHomeFeed(viewModel, homeSections, speedDialPins, hiddenFromDial)
+    val homeFeed = rememberHomeFeed(viewModel, speedDialPins, hiddenFromDial)
     val holdSavedDial = homeFeed.holdSavedDial
     val arrangedHomeState = homeFeed.state
     val artistDialPinnedIds = homeFeed.artistDialPinnedIds
@@ -3775,9 +3774,7 @@ private fun BitChordApp(
                             dialLabels = dialLabels,
                             dialLabelOverrides = dialHiddenLabels,
                             dialPinIcon = dialPinIcon,
-                            skeletonSpeedDialFirst = homeSections.firstOrNull { it.enabled }?.item ==
-                                CustomizationSettings.SPEED_DIAL_TITLE,
-                            skeletonShowRecents = homeSections.none { it.item == "Recents" && !it.enabled },
+                            skeletonSpeedDialFirst = true,
                             listState = homeListState,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
@@ -6742,27 +6739,19 @@ private class HomeFeed(
 @Composable
 private fun rememberHomeFeed(
     viewModel: MainViewModel,
-    homeSections: List<OrderedToggle<String>>,
     speedDialPins: List<ShelfItem>,
     hiddenFromDial: Set<String>,
 ): HomeFeed {
     val homeState by viewModel.home.collectAsStateWithLifecycle()
-    // New sections become settable in Settings the first time the feed shows them.
-    LaunchedEffect(homeState) {
-        (homeState as? UiState.Success)?.data?.let { shelves ->
-            CustomizationSettings.learnHomeSections(shelves.map { it.title })
-        }
-    }
     // The dial Home showed last time, held until this launch's feed and
     // Recently played are both in, so the tiles change once at most rather
     // than shuffling with every response that lands.
     val lastSpeedDial by CustomizationSettings.lastSpeedDial.collectAsStateWithLifecycle()
     val homeFresh by viewModel.homeFresh.collectAsStateWithLifecycle()
     val holdSavedDial = !homeFresh && lastSpeedDial.isNotEmpty()
-    val dialLeadsHome = homeSections.firstOrNull { it.enabled }?.item == CustomizationSettings.SPEED_DIAL_TITLE
-    // The feed as Home draws it: the speed dial built in, then the sections in
-    // the order Settings gives them, minus the hidden ones.
-    val baseHomeState = remember(homeState, homeSections, speedDialPins, holdSavedDial, lastSpeedDial, hiddenFromDial) {
+    // The feed as Home draws it: the speed dial, then YouTube Music's shelves
+    // in the order it gives them.
+    val baseHomeState = remember(homeState, speedDialPins, holdSavedDial, lastSpeedDial, hiddenFromDial) {
         val savedDial = if (holdSavedDial) {
             CustomizationSettings.buildSpeedDial(
                 speedDialPins,
@@ -6773,7 +6762,7 @@ private fun rememberHomeFeed(
         }
         when (val state = homeState) {
             // Nothing from the network yet, but the dial can already be shown.
-            is UiState.Loading -> if (savedDial != null && dialLeadsHome) {
+            is UiState.Loading -> if (savedDial != null) {
                 UiState.Success(listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, savedDial)))
             } else {
                 state
@@ -6788,7 +6777,7 @@ private fun rememberHomeFeed(
                 } else {
                     listOf(HomeShelf(CustomizationSettings.SPEED_DIAL_TITLE, dial)) + feed
                 }
-                UiState.Success(CustomizationSettings.arrangeHome(shelves, homeSections))
+                UiState.Success(shelves)
             }
             else -> state
         }
