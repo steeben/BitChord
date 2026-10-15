@@ -500,6 +500,14 @@ object AppSettings {
     val lyricsSourceOrder = MutableStateFlow<List<LyricsSource>>(LyricsSource.offered)
 
     /**
+     * The provider last picked by hand from the player's provider drawer, or
+     * null for the automatic choice. Asked ahead of [lyricsSourceOrder] and
+     * preferred whenever it answers, so a pick carries over to the next track
+     * instead of lasting only for the one it was made on.
+     */
+    val preferredLyricsSource = MutableStateFlow<LyricsSource?>(null)
+
+    /**
      * Off, the highest-priority source to answer at all is taken as the
      * lyrics, word-synced or not. On, a merely line-synced answer is held as
      * a fallback while the rest of [lyricsSourceOrder] is still checked for a
@@ -860,6 +868,8 @@ object AppSettings {
         syncedLyrics.value = prefs.getBoolean(KEY_SYNCED_LYRICS, true)
         lyricsSources.value = readLyricsSources()
         lyricsSourceOrder.value = readLyricsSourceOrder()
+        preferredLyricsSource.value = prefs.getString(KEY_PREFERRED_LYRICS_SOURCE, null)
+            ?.let { name -> LyricsSource.offered.firstOrNull { it.name == name } }
         prioritizeSyllableSync.value = prefs.getBoolean(KEY_PRIORITIZE_SYLLABLE_SYNC, false)
         paxSenixApiKey.value = prefs.getString(KEY_PAXSENIX_API_KEY, "").orEmpty()
         com.music.bitchord.data.lyrics.PaxSenix.setApiKey(paxSenixApiKey.value)
@@ -1334,6 +1344,11 @@ object AppSettings {
         LyricsSource.MUSIXMATCH,
         LyricsSource.GENIUS,
     )
+
+    fun setPreferredLyricsSource(value: LyricsSource?) {
+        preferredLyricsSource.value = value
+        prefs.edit().putString(KEY_PREFERRED_LYRICS_SOURCE, value?.name).apply()
+    }
 
     fun setLyricsSourceOrder(value: List<LyricsSource>) {
         lyricsSourceOrder.value = value
@@ -1978,6 +1993,7 @@ object AppSettings {
     private const val KEY_LYRICS_SOURCES = "lyrics_sources"
     private const val KEY_LYRICS_SOURCES_SEEN = "lyrics_sources_seen"
     private const val KEY_LYRICS_SOURCE_ORDER = "lyrics_source_order"
+    private const val KEY_PREFERRED_LYRICS_SOURCE = "preferred_lyrics_source"
     private const val KEY_PRIORITIZE_SYLLABLE_SYNC = "prioritize_syllable_sync"
     private const val KEY_PAXSENIX_API_KEY = "paxsenix_api_key"
     private const val KEY_REPLAY_GENRES = "replay_genres"

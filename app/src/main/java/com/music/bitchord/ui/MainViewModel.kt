@@ -377,7 +377,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lyricsGeneration += 1
         val generation = lyricsGeneration
         currentLyricsRequest = LyricsRequest(videoId, title, artist, durationMs, album)
-        selectedLyricsSource = null
+        // A provider picked by hand on an earlier track is asked first and kept
+        // whenever it answers; one since switched off in Settings is ignored.
+        val preferred = AppSettings.preferredLyricsSource.value?.takeIf { it in sources }
+        selectedLyricsSource = preferred
         manualLyricsJobs.values.forEach(Job::cancel)
         manualLyricsJobs.clear()
         lyricsProviderResults.clear()
@@ -416,7 +419,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val found = LyricsRepository.lyrics(
                 videoId, title, artist, durationMs, album, sources,
-                AppSettings.lyricsSourceOrder.value, AppSettings.prioritizeSyllableSync.value,
+                preferred?.let { listOf(it) + (AppSettings.lyricsSourceOrder.value - it) }
+                    ?: AppSettings.lyricsSourceOrder.value,
+                AppSettings.prioritizeSyllableSync.value,
                 onSourceStarted = { source -> providerStarted(generation, source) },
                 onSourceResult = { source, result ->
                     providerFinished(generation, source, result)
@@ -439,18 +444,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         when (_lyricsProviderStates.value[source]) {
             LyricsProviderState.FOUND -> {
                 selectedLyricsSource = source
+                AppSettings.setPreferredLyricsSource(source)
                 lyricsProviderResults[source]?.let(::showLyricsResult)
             }
             LyricsProviderState.FETCHING -> {
                 // Apply it as soon as the already-running automatic attempt completes.
                 selectedLyricsSource = source
+                AppSettings.setPreferredLyricsSource(source)
             }
             LyricsProviderState.NOT_FETCHED, null -> {
                 selectedLyricsSource = source
+                AppSettings.setPreferredLyricsSource(source)
                 fetchLyricsProvider(request, lyricsGeneration, source)
             }
             LyricsProviderState.NOT_FOUND -> Unit
         }
+    }
+
+    /**
+     * Forgets the remembered provider. This track falls back to the best hit
+     * already in hand by the Settings order, and the next one is looked up as
+     * though nothing had ever been picked.
+     */
+    fun selectAutomaticLyrics() {
+        AppSettings.setPreferredLyricsSource(null)
+        selectedLyricsSource = null
+        LyricsSource.ordered(AppSettings.lyricsSourceOrder.value)
+            .firstNotNullOfOrNull(lyricsProviderResults::get)
+            ?.let(::showLyricsResult)
     }
 
     private fun fetchLyricsProvider(

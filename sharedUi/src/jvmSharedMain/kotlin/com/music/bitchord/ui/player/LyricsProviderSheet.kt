@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
@@ -50,6 +51,9 @@ import dev.chrisbanes.haze.HazeState
  * as [AudioOutputSheet], so it behaves like another player destination rather
  * than a settings dialog. A row that the automatic lookup already completed is
  * entirely local: hits switch immediately and misses cannot be requested twice.
+ *
+ * A pick is remembered across tracks by the host. When [onSelectAutomatic] is
+ * given, an Automatic row heads the list to forget it again.
  */
 @Composable
 internal fun LyricsProviderSheet(
@@ -59,8 +63,10 @@ internal fun LyricsProviderSheet(
     onSelect: (LyricsSource) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onSelectAutomatic: (() -> Unit)? = null,
 ) {
     val savedOrder by PlayerSettings.lyricsSourceOrder.collectAsStateWithLifecycle()
+    val preferredSource by PlayerSettings.preferredLyricsSource.collectAsStateWithLifecycle()
     val sources = remember(savedOrder) { LyricsSource.ordered(savedOrder) }
     var requestedSource by remember { mutableStateOf<LyricsSource?>(null) }
     LaunchedEffect(currentSource, requestedSource) {
@@ -77,6 +83,15 @@ internal fun LyricsProviderSheet(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (onSelectAutomatic != null) {
+                AutomaticProviderRow(
+                    current = preferredSource == null,
+                    onClick = {
+                        onSelectAutomatic()
+                        onDismiss()
+                    },
+                )
+            }
             sources.forEach { source ->
                 LyricsProviderRow(
                     source = source,
@@ -90,6 +105,64 @@ internal fun LyricsProviderSheet(
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AutomaticProviderRow(
+    current: Boolean,
+    onClick: () -> Unit,
+) {
+    val haptics = rememberHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ROW_SHAPE)
+            .background(Color.White.copy(alpha = if (current) 0.10f else 0.05f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                enabled = !current,
+            ) {
+                haptics.play(Haptic.Select)
+                onClick()
+            }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = if (current) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (current) Icons.Rounded.Check else Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = if (current) 1f else 0.7f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(Res.string.lyrics_provider_automatic),
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                ),
+                color = Color.White.copy(alpha = if (current) 1f else 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(Res.string.lyrics_provider_automatic_detail),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = if (current) 0.7f else 0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

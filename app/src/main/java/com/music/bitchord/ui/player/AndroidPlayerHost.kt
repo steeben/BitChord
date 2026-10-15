@@ -63,6 +63,7 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         override val lyricsBlur get() = AppSettings.lyricsBlur
         override val lyricsOffsetMs get() = AppSettings.lyricsOffsetMs
         override val lyricsSourceOrder get() = AppSettings.lyricsSourceOrder
+        override val preferredLyricsSource get() = AppSettings.preferredLyricsSource
         override val meteredConnection get() = AppSettings.meteredConnection
         override val preferUsbDac get() = AppSettings.preferUsbDac
         override val prioritizeSpotifyCanvas get() = AppSettings.prioritizeSpotifyCanvas

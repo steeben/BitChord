@@ -771,6 +771,8 @@ fun NowPlayingScreen(
     lyricsSource: LyricsSource?,
     lyricsProviderStates: Map<LyricsSource, LyricsProviderState>,
     onSelectLyricsProvider: (LyricsSource) -> Unit,
+    /** Forgets a remembered provider; null hides the drawer's Automatic row. */
+    onSelectAutomaticLyrics: (() -> Unit)? = null,
     lyricsUnavailable: Boolean,
     lyricsOffsetOpen: Boolean,
     onDismissLyricsOffset: () -> Unit,
@@ -1607,6 +1609,13 @@ fun NowPlayingScreen(
             onOpenOutput = openAudioOutput,
             onListenTogether = onListenTogether,
             onOpenListenTogetherMembers = openListenTogetherMembers,
+            // Only while lyrics are switched on: with them off there is no
+            // provider to choose between.
+            onChooseLyricsProvider = if (syncedLyricsEnabled) {
+                { showLyricsProviders = true }
+            } else {
+                null
+            },
         )
         // Keep the current output caption visible in every state but the
         // compact controls under the queue and lyrics.
@@ -1646,6 +1655,7 @@ fun NowPlayingScreen(
                 states = lyricsProviderStates,
                 onSelect = onSelectLyricsProvider,
                 onDismiss = { showLyricsProviders = false },
+                onSelectAutomatic = onSelectAutomaticLyrics,
             )
         }
         if (showAudioPipeline) {

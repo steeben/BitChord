@@ -2664,6 +2664,7 @@ private fun BitChordApp(
             lyricsSource = lyricsSource,
             lyricsProviderStates = lyricsProviderStates,
             onSelectLyricsProvider = viewModel::selectLyricsProvider,
+            onSelectAutomaticLyrics = viewModel::selectAutomaticLyrics,
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
             lyricsOffsetOpen = showLyricsOffset,
             onDismissLyricsOffset = { showLyricsOffset = false },

@@ -28,9 +28,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -540,6 +542,8 @@ internal fun PlayerActionRow(
     onListenTogether: () -> Unit,
     /** Opens [ListenTogetherMembersSheet] rather than settings directly. */
     onOpenListenTogetherMembers: () -> Unit,
+    /** Held lyrics glyph: the provider drawer. Null leaves the glyph tap-only. */
+    onChooseLyricsProvider: (() -> Unit)? = null,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         // Sized for the wider of the two capsules — the three-up one — in both
@@ -558,6 +562,7 @@ internal fun PlayerActionRow(
                 // Lyrics and the queue are two things to show in one place, so
                 // opening either closes the other; lit to say which is up.
                 onClick = onToggleLyrics,
+                onLongClick = onChooseLyricsProvider,
                 highlighted = lyricsOpen,
             )
             AnimatedContent(
@@ -1111,6 +1116,7 @@ private fun rememberPartyBadge(): PartyBadge {
         .value
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BottomGlyph(
     icon: ImageVector?,
@@ -1127,6 +1133,7 @@ private fun BottomGlyph(
      * ask for a window.
      */
     tapWindowMs: Long = 0L,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val haptics = rememberHaptics()
     // Read only from the click handler, never during composition, so writing it
@@ -1140,9 +1147,15 @@ private fun BottomGlyph(
             .background(
                 if (highlighted) Color.White.copy(alpha = 0.20f) else Color.Transparent,
             )
-            .clickable(
+            .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
+                onLongClick = onLongClick?.let { longClick ->
+                    {
+                        haptics.play(Haptic.Tap)
+                        longClick()
+                    }
+                },
             ) {
                 val now = uptimeMillis()
                 if (now - lastTap.longValue >= tapWindowMs) {

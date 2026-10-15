@@ -150,6 +150,8 @@ interface PlayerSettingsSource {
     val lyricsBlur: StateFlow<Boolean>
     val lyricsOffsetMs: StateFlow<Int>
     val lyricsSourceOrder: StateFlow<List<LyricsSource>>
+    /** The provider picked by hand from the provider drawer; null while automatic. */
+    val preferredLyricsSource: StateFlow<LyricsSource?> get() = NoPreferredLyricsSource
     val meteredConnection: StateFlow<Boolean?>
     val preferUsbDac: StateFlow<Boolean>
     val prioritizeSpotifyCanvas: StateFlow<Boolean>
@@ -326,3 +328,4 @@ internal fun AudioPipelineDialog(hazeState: HazeState, isPlaying: Boolean, onDis
     PlayerPlatform.host.AudioPipelineDialog(hazeState, isPlaying, onDismiss)
 
 private val CompactCanvasControlsOff: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false)
+private val NoPreferredLyricsSource: StateFlow<LyricsSource?> = kotlinx.coroutines.flow.MutableStateFlow(null)

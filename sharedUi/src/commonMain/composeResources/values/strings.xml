@@ -83,6 +83,8 @@
     <string name="lyrics_offset_description">Positive values show lyrics later</string>
     <string name="lyrics_offset_reset">Reset</string>
     <string name="lyrics_provider_current">Current provider</string>
+    <string name="lyrics_provider_automatic">Automatic</string>
+    <string name="lyrics_provider_automatic_detail">Best match in your Settings order</string>
     <string name="lyrics_provider_fetching">Fetching lyrics…</string>
     <string name="lyrics_provider_found">Lyrics found · Tap to use</string>
     <string name="lyrics_provider_not_fetched">Tap to fetch</string>
