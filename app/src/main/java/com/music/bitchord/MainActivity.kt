@@ -15,6 +15,7 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -358,6 +359,8 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlinx.coroutines.launch
+import com.music.bitchord.data.withCustomCover
+import com.music.bitchord.data.withCustomCovers
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -999,6 +1002,7 @@ private fun BitChordApp(
     // Playlists imported without (or instead of) a YouTube Music account live
     // in the app's own store, and sit on the same shelf as the downloaded ones.
     val localPlaylists by com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.collectAsStateWithLifecycle()
+    val customCovers by com.music.bitchord.data.CustomCovers.covers.collectAsStateWithLifecycle()
     val localPlaylistItems = localPlaylists.map { playlist ->
         ShelfItem(
             title = playlist.title,
@@ -1288,6 +1292,23 @@ private fun BitChordApp(
     }
 
     val scope = rememberCoroutineScope()
+
+    // A playlist's own cover, swapped for one picked off the device — see
+    // CustomCovers. Which playlist the picker was opened for is held across
+    // the trip out to the system photo picker and back.
+    var coverPickFor by rememberSaveable { mutableStateOf<String?>(null) }
+    val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val id = coverPickFor
+        coverPickFor = null
+        if (uri != null && id != null) {
+            scope.launch {
+                val ok = com.music.bitchord.data.CustomCovers.set(context, id, uri)
+                showQueueNotice(
+                    context.getString(if (ok) R.string.custom_cover_set else R.string.custom_cover_failed),
+                )
+            }
+        }
+    }
 
     // Copies tracks to the WebDAV server, leaving the local files alone.
     // A clash suspends the batch on WebDavUploads.conflict until the dialog
@@ -3327,7 +3348,7 @@ private fun BitChordApp(
                             }
                         }
                         DetailScreen(
-                            page = page,
+                            page = page.withCustomCover(customCovers),
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                             listState = pageDetailListState,
@@ -3437,7 +3458,7 @@ private fun BitChordApp(
                         )
                     } else when (key.removePrefix(TAB_KEY).toIntOrNull() ?: selectedTab) {
                         TAB_HOME -> HomeScreen(
-                            state = arrangedHomeState,
+                            state = arrangedHomeState.withCustomCovers(customCovers),
                             speedDialPinned = speedDialPinnedIds,
                             onSpeedDialHeaderLongPress = { editingSpeedDial = true },
                             speedDialRows = speedDialRows,
@@ -3747,7 +3768,7 @@ private fun BitChordApp(
                         }
                         else -> LibraryScreen(
                             signedIn = signedIn,
-                            state = libraryState,
+                            state = libraryState.withCustomCovers(customCovers),
                             listState = libraryListState,
                             onShelfItemClick = onLibraryItemClick,
                             // Every shelf here has a menu behind it now — the account's
@@ -3778,7 +3799,8 @@ private fun BitChordApp(
                             contentPadding = listPadding,
                             links = libraryLinks(signedIn),
                             onLinkLongPress = { libraryOptionsFor = it },
-                            deviceItems = libraryDeviceItems(downloadedReleases) + localPlaylistItems,
+                            deviceItems = (libraryDeviceItems(downloadedReleases) + localPlaylistItems)
+                                .withCustomCovers(customCovers),
                         )
                     }
                 }
@@ -5222,9 +5244,13 @@ private fun BitChordApp(
                     viewModel.loadArtistSubscription(artistId) { artistFollow = it }
                 }
             }
+            val customCover = com.music.bitchord.data.CustomCovers.coverFor(pinnableId, customCovers)
             BrowseActionsSheet(
                 // The live answer, not the one the target was built with.
-                target = target.copy(playlist = playlist),
+                target = target.copy(
+                    playlist = playlist,
+                    thumbnailUrl = customCover ?: target.thumbnailUrl,
+                ),
                 presentation = presentation,
                 onRenameInSheet = {
                     browseRenameInSheet = true
@@ -5357,6 +5383,23 @@ private fun BitChordApp(
                                 onFailure = { UiState.Error(context.getString(R.string.failed)) },
                             )
                         }
+                    }
+                },
+                // Local to this device: YouTube Music's own cover upload isn't
+                // something the app's API can do, so any playlist can take one.
+                onSetCustomCover = pinnableId?.let { id ->
+                    {
+                        browseActions = null
+                        coverPickFor = id
+                        coverPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    }
+                },
+                onRemoveCustomCover = pinnableId?.takeIf { customCover != null }?.let { id ->
+                    {
+                        browseActions = null
+                        com.music.bitchord.data.CustomCovers.remove(id)
                     }
                 },
                 onDelete = playlist?.let { p ->

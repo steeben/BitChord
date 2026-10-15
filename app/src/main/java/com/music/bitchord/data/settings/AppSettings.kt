@@ -761,6 +761,7 @@ object AppSettings {
         prefs = context.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
         this.authStore = authStore
         com.music.bitchord.data.spotify.LocalPlaylistStore.init(context)
+        com.music.bitchord.data.CustomCovers.init(context)
         LastPlayed.init(context)
         readAll()
         watchConnection(context)

@@ -80,4 +80,8 @@
     <string name="recently_played_songs">Recently played</string>
     <string name="recent_artists">Recent artists</string>
     <string name="dial_history_empty">Nothing played yet</string>
+    <string name="custom_cover">Custom cover</string>
+    <string name="remove_custom_cover">Remove custom cover</string>
+    <string name="custom_cover_set">Cover updated on this device</string>
+    <string name="custom_cover_failed">Couldn\'t use that image</string>
 </resources>

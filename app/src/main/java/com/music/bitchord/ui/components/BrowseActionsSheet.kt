@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material.icons.rounded.Title
 import androidx.compose.material.icons.rounded.FormatClear
+import androidx.compose.material.icons.rounded.HideImage
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Radio
@@ -171,6 +173,14 @@ fun BrowseActionsSheet(
      * playlist the account only saved.
      */
     onReorder: (() -> Unit)? = null,
+    /**
+     * Picks an image to stand in for a playlist's cover on this device — see
+     * [com.music.bitchord.data.CustomCovers]. Offered for any playlist, owned
+     * or not, since nothing about it touches the account. Null hides the row.
+     */
+    onSetCustomCover: (() -> Unit)? = null,
+    /** Puts the playlist's own cover back. Null when no custom one is set. */
+    onRemoveCustomCover: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     /**
      * Removes the files this release was downloaded as, when it was downloaded
@@ -363,6 +373,12 @@ fun BrowseActionsSheet(
             }
             onReorder?.let {
                 ActionRow(Icons.Rounded.SwapVert, stringResource(R.string.reorder_songs), onClick = it)
+            }
+            onSetCustomCover?.let {
+                ActionRow(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.custom_cover), onClick = it)
+            }
+            onRemoveCustomCover?.let {
+                ActionRow(Icons.Rounded.HideImage, stringResource(R.string.remove_custom_cover), onClick = it)
             }
             if (onDelete != null) {
                 if (confirmingDelete) {
