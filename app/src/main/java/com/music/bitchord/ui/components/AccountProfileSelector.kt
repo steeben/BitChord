@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ManageAccounts
 import androidx.compose.material.icons.rounded.Person
@@ -63,6 +64,7 @@ fun AccountProfileSelector(
     onSelect: (GoogleAccountSession, YouTubeProfile) -> Unit,
     onAddAccount: () -> Unit,
     onRemoveAccount: (GoogleAccountSession) -> Unit,
+    onOpenStats: () -> Unit,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -109,6 +111,7 @@ fun AccountProfileSelector(
                 }
                 item { SelectorAction(Icons.Rounded.Add, stringResource(R.string.add_account), onAddAccount) }
                 item { SelectorAction(Icons.Rounded.ManageAccounts, stringResource(R.string.manage_accounts)) { managing = !managing } }
+                item { SelectorAction(Icons.Rounded.BarChart, stringResource(R.string.stats), onOpenStats) }
                 item { SelectorAction(Icons.Rounded.Settings, stringResource(R.string.settings), onOpenSettings) }
             }
         }

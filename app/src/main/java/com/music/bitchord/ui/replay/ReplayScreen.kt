@@ -283,7 +283,7 @@ private fun Heading(state: ReplayState, onPeriodChange: (ReplayPeriod) -> Unit, 
  * would make it a lie for the first thirty days of every month.
  */
 @Composable
-private fun PeriodPicker(selected: ReplayPeriod, onSelect: (ReplayPeriod) -> Unit, dark: Boolean) {
+internal fun PeriodPicker(selected: ReplayPeriod, onSelect: (ReplayPeriod) -> Unit, dark: Boolean) {
     val context = LocalContext.current
     val textColor = if (dark) Color.White else Color.Black
     Row(
@@ -544,7 +544,7 @@ private fun SectionTitleInline(text: String, dark: Boolean) {
 }
 
 @Composable
-private fun StatTile(label: String, value: String, dark: Boolean, modifier: Modifier = Modifier) {
+internal fun StatTile(label: String, value: String, dark: Boolean, modifier: Modifier = Modifier) {
     val textColor = if (dark) Color.White else Color.Black
     Column(
         modifier
@@ -569,7 +569,7 @@ private fun StatTile(label: String, value: String, dark: Boolean, modifier: Modi
 }
 
 @Composable
-private fun Note(text: String, dark: Boolean, modifier: Modifier = Modifier) {
+internal fun Note(text: String, dark: Boolean, modifier: Modifier = Modifier) {
     val textColor = if (dark) Color.White else Color.Black
     Text(
         text = text,
@@ -580,7 +580,7 @@ private fun Note(text: String, dark: Boolean, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EmptyReplay(period: ReplayPeriod, dark: Boolean) {
+internal fun EmptyReplay(period: ReplayPeriod, dark: Boolean) {
     val emptyColor = if (dark) Color.White else Color.Black
     val emptyVariant = if (dark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
     Column(

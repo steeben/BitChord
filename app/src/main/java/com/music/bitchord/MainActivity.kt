@@ -349,6 +349,7 @@ import com.music.bitchord.ui.replay.cards
 import com.music.bitchord.ui.replay.ReplayShareSheet
 import com.music.bitchord.ui.replay.ReplayStories
 import com.music.bitchord.ui.replay.ReplayStoryPage
+import com.music.bitchord.ui.replay.StatsScreen
 import com.music.bitchord.ui.replay.rememberReplayState
 import com.music.bitchord.ui.theme.BitChordTheme
 import com.music.bitchord.ui.theme.rememberArtworkPalette
@@ -668,6 +669,9 @@ private fun BitChordApp(
     // opened from the page and the share sheet from either, and closing one
     // has to reveal what it was opened from.
     var showReplay by rememberSaveable { mutableStateOf(false) }
+    // The Stats page, opened from the account menu. Replay opens over it from
+    // its cards, and closing Replay comes back here.
+    var showStats by rememberSaveable { mutableStateOf(false) }
     // Library cards use the same Replay page as every other entry point, but
     // category cards ask it to start at their matching ranked section.
     var replayLandingPage by rememberSaveable { mutableStateOf(ReplayStoryPage.INTRO) }
@@ -1243,6 +1247,7 @@ private fun BitChordApp(
     // until it is scrolled away, and the bar lives out here rather than on the
     // page. Rebuilt per opening so reopening starts at the top.
     val replayListState = remember(showReplay, replayLandingPage) { LazyListState() }
+    val statsListState = remember(showStats) { LazyListState() }
     val replayScrolled by remember(replayListState) {
         derivedStateOf {
             replayListState.firstVisibleItemIndex > 0 ||
@@ -2408,7 +2413,7 @@ private fun BitChordApp(
     // picture, so they cannot disagree. Read while any of them is on screen —
     // which includes the Library tab, since the cards live at the top of it.
     // See [rememberReplayState].
-    val replayOpen = showReplay || replayStory != null || showReplayShare ||
+    val replayOpen = showReplay || replayStory != null || showReplayShare || showStats ||
         (selectedTab == TAB_LIBRARY && detail == null && !showSettings)
     val (replay, setReplayPeriod) = rememberReplayState(replayOpen)
     val replayCards = remember(replay.summary) {
@@ -2916,6 +2921,12 @@ private fun BitChordApp(
         // straight to Library. See [onLibraryItemClick].
         BackHandler(enabled = libraryShowAll != null && detail == null) { libraryShowAll = null }
         BackHandler(enabled = detailActiveShelf != null) { detailActiveShelf = null }
+        // Last, so it beats the handlers of whatever page Stats was opened
+        // over; off while Replay or Settings is up over it, so those close
+        // first and land back here.
+        BackHandler(enabled = showStats && !showReplay && !showSettings && settingsSubScreen == null) {
+            showStats = false
+        }
 
         // On a tablet the page and the player stand side by side rather than
         // one over the other: everything a phone stacks in a single column —
@@ -2926,6 +2937,9 @@ private fun BitChordApp(
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 // The page on screen, by the key the pages below swap on.
                 val pageKey = when {
+                    // Over everything it was opened on, under the Replay and
+                    // Settings it can open in turn.
+                    showStats && !showReplay && !showSettings && settingsSubScreen == null -> "stats"
                     showSpotify && detail == null -> "spotify"
                     showDiscord -> "discord"
                     showHistory -> "history"
@@ -3124,6 +3138,18 @@ private fun BitChordApp(
                                 contentPadding = listPadding,
                             )
                         }
+                    } else if (key == "stats") {
+                        StatsScreen(
+                            state = replay,
+                            holder = account?.name.orEmpty(),
+                            onPeriodChange = setReplayPeriod,
+                            onOpenReplay = { page ->
+                                replayLandingPage = page
+                                showReplay = true
+                            },
+                            contentPadding = listPadding,
+                            listState = statsListState,
+                        )
                     } else if (key == "replay") {
                         ReplayScreen(
                             state = replay,
@@ -3139,10 +3165,12 @@ private fun BitChordApp(
                             },
                             onOpenArtist = { id, name ->
                                 showReplay = false
+                                showStats = false
                                 openByName(id, name, null, BrowseType.ARTIST)
                             },
                             onOpenAlbum = { id, title, artist, art ->
                                 showReplay = false
+                                showStats = false
                                 openByName(id, title, artist, BrowseType.ALBUM, art)
                             },
                             onShare = {
@@ -3962,7 +3990,8 @@ private fun BitChordApp(
                         detail.type == BrowseType.PLAYLIST ||
                         detail.type == BrowseType.ARTIST) &&
                     !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
-                    !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer && !showReplay
+                    !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer && !showReplay &&
+                    !showStats
                 val chromePageColor = if (isDetailVisible) {
                     detailPalette.background
                 } else {
@@ -4003,7 +4032,7 @@ private fun BitChordApp(
                 val homeRoot = selectedTab == TAB_HOME && detail == null && selectedMoodGenre == null &&
                     libraryShowAll == null && !showSpotify && !showDiscord && !showHistory &&
                     !showSettings && !showAccountScrobbling && !showSources && !showListenTogether &&
-                    !showEqualizer && !showReplay
+                    !showEqualizer && !showReplay && !showStats
                 // Explore scrolls under the bar and the mark beside it: a soft
                 // blur with a touch of shade along the top, eased in as the
                 // page comes up and out again on the way back to the dials.
@@ -4027,6 +4056,7 @@ private fun BitChordApp(
                 FrostedTopBar(
                     title = when {
                         homeRoot -> ""
+                        showStats && !showReplay && !showSettings && settingsSubScreen == null -> stringResource(R.string.stats)
                         showSpotify && detail == null -> stringResource(R.string.spotify)
                         showDiscord -> "Discord"
                         showHistory -> when (historyMode) {
@@ -4064,7 +4094,7 @@ private fun BitChordApp(
                     // Search has no large in-list header to hand the title back to —
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
-                        showSettings || showAccountScrobbling || showSources || showListenTogether ||
+                        showStats || showSettings || showAccountScrobbling || showSources || showListenTogether ||
                             showEqualizer ||
                             showDiscord || showHistory ||
                             (libraryShowAll != null && detail == null) ||
@@ -4079,6 +4109,7 @@ private fun BitChordApp(
                     refreshing = !homeRoot && currentFeed != null && currentFeed in refreshing,
                     pullFraction = { if (homeRoot) 0f else currentPull?.distanceFraction ?: 0f },
                     onBack = when {
+                        showStats && !showReplay && !showSettings && settingsSubScreen == null -> ({ showStats = false })
                         showSpotify && detail == null -> ({ showSpotify = false })
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
@@ -4101,7 +4132,7 @@ private fun BitChordApp(
                         selectedTab == TAB_SEARCH && detail == null && selectedMoodGenre == null &&
                         libraryShowAll == null && !showSettings && !showAccountScrobbling &&
                         !showSources && !showListenTogether && !showEqualizer && !showDiscord &&
-                        !showHistory && !showReplay
+                        !showHistory && !showReplay && !showStats
                     ) {
                         {
                             // The search field lives up here in the bar, beside the
@@ -4214,7 +4245,7 @@ private fun BitChordApp(
                             // Left of the account photo, and only on Library itself:
                             // a history is a record of what was played, which reads
                             // as that tab's business rather than every tab's.
-                            if (!showHistory && !showReplay && !showDiscord && libraryShowAll == null &&
+                            if (!showHistory && !showReplay && !showStats && !showDiscord && libraryShowAll == null &&
                                 detail == null && selectedTab == TAB_LIBRARY
                             ) {
                                 IconButton(
@@ -4236,7 +4267,7 @@ private fun BitChordApp(
                             // folder offers (see `LocalSearchField`), adapted to
                             // the one thing a playlist or album card carries: a
                             // title.
-                            if (libraryShowAll != null && detail == null) {
+                            if (libraryShowAll != null && detail == null && !showStats) {
                                 Box {
                                     IconButton(onClick = { librarySortMenuOpen = true }) {
                                         Icon(
@@ -4269,7 +4300,7 @@ private fun BitChordApp(
                             // list to reorder, and the device folders already
                             // carry this same control themselves (see
                             // `LocalSearchField`).
-                            if (detail != null && !isLocalDetail && detail.type != BrowseType.ARTIST) {
+                            if (detail != null && !isLocalDetail && detail.type != BrowseType.ARTIST && !showStats) {
                                 // The menu itself is [FrostedSortMenu], composed
                                 // with the app's other frosted overlays further
                                 // down — in the main hierarchy, where the haze
@@ -4286,7 +4317,7 @@ private fun BitChordApp(
                             // share glyph, sending the artist's channel link — the
                             // one YouTube Music itself shares for an artist.
                             if (detail != null && !isLocalDetail && detail.type == BrowseType.ARTIST &&
-                                detailActiveShelf == null && detail.browseId.startsWith("UC")
+                                detailActiveShelf == null && detail.browseId.startsWith("UC") && !showStats
                             ) {
                                 IconButton(
                                     onClick = {
@@ -4447,6 +4478,7 @@ private fun BitChordApp(
                     showListenTogether = false
                     showEqualizer = false
                     showReplay = false
+                    showStats = false
                     settingsSubScreen = null
                     showHistory = false
                     libraryShowAll = null
@@ -5736,6 +5768,17 @@ private fun BitChordApp(
                 onRemoveAccount = { selected ->
                     viewModel.removeAccount(selected.accountId)
                     showAccountSelector = false
+                },
+                onOpenStats = {
+                    showAccountSelector = false
+                    showSettings = false
+                    settingsSubScreen = null
+                    showAccountScrobbling = false
+                    showSources = false
+                    showListenTogether = false
+                    showEqualizer = false
+                    showReplay = false
+                    showStats = true
                 },
                 onOpenSettings = {
                     showAccountSelector = false

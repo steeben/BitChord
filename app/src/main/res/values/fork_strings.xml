@@ -84,4 +84,23 @@
     <string name="remove_custom_cover">Remove custom cover</string>
     <string name="custom_cover_set">Cover updated on this device</string>
     <string name="custom_cover_failed">Couldn\'t use that image</string>
+    <string name="stats">Stats</string>
+    <string name="stats_more">More stats</string>
+    <string name="stats_open_replay">Open Replay</string>
+    <string name="stats_plays">Plays</string>
+    <string name="stats_days_listened">Days listened</string>
+    <string name="stats_daily_average">Daily average</string>
+    <string name="stats_daily_average_detail">On the days you listened</string>
+    <string name="stats_longest_streak">Longest streak</string>
+    <string name="stats_streak_detail">Days in a row with music</string>
+    <string name="stats_on_repeat">On repeat</string>
+    <string name="stats_top_genre">Top genre</string>
+    <string name="stats_peak_hour">Peak hour</string>
+    <string name="stats_biggest_day">Biggest day</string>
+    <string name="stats_listening_since">Listening since</string>
+    <string name="stats_by_hour">When you listen</string>
+    <plurals name="stats_day_count">
+        <item quantity="one">%1$s day</item>
+        <item quantity="other">%1$s days</item>
+    </plurals>
 </resources>

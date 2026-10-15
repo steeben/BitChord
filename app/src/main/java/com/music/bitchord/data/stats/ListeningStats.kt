@@ -579,6 +579,16 @@ object ListeningStats {
                 }
 
             val busiest = days.entries.maxByOrNull { it.value }
+            val listenedOn = days.entries
+                .filter { it.value > 0 }
+                .mapNotNull { runCatching { LocalDate.parse(it.key) }.getOrNull() }
+                .sorted()
+            var streak = 0
+            var run = 0
+            listenedOn.forEachIndexed { index, date ->
+                run = if (index > 0 && listenedOn[index - 1].plusDays(1) == date) run + 1 else 1
+                if (run > streak) streak = run
+            }
             return ReplaySummary(
                 period = period,
                 label = period.label(today),
@@ -595,6 +605,8 @@ object ListeningStats {
                 distinctArtists = artists.size,
                 distinctAlbums = albums.size,
                 since = earliest,
+                activeDays = listenedOn.size,
+                longestStreak = streak,
             )
         }
     }
@@ -807,6 +819,10 @@ data class ReplaySummary(
     val distinctAlbums: Int,
     /** The earliest month with anything in it, `YYYY-MM`. */
     val since: String?,
+    /** How many days had any listening at all. */
+    val activeDays: Int = 0,
+    /** The most days in a row with some listening on each. */
+    val longestStreak: Int = 0,
 ) {
     val minutes: Long get() = totalMs / 60_000
     val hours: Long get() = totalMs / 3_600_000
@@ -824,6 +840,12 @@ data class ReplaySummary(
     val isEmpty: Boolean get() = songs.isEmpty()
 
     /** The hour of the day with the most listening, or null if nothing was. */
+    /** The song played the most times, which is not always the one played longest. */
+    val mostReplayed: RankedSong? get() = songs.maxWithOrNull(compareBy<RankedSong> { it.plays }.thenBy { it.ms })
+
+    /** Average listening on a day that had any, or 0 with none. */
+    val averageActiveDayMs: Long get() = if (activeDays == 0) 0L else totalMs / activeDays
+
     val peakHour: Int? get() = hourOfDay.withIndex()
         .filter { it.value > 0 }
         .maxByOrNull { it.value }
