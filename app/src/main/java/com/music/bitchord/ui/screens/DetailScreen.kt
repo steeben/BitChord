@@ -201,12 +201,6 @@ private const val ARTIST_ACTIONS_INDEX = 1
 /** The gap under a release's controls row, at the foot of its header. */
 private val RELEASE_HEADER_FOOT = 14.dp
 
-/** How far past the stop the content above the pinned controls takes to fade out. */
-private val PIN_FADE_DISTANCE = 32.dp
-
-/** The soft edge, just above the top bar's foot, where the title is cut once past the stop. */
-private val PIN_BAR_EDGE = 16.dp
-
 /** The band under the pinned controls in which rows fade out on their way up. */
 private val PIN_FADE_BAND = 28.dp
 
@@ -453,9 +447,7 @@ fun DetailScreen(
     // runs.
     val searchStop = with(LocalDensity.current) { topBarContentPadding().roundToPx() }
     val releaseActionsFoot = with(LocalDensity.current) { RELEASE_HEADER_FOOT.roundToPx() }
-    val pinFadePx = with(LocalDensity.current) { PIN_FADE_DISTANCE.toPx() }
     val pinBandPx = with(LocalDensity.current) { PIN_FADE_BAND.toPx() }
-    val pinEdgePx = with(LocalDensity.current) { PIN_BAR_EDGE.toPx() }
 
     // The controls row — the release's circles, or the artist's Play row —
     // stops under the top bar once a scroll carries it up there, and the list
@@ -468,6 +460,8 @@ fun DetailScreen(
     // the credit and meta lines between it and the row — and from there on the
     // title is what scrolls up and fades, not the row.
     var controlsLead by remember(page.browseId) { mutableIntStateOf(0) }
+    // The artist page's header is an item of its own above the row.
+    var artistHeaderHeight by remember(page.browseId) { mutableIntStateOf(0) }
     val controlsIndex = if (isArtist) ARTIST_ACTIONS_INDEX else 0
     val hasControls = if (isArtist) songs.isNotEmpty() else songs.isNotEmpty() || page.songs is UiState.Loading
     val showsControls by rememberUpdatedState(hasControls)
@@ -491,6 +485,12 @@ fun DetailScreen(
     val controlsPinned by remember(controlsOvershoot) {
         derivedStateOf { (controlsOvershoot() ?: -1f) >= 0f }
     }
+    // Where the top of the page — artwork, title and all — sits while the
+    // controls are at their stop. The whole header holds there with them, and
+    // only the list goes on scrolling, under it.
+    val headerStopTop by rememberUpdatedState(
+        pinTop - controlsOffset - if (isArtist) artistHeaderHeight else 0,
+    )
 
     LaunchedEffect(searching) {
         // Under the pinned controls rather than behind them: the field is the
@@ -541,6 +541,7 @@ fun DetailScreen(
                     artHeight = artHeight,
                     listState = listState,
                     heroUrl = appleArt?.heroUrl,
+                    floorTop = { if (controlsPinned) headerStopTop.toFloat() else Float.NEGATIVE_INFINITY },
                     modifier = Modifier.matchParentSize(),
                 )
 
@@ -548,12 +549,12 @@ fun DetailScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        // Once the controls are pinned, whatever scrolls up to
-                        // them fades out in the band just under them and is gone
-                        // by the time it reaches them: nothing shows behind the
-                        // row or carries on up behind the top bar. Offscreen only
-                        // then, so the cut is out of the list alone and not the
-                        // artwork painted behind it.
+                        // Once the header is held, the list scrolls on under it:
+                        // rows fade out in the band just under the controls and
+                        // are gone by the time they reach them, so nothing of the
+                        // list shows behind the held header or the top bar.
+                        // Offscreen only then, so the cut is out of the list
+                        // alone and not the artwork painted behind it.
                         .graphicsLayer {
                             compositingStrategy = if (controlsPinned) {
                                 CompositingStrategy.Offscreen
@@ -563,42 +564,17 @@ fun DetailScreen(
                         }
                         .drawWithContent {
                             drawContent()
-                            val overshoot = controlsOvershoot() ?: return@drawWithContent
-                            if (overshoot < 0f) return@drawWithContent
-                            // Eased in over the first stretch past the stop, so
-                            // the title above the row doesn't blink out the
-                            // instant the row arrives — and whatever is left of
-                            // it is cut at the top bar's foot, never drawn up
-                            // behind the bar's buttons.
-                            val keep = 1f - (overshoot / pinFadePx).coerceIn(0f, 1f)
+                            if (!controlsPinned) return@drawWithContent
                             val cut = pinTop + controlsHeight.toFloat()
-                            val barFoot = searchStop.toFloat()
                             drawRect(
                                 color = Color.Transparent,
                                 topLeft = Offset.Zero,
-                                size = Size(size.width, (barFoot - pinEdgePx).coerceAtLeast(0f)),
+                                size = Size(size.width, cut),
                                 blendMode = BlendMode.DstIn,
                             )
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    1f to Color.Black.copy(alpha = keep),
-                                    startY = barFoot - pinEdgePx,
-                                    endY = barFoot,
-                                ),
-                                topLeft = Offset(0f, barFoot - pinEdgePx),
-                                size = Size(size.width, pinEdgePx),
-                                blendMode = BlendMode.DstIn,
-                            )
-                            drawRect(
-                                color = Color.Black.copy(alpha = keep),
-                                topLeft = Offset(0f, barFoot),
-                                size = Size(size.width, (cut - barFoot).coerceAtLeast(0f)),
-                                blendMode = BlendMode.DstIn,
-                            )
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0f to Color.Black.copy(alpha = keep),
                                     1f to Color.Black,
                                     startY = cut,
                                     endY = cut + pinBandPx,
@@ -614,13 +590,15 @@ fun DetailScreen(
                 ) {
             item(key = "header") {
                 if (isArtist) {
-                    ArtistHeader(
-                        page = page,
-                        palette = palette,
-                        artHeight = artHeight,
-                        appleArt = appleArt,
-                        onNamePlaced = { controlsLead = it },
-                    )
+                    Box(Modifier.onSizeChanged { artistHeaderHeight = it.height }) {
+                        ArtistHeader(
+                            page = page,
+                            palette = palette,
+                            artHeight = artHeight,
+                            appleArt = appleArt,
+                            onNamePlaced = { controlsLead = it },
+                        )
+                    }
                 } else {
                     ReleaseHeader(
                         page = page,
@@ -906,17 +884,26 @@ fun DetailScreen(
             if (isArtist) aboutItem()
         }
 
-                // The pinned copy of the controls, at the stop under the top
-                // bar. The row in the list goes invisible while this is up, so
-                // there is only ever one of them to be seen or pressed.
+                // The held header: a copy of the page's top — title, credit
+                // and controls — at the place it stopped. The artwork behind it
+                // holds at the same place (see [PageBackground]'s floor), and
+                // the list's own copy is cut away while this one is up, so only
+                // one is ever seen or pressed. Nothing in it but the buttons
+                // takes a touch, so a drag on the title still scrolls the list.
                 if (controlsPinned) {
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .offset { IntOffset(0, pinTop) },
+                            .offset { IntOffset(0, headerStopTop) },
                     ) {
                         if (isArtist) {
                             Column {
+                                ArtistHeader(
+                                    page = page,
+                                    palette = palette,
+                                    artHeight = artHeight,
+                                    appleArt = appleArt,
+                                )
                                 ActionRow(
                                     palette = palette,
                                     onPlay = { onSongClick(songs, 0) },
@@ -930,15 +917,18 @@ fun DetailScreen(
                                 )
                             }
                         } else {
-                            ReleaseActions(
+                            ReleaseHeader(
                                 page = page,
                                 palette = palette,
+                                artHeight = artHeight,
+                                trackCount = songs.size,
                                 songs = songs,
                                 onPlay = { onSongClick(songs, 0) },
                                 onShuffle = { onShuffle(songs) },
                                 searching = searching,
                                 onSearch = toggleSearch,
                                 onMore = onMore,
+                                onArtistClick = onArtistClick,
                                 onToggleLibrary = onToggleLibrary,
                             )
                         }
@@ -1459,6 +1449,8 @@ private fun PageBackground(
     artHeight: Dp,
     listState: LazyListState,
     heroUrl: String? = null,
+    /** The highest the artwork goes: where it holds while the page's header is held. */
+    floorTop: () -> Float = { Float.NEGATIVE_INFINITY },
     modifier: Modifier = Modifier,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
@@ -1473,7 +1465,10 @@ private fun PageBackground(
             Modifier
                 .fillMaxWidth()
                 .height(artHeight)
-                .offset { IntOffset(0, listState.headerTop(artHeight.toPx()).roundToInt()) },
+                .offset {
+                    val top = maxOf(listState.headerTop(artHeight.toPx()), floorTop())
+                    IntOffset(0, top.roundToInt())
+                },
         ) {
             AsyncImage(
                 model = art,
