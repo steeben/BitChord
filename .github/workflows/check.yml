@@ -32,7 +32,9 @@ jobs:
       - run: chmod +x gradlew
 
       - name: Tests
-        run: ./gradlew testDevDebugUnitTest -I .github/gradle/skip-known-failures.init.gradle
+        run: |
+          set -o pipefail
+          ./gradlew testDevDebugUnitTest -I .github/gradle/skip-known-failures.init.gradle 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
 
       # The same key every build is signed with, so each APK installs over the
       # last one and keeps the app's data and sign-in. Without it the runner
@@ -56,14 +58,15 @@ jobs:
       # is skipped: it stops on translation leftovers in the upstream strings.
       - name: Build the dev APK
         run: |
+          set -o pipefail
           if [ -n "$SHARED_KEYSTORE" ]; then
             ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix \
               -Pandroid.injected.signing.store.file="$SHARED_KEYSTORE" \
               -Pandroid.injected.signing.store.password=android \
               -Pandroid.injected.signing.key.alias=androiddebugkey \
-              -Pandroid.injected.signing.key.password=android
+              -Pandroid.injected.signing.key.password=android 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
           else
-            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix
+            ./gradlew assembleDevBenchmark -x lintVitalDevBenchmark -PnoBenchmarkSuffix 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
           fi
 
       - name: Upload the dev APK
@@ -72,6 +75,17 @@ jobs:
           name: bitchord-dial-${{ github.sha }}
           path: app/build/outputs/apk/dev/benchmark/*.apk
           if-no-files-found: error
+
+      # Compiler errors and failed tasks as annotations, so they read on the
+      # run's summary without opening the log.
+      - name: Report build errors
+        if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/gradle.log" ]; then
+            grep -E '^e: |^> Task .*FAILED|What went wrong|Test.*FAILED' "$RUNNER_TEMP/gradle.log" | head -40 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
 
       - name: Upload test reports
         if: failure()
