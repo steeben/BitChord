@@ -328,9 +328,8 @@ private fun GlassNowPlaying(
     val showNext by CustomizationSettings.miniPlayerNextButton.collectAsStateWithLifecycle()
     val swipe = rememberMiniPlayerSwipe()
     val artUrl = rememberRemoteArtworkUrl(song)
-    val progressColor = progressTint(
-        com.music.bitchord.ui.player.rememberArtworkColors(artUrl?.artworkAt(ROW_ART_PX)).art,
-    )
+    // The app's accent, so the playhead matches the icons and nav pill around it.
+    val progressColor = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary
     val density = androidx.compose.ui.platform.LocalDensity.current
     val pressSource = remember { MutableInteractionSource() }
     val isPressed by pressSource.collectIsPressedAsState()
