@@ -70,6 +70,10 @@ object NetEase {
                 val name = song["name"]?.jsonPrimitive?.contentOrNull?.matchKey().orEmpty()
                 val albumName = ((song["al"] ?: song["album"]) as? JsonObject)
                     ?.get("name")?.jsonPrimitive?.contentOrNull?.matchKey()
+                // The same title, not just the same artist at the same length:
+                // another song off the same album passes both of those.
+                val rawName = song["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (!SongMatch.sameTitle(title, rawName)) return@mapNotNull null
                 var score = 0
                 if (artists.any { it.isNotEmpty() && (wantArtist.contains(it) || it.contains(wantArtist)) }) score += 4
                 if (name == wantTitle) score += 3 else if (name.isNotEmpty() && wantTitle.contains(name)) score += 1

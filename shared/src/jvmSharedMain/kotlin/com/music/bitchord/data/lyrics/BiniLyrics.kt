@@ -76,8 +76,28 @@ object BiniLyrics {
         val body = lyricsGet(url.toString()) ?: return@withContext null
         val response = runCatching { lyricsJson.decodeFromString<Response>(body) }.getOrNull()
             ?: return@withContext null
-        response.results?.firstOrNull()
+        val results = response.results.orEmpty()
+        // Asked by recording, the answer is that recording. Asked by name, the
+        // first hit is only the search's best guess, and on an album it is
+        // regularly a different song from the same record — whose ISRC every
+        // source after this would then fetch by. So the hit has to be this
+        // song by name, artist and length; one that names nothing is taken
+        // on trust, as it always was.
+        if (!isrc.isNullOrBlank()) return@withContext results.firstOrNull()
+        results.firstOrNull { hit ->
+            hit.trackName.isNullOrBlank() || SongMatch.matches(
+                wantedTitle = title,
+                wantedArtist = artist,
+                wantedDurationMs = durationMs,
+                title = hit.trackName,
+                artist = hit.artistName,
+                durationMs = hit.duration?.let { it * 1000L },
+                toleranceMs = IDENTIFY_TOLERANCE_MS,
+            )
+        }
     }
+
+    private const val IDENTIFY_TOLERANCE_MS = 5_000L
 
     /**
      * The document a search already found, fetched and parsed. These are

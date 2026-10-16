@@ -197,6 +197,9 @@ object PaxSenix {
         durationMs: Long,
     ): Candidate? {
         val candidates = buildList { root.collectCandidates(this) }
+            // A candidate with a title has to be this one; artist and length
+            // alone also pass another song off the same album.
+            .filter { it.title.isBlank() || SongMatch.sameTitle(title, it.title) }
         return candidates.map { it to it.score(title, artist, durationMs) }
             .maxByOrNull { it.second }
             ?.takeIf { it.second >= MINIMUM_MATCH_SCORE }

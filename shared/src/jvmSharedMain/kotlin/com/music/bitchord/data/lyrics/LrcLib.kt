@@ -80,6 +80,19 @@ object LrcLib {
         val hits = json.parseToJsonElement(body) as? JsonArray ?: return null
         return hits.mapNotNull { it as? JsonObject }
             .filter { it["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true }
+            // A fuzzy search answers with other songs by the same artist too —
+            // off the same album, at nearly the same length. Only this title,
+            // and only within a few seconds of this length.
+            .filter { hit ->
+                SongMatch.matches(
+                    wantedTitle = title,
+                    wantedArtist = artist,
+                    wantedDurationMs = seconds * 1000L,
+                    title = hit["trackName"]?.jsonPrimitive?.contentOrNull,
+                    artist = hit["artistName"]?.jsonPrimitive?.contentOrNull,
+                    durationMs = hit["duration"]?.jsonPrimitive?.doubleOrNull?.let { (it * 1000).toLong() },
+                )
+            }
             .filter { hit ->
                 !wordStampedOnly || (
                     WORD_STAMP.containsMatchIn(hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull.orEmpty()) &&

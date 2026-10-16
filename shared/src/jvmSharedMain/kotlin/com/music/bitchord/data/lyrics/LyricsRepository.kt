@@ -156,7 +156,7 @@ object LyricsRepository {
                         recording,
                         hit,
                         documents::get,
-                    )?.let { result(source, it) }
+                    )?.takeIf { fitsTrack(it, durationMs) }?.let { result(source, it) }
                     onSourceResult?.invoke(source, found)
                     found
                 } catch (cancelled: CancellationException) {
@@ -257,6 +257,23 @@ object LyricsRepository {
      * worse failure than a fuzzy match.
      */
     private const val IDENTIFY_TIMEOUT_MS = 2_500L
+
+    /**
+     * Whether timed lyrics could belong to a track this long. Words still
+     * being sung well after the track has ended are another song's — the
+     * likeliest wrong answer is a longer track off the same album — and are
+     * dropped as a miss, whichever provider sent them.
+     */
+    private fun fitsTrack(lines: List<LyricLine>, durationMs: Long): Boolean {
+        if (durationMs <= 0) return true
+        val lastSung = lines.filter { it.text.isNotBlank() }.maxOfOrNull { line ->
+            maxOf(line.timeMs, line.words.lastOrNull()?.endMs ?: 0L)
+        } ?: return true
+        return lastSung <= durationMs + OVERRUN_MS
+    }
+
+    /** How far past the track's end a lyric may still be stamped; see [fitsTrack]. */
+    private const val OVERRUN_MS = 10_000L
 
     /** See [Result.isShort]. */
     private const val SHORT_LINES = 2

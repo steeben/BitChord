@@ -71,7 +71,10 @@ object Musixmatch {
 
     private suspend fun bestTrack(title: String, artist: String, seconds: Int): Track? {
         val tracks = searchTrack(title, artist) ?: return null
-        return tracks.maxByOrNull { score(it, title, artist, seconds) }
+        // Only this song: a different track by the same artist at the same
+        // length scores well enough to win a list with nothing better in it.
+        return tracks.filter { SongMatch.sameTitle(title, it.trackName) }
+            .maxByOrNull { score(it, title, artist, seconds) }
     }
 
     private fun score(track: Track, title: String, artist: String, seconds: Int): Double {

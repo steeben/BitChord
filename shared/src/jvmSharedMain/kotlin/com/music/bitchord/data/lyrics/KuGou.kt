@@ -37,9 +37,17 @@ object KuGou {
         val keyword = keyword(title, artist, album)
         val seconds = (durationMs / 1000).toInt()
 
-        val candidate = searchSongs(keyword, seconds)?.firstNotNullOfOrNull { hash ->
+        // Every candidate has to be this song by title: the keyword carries the
+        // album, and KuGou answers it with the album's other tracks as readily
+        // as with the one asked for.
+        fun isThisSong(name: String?, singer: String?) =
+            name.isNullOrBlank() || SongMatch.sameTitle(title, name) &&
+                (singer.isNullOrBlank() || SongMatch.sharesArtist(artist, singer))
+        val candidate = searchSongs(keyword, seconds, ::isThisSong)?.firstNotNullOfOrNull { hash ->
+            // Already this song: the hash came from a search that was checked.
             searchLyrics(hash = hash)?.firstOrNull()
-        } ?: searchLyrics(keyword = keyword, seconds = seconds)?.firstOrNull()
+        } ?: searchLyrics(keyword = keyword, seconds = seconds)
+            ?.firstOrNull { isThisSong(it.song, it.singer) && it.closeTo(seconds) }
             ?: return@withContext null
 
         download(candidate.id, candidate.accesskey, "krc")
@@ -103,7 +111,11 @@ object KuGou {
      * first result for a common title is as likely to be a cover or a remix
      * as the right recording — and ordered closest match first.
      */
-    private fun searchSongs(keyword: Keyword, seconds: Int): List<String>? {
+    private fun searchSongs(
+        keyword: Keyword,
+        seconds: Int,
+        isThisSong: (String?, String?) -> Boolean,
+    ): List<String>? {
         val url = "https://mobileservice.kugou.com/api/v3/search/song".toHttpUrl().newBuilder()
             .addQueryParameter("version", "9108")
             .addQueryParameter("plat", "0")
@@ -115,6 +127,7 @@ object KuGou {
         val response = runCatching { lyricsJson.decodeFromString<SearchSongResponse>(body) }.getOrNull()
         return response?.data?.info.orEmpty()
             .filter { seconds <= 0 || abs(it.duration - seconds) <= DURATION_TOLERANCE_SECONDS }
+            .filter { isThisSong(it.songname ?: it.filename?.substringAfter(" - "), it.singername) }
             .sortedBy { abs(it.duration - seconds) }
             .map { it.hash }
     }
@@ -198,14 +211,32 @@ object KuGou {
         data class Data(val info: List<Info> = emptyList())
 
         @Serializable
-        data class Info(val hash: String, val duration: Int = -1)
+        data class Info(
+            val hash: String,
+            val duration: Int = -1,
+            val songname: String? = null,
+            val singername: String? = null,
+            /** "Artist - Title", where [songname] is missing. */
+            val filename: String? = null,
+        )
     }
 
     @Serializable
     private data class SearchLyricsResponse(val candidates: List<Candidate> = emptyList())
 
     @Serializable
-    private data class Candidate(val id: String, val accesskey: String)
+    private data class Candidate(
+        val id: String,
+        val accesskey: String,
+        val song: String? = null,
+        val singer: String? = null,
+        /** Milliseconds. */
+        val duration: Long? = null,
+    ) {
+        fun closeTo(seconds: Int): Boolean =
+            seconds <= 0 || duration == null || duration <= 0 ||
+                abs(duration / 1000 - seconds) <= DURATION_TOLERANCE_SECONDS
+    }
 
     @Serializable
     private data class DownloadResponse(val content: String = "")
