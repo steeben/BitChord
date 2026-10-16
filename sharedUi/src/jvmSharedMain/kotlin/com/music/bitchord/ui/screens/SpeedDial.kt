@@ -102,6 +102,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.cancellation.CancellationException
@@ -542,7 +546,7 @@ internal fun SpeedDialShelf(
                                         showLabel = showLabels != (id in labelOverrides),
                                         current = currentSong != null && item.videoId == currentSong.videoId,
                                         isPlaying = isPlaying,
-                                        onClick = { bounds, pressedScale ->
+                                        onClick = { bounds, pressedScale, snapshot ->
                                             val opens = item.browseId
                                             // An album, artist or playlist grows out of its tile.
                                             if (item.videoId == null && opens != null && bounds != null) {
@@ -553,6 +557,7 @@ internal fun SpeedDialShelf(
                                                     thumbnailUrl = item.thumbnailUrl,
                                                     shelfTitle = shelf.title,
                                                     page = page,
+                                                    snapshot = snapshot,
                                                 )
                                             }
                                             onItemClick(item)
@@ -582,7 +587,7 @@ internal fun SpeedDialShelf(
                             showLabel = showLabels != (liftedId in labelOverrides),
                             current = false,
                             isPlaying = false,
-                            onClick = { _, _ -> },
+                            onClick = { _, _, _ -> },
                             onLongPress = null,
                             modifier = Modifier
                                 .offset {
@@ -679,8 +684,11 @@ private fun SpeedDialTile(
     showLabel: Boolean = true,
     current: Boolean,
     isPlaying: Boolean,
-    /** Given where the tile is on screen (full size) and how far in it was pressed when let go. */
-    onClick: (bounds: Rect?, pressedScale: Float) -> Unit,
+    /**
+     * Given where the tile is on screen (full size), how far in it was pressed
+     * when let go, and a picture of it as drawn unpressed.
+     */
+    onClick: (bounds: Rect?, pressedScale: Float, snapshot: ImageBitmap?) -> Unit,
     onLongPress: (() -> Unit)?,
     modifier: Modifier = Modifier,
     /** How far it is shaded over, read when drawing: see the dial's jiggle. */
@@ -689,17 +697,34 @@ private fun SpeedDialTile(
     val shape = RoundedCornerShape(10.dp)
     val press = rememberTilePress()
     val spot = remember { TileSpot() }
+    // Every frame of the tile, kept to hand: a tap that opens a page takes a
+    // picture of it from here, for the page to grow out of and land back as.
+    val drawn = rememberGraphicsLayer()
     Box(
         modifier = modifier
             .onPlaced { spot.coordinates = it }
             .tilePress(press)
+            // The press's shade, outside the recording: the picture is of the
+            // tile at rest, as it will look when its page closes back into it.
+            .drawWithContent {
+                drawContent()
+                val shade = press.shade
+                if (shade > 0f) {
+                    drawRoundRect(Color.Black.copy(alpha = shade), cornerRadius = CornerRadius(10.dp.toPx()))
+                }
+            }
+            .drawWithContent {
+                drawn.record { this@drawWithContent.drawContent() }
+                drawLayer(drawn)
+            }
             .clip(shape)
             .dialTileBorder(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .longPressMenuClickable(
                 onClick = {
                     press.tap {
-                        onClick(spot.coordinates?.takeIf { it.isAttached }?.boundsInRoot(), press.scale)
+                        val snapshot = runCatching { drawn.toImageBitmap() }.getOrNull()
+                        onClick(spot.coordinates?.takeIf { it.isAttached }?.boundsInRoot(), press.scale, snapshot)
                     }
                 },
                 onLongClick = onLongPress,
@@ -748,7 +773,7 @@ private fun SpeedDialTile(
             )
         }
         if (current && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
-        DimOverlay { maxOf(dim(), press.shade) }
+        DimOverlay(dim)
     }
 }
 
@@ -773,7 +798,7 @@ private fun HistoryTile(
                 interactionSource = press.interactions,
                 indication = null,
                 onClickLabel = label,
-            ) { press.tap(onClick) },
+            ) { press.tap { onClick() } },
     ) {
         Icon(
             imageVector = Icons.Rounded.History,
@@ -818,7 +843,7 @@ private class TilePress(private val scope: CoroutineScope) {
     val scale: Float get() = 1f - PRESS_SHRINK * depth.value
     val shade: Float get() = PRESS_SHADE * depth.value
 
-    fun tap(action: () -> Unit) {
+    fun tap(action: suspend () -> Unit) {
         tapping = true
         scope.launch {
             try {

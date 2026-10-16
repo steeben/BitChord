@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +18,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -25,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
@@ -52,6 +57,8 @@ class DialOrigin(
     val thumbnailUrl: String?,
     val shelfTitle: String,
     val page: Int,
+    /** The tile as drawn, unpressed: what the page grows out of and lands back as. */
+    val snapshot: ImageBitmap? = null,
 )
 
 /**
@@ -60,13 +67,26 @@ class DialOrigin(
  * as its page is open, as an app's icon is.
  */
 object DialLaunch {
-    var origin: DialOrigin? by mutableStateOf(null)
+    private var current: DialOrigin? by mutableStateOf(null)
+    var origin: DialOrigin?
+        get() = current
+        set(value) {
+            current = value
+            landed = false
+        }
+
+    /**
+     * Whether a closing page has all but reached its tile. The tile comes back
+     * then, underneath the page's last frames (which show the tile's own
+     * picture by that point), so the page is gone over it with no gap between.
+     */
+    internal var landed by mutableStateOf(false)
 
     /** The dial page Home should open on: the one a launched tile is on. */
     internal fun pageOf(shelfTitle: String): Int = origin?.takeIf { it.shelfTitle == shelfTitle }?.page ?: 0
 
     /** Whether the tile for [id] is out on its page, so not on the dial. */
-    internal fun isOut(id: String): Boolean = origin?.key == id
+    internal fun isOut(id: String): Boolean = !landed && origin?.key == id
 
     /** Whether going from page [from] to page [to] opens or closes the launched tile's page from [home]. */
     fun zooms(from: String, to: String, home: String): Boolean {
@@ -98,16 +118,29 @@ fun DialLaunchPage(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val closing = visibility.targetState == EnterExitState.PostExit
+    val live = DialLaunch.origin?.takeIf { zooming && it.key == key }
+    // Held through a close to its very last frame. The page change is over a
+    // moment before the closing page is taken away, and in that moment
+    // [zooming] is already false: let go of, the page drew once at full size,
+    // right over the tile it had just shrunk into.
+    val held = remember { arrayOfNulls<DialOrigin>(1) }
+    if (live != null) held[0] = live
+    val origin = live ?: held[0]?.takeIf { closing }
     val progress by visibility.animateFloat(
         transitionSpec = {
-            if (zooming) tween(if (closing) DialLaunch.CLOSE_MS else DialLaunch.OPEN_MS, easing = LaunchEasing) else snap()
+            if (origin != null) tween(if (closing) DialLaunch.CLOSE_MS else DialLaunch.OPEN_MS, easing = LaunchEasing) else snap()
         },
         label = "dialLaunch",
     ) { if (it == EnterExitState.Visible) 1f else 0f }
-    val origin = DialLaunch.origin?.takeIf { zooming && it.key == key }
     // Where this page sits on screen, to turn the tile's root position into one on the page.
     val pageAt = remember { mutableStateOf(Offset.Zero) }
     val ground = MaterialTheme.colorScheme.background
+    if (origin != null && closing) {
+        LaunchedEffect(origin) {
+            snapshotFlow { progress }.first { it <= LAND_AT }
+            DialLaunch.landed = true
+        }
+    }
     Box(
         Modifier
             .onPlaced { pageAt.value = it.positionInRoot() }
@@ -134,7 +167,8 @@ fun DialLaunchPage(
                             // The window: the tile's shape growing to the page's,
                             // in the page's own (unscaled) units.
                             val shownHeight = lerp(tile.height, h, p) / scale
-                            val radius = lerp(TILE_CORNER.toPx() * origin.pressedScale, 0f, p) / scale
+                            val tileScale = if (closing) 1f else origin.pressedScale
+                            val radius = lerp(TILE_CORNER.toPx() * tileScale, 0f, p) / scale
                             shape = WindowShape(shownHeight, radius)
                             clip = true
                         }
@@ -151,29 +185,45 @@ fun DialLaunchPage(
     ) {
         content()
         if (origin != null) {
-            // The tile's own artwork over the top of the page, fading into
-            // the page's banner as it opens, and back in as it closes.
-            val context = LocalPlatformContext.current
-            val request = remember(origin.thumbnailUrl, context) { speedDialArtRequest(context, origin.thumbnailUrl) }
+            // The tile itself over the top of the page, fading into the
+            // page's banner as it opens, and back in as it closes: wholly the
+            // tile again for the last stretch, so it lands as exactly that.
             Box(
                 Modifier
                     // Free of the page's full-size minimum, to be only as tall as the tile.
                     .wrapContentSize(Alignment.TopStart)
                     .fillMaxWidth()
-                    .graphicsLayer { alpha = (1f - progress / 0.45f).coerceIn(0f, 1f) }
+                    .graphicsLayer { alpha = (1f - (progress - LAND_AT) / 0.4f).coerceIn(0f, 1f) }
                     // As tall, against the page's width, as the tile is against its own.
                     .aspectRatio(origin.bounds.width / origin.bounds.height.coerceAtLeast(1f)),
             ) {
-                AsyncImage(
-                    model = request,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize(),
-                )
+                val snapshot = origin.snapshot
+                if (snapshot != null) {
+                    Image(
+                        bitmap = snapshot,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                } else {
+                    val context = LocalPlatformContext.current
+                    val request = remember(origin.thumbnailUrl, context) {
+                        speedDialArtRequest(context, origin.thumbnailUrl)
+                    }
+                    AsyncImage(
+                        model = request,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
             }
         }
     }
 }
+
+/** How close to its tile a closing page is (in progress) when the tile itself comes back. */
+private const val LAND_AT = 0.04f
 
 private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 

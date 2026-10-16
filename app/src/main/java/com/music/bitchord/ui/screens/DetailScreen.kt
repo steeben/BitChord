@@ -6,6 +6,8 @@ import com.music.bitchord.R
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1404,6 +1406,12 @@ private fun ArtistHeader(
         // of an Apple logo is a few hundred KB the CDN may still be resizing — the
         // name stands in for it, so the header is never left with nothing in it.
         var logoShown by remember(logoUrl) { mutableStateOf(false) }
+        // The logo fades in over the name rather than replacing it outright.
+        val logoIn by animateFloatAsState(
+            targetValue = if (logoShown) 1f else 0f,
+            animationSpec = tween(ART_CROSSFADE_MS, easing = FastOutSlowInEasing),
+            label = "logoIn",
+        )
         if (appleArt != null && logoUrl != null) {
             val context = LocalPlatformContext.current
             var attempt by remember(logoUrl) { mutableIntStateOf(0) }
@@ -1441,6 +1449,7 @@ private fun ArtistHeader(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .graphicsLayer { alpha = logoIn }
                     .onGloballyPositioned { if (logoShown) reportName(it) }
                     .padding(top = 14.dp, bottom = 20.dp)
                     // Sized from the incoming width in layout rather than through a
@@ -1454,7 +1463,7 @@ private fun ArtistHeader(
                     },
             )
         }
-        if (!logoShown) Text(
+        if (logoIn < 1f) Text(
             text = page.title,
             style = MaterialTheme.typography.displayLarge,
             color = palette.onBackground,
@@ -1463,7 +1472,8 @@ private fun ArtistHeader(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .onGloballyPositioned { reportName(it) }
+                .graphicsLayer { alpha = 1f - logoIn }
+                .onGloballyPositioned { if (!logoShown) reportName(it) }
                 // Bottom is half the top inset — the stats pills (or, absent
                 // those, the action row) sit closer under the name than the
                 // name sits under the artwork.
@@ -1501,11 +1511,28 @@ private fun PageBackground(
     modifier: Modifier = Modifier,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    // Not under a canvas: a still blurred over the foot of a moving clip would
-    // freeze the bottom of the video into the wrong picture.
-    val softenFoot = canvas == null && !reduceDynamicBlur &&
+    // Kept under a clip too: the clip covers it once faded in, and dropping it
+    // the moment a clip turned up cut the foot of the banner from soft to sharp.
+    val softenFoot = !reduceDynamicBlur &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val art = heroUrl ?: page.thumbnailUrl.artworkAt(HEADER_ART_PX)
+    val baseArt = page.thumbnailUrl.artworkAt(HEADER_ART_PX)
+    // An artist's Apple photo turns up after the page has opened. It fades in
+    // over the picture already up rather than cutting to it.
+    val heroArt = heroUrl?.takeIf { it != baseArt }
+    var heroLoaded by remember(heroArt) { mutableStateOf(false) }
+    val heroIn by animateFloatAsState(
+        targetValue = if (heroLoaded) 1f else 0f,
+        animationSpec = tween(ART_CROSSFADE_MS, easing = FastOutSlowInEasing),
+        label = "heroIn",
+    )
+    // The moving clip too, slower still and only once the page has settled,
+    // so the banner eases from still to moving instead of jumping to it.
+    val clipIn = remember(canvas) { Animatable(0f) }
+    LaunchedEffect(canvas) {
+        if (canvas == null) return@LaunchedEffect
+        delay(CLIP_FADE_DELAY_MS)
+        clipIn.animateTo(1f, tween(CLIP_FADE_MS, easing = FastOutSlowInEasing))
+    }
 
     Box(modifier.clipToBounds()) {
         Box(
@@ -1517,14 +1544,19 @@ private fun PageBackground(
                     IntOffset(0, top.roundToInt())
                 },
         ) {
-            AsyncImage(
-                model = art,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(palette.elevated),
+            HeaderArt(
+                art = baseArt,
+                softenFoot = softenFoot,
+                modifier = Modifier.matchParentSize().background(palette.elevated),
             )
+            if (heroArt != null) {
+                HeaderArt(
+                    art = heroArt,
+                    softenFoot = softenFoot,
+                    onLoaded = { heroLoaded = true },
+                    modifier = Modifier.matchParentSize().graphicsLayer { alpha = heroIn },
+                )
+            }
 
             // Above the still art but below the scrim, so the scrim that
             // settles the header into the page still sits over it. Always
@@ -1534,31 +1566,8 @@ private fun PageBackground(
                 CanvasArtworkPlayer(
                     canvas = clip,
                     isPlaying = true,
+                    presentationAlpha = { clipIn.value },
                     modifier = Modifier.matchParentSize(),
-                )
-            }
-
-            // The same sleeve, blurred and faded in over the lower half, so the
-            // picture loses its detail before it loses its colour — a merge
-            // rather than a fade to a flat tint. The same request as the sharp
-            // copy, so it is a memory-cache hit and lands on the same frame.
-            if (softenFoot) {
-                AsyncImage(
-                    model = art,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .matchParentSize()
-                        // Offscreen so the mask cuts the blurred result rather
-                        // than each draw beneath it.
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(SOFT_FOOT_MASK, blendMode = BlendMode.DstIn)
-                        }
-                        // Rectangle keeps the edges clamped to the picture's own
-                        // colour rather than fading to transparent at the foot.
-                        .blur(SOFT_FOOT_BLUR, BlurredEdgeTreatment.Rectangle),
                 )
             }
 
@@ -1594,6 +1603,55 @@ private fun PageBackground(
  */
 private fun LazyListState.headerTop(artHeightPx: Float): Float =
     if (firstVisibleItemIndex == 0) -firstVisibleItemScrollOffset.toFloat() else -artHeightPx * 2f
+
+/**
+ * One picture for the header: the artwork, and (when [softenFoot]) the same
+ * artwork blurred and faded in over its lower half, so the picture loses its
+ * detail before it loses its colour — a merge rather than a fade to a flat
+ * tint. The same request as the sharp copy, so it is a memory-cache hit and
+ * lands on the same frame.
+ */
+@Composable
+private fun HeaderArt(
+    art: String?,
+    softenFoot: Boolean,
+    modifier: Modifier = Modifier,
+    onLoaded: () -> Unit = {},
+) {
+    Box(modifier) {
+        AsyncImage(
+            model = art,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            onState = { if (it is AsyncImagePainter.State.Success) onLoaded() },
+            modifier = Modifier.matchParentSize(),
+        )
+        if (softenFoot) {
+            AsyncImage(
+                model = art,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    // Offscreen so the mask cuts the blurred result rather
+                    // than each draw beneath it.
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(SOFT_FOOT_MASK, blendMode = BlendMode.DstIn)
+                    }
+                    // Rectangle keeps the edges clamped to the picture's own
+                    // colour rather than fading to transparent at the foot.
+                    .blur(SOFT_FOOT_BLUR, BlurredEdgeTreatment.Rectangle),
+            )
+        }
+    }
+}
+
+/** How long a late-arriving photo, and then a moving clip (after a beat), take to fade in over the banner. */
+private const val ART_CROSSFADE_MS = 700
+private const val CLIP_FADE_DELAY_MS = 350L
+private const val CLIP_FADE_MS = 1100
 
 /** Where the blurred copy starts to show and where it has fully taken over. */
 private val SOFT_FOOT_MASK = Brush.verticalGradient(
