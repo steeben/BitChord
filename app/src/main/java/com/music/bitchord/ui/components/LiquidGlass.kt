@@ -37,6 +37,12 @@ import com.music.bitchord.ui.components.backdrop.effects.lens
 import com.music.bitchord.ui.components.backdrop.highlight.Highlight
 import com.music.bitchord.ui.components.backdrop.highlight.HighlightElement
 import com.music.bitchord.ui.components.backdrop.internal.ShapeProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
+import com.music.bitchord.ui.components.backdrop.RuntimeShader
+import com.music.bitchord.ui.components.backdrop.internal.RoundedRectRefractionShaderString
+import com.music.bitchord.ui.components.backdrop.internal.RuntimeShaderEffect
 import com.music.bitchord.ui.components.backdrop.shadow.Shadow
 import androidx.compose.ui.unit.dp
 
@@ -258,12 +264,36 @@ fun Modifier.liquidGlass(
 private val DIAL_TILE_HIGHLIGHT = Highlight(width = 1.dp)
 private val dialTileHighlight: () -> Highlight = { DIAL_TILE_HIGHLIGHT }
 
+/** How far in from a glass tile's edge its artwork bends, and how far it is pulled. */
+private val DIAL_TILE_WARP_BAND = 12.dp
+private val DIAL_TILE_WARP_AMOUNT = 9.dp
+
 /**
- * Liquid glass's edge alone, for the dial's tiles in their Glass style: the
- * same angled light along the rim and the same hairline as [liquidGlass], but
- * nothing sampled, blurred or bent, so the artwork shows through untouched.
+ * Liquid glass's edge, for the dial's tiles in their Glass style: the tile's
+ * own artwork bent a little along its rim, as a panel's lens bends what is
+ * under it, with the same angled light and hairline as [liquidGlass] on top.
+ * Nothing is blurred; the middle of the tile is left as it is. The bend needs
+ * Android 13; before that the tile keeps just the light and the hairline.
  */
-fun dialTileGlassEdge(shape: Shape): Modifier =
+fun dialTileGlassEdge(shape: Shape): Modifier = composed {
+    val warp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shape is CornerBasedShape) {
+        val shader = remember { RuntimeShader(RoundedRectRefractionShaderString) }
+        Modifier.graphicsLayer {
+            val radius = shape.topStart.toPx(size, this).coerceAtMost(size.minDimension / 2f)
+            shader.setFloatUniform("size", size.width, size.height)
+            shader.setFloatUniform("offset", 0f, 0f)
+            shader.setFloatUniform("cornerRadii", radius, radius, radius, radius)
+            shader.setFloatUniform("refractionHeight", DIAL_TILE_WARP_BAND.toPx())
+            shader.setFloatUniform("refractionAmount", -DIAL_TILE_WARP_AMOUNT.toPx())
+            shader.setFloatUniform("depthEffect", 0f)
+            renderEffect = RuntimeShaderEffect(shader, "content")
+        }
+    } else {
+        Modifier
+    }
+    // The light and the hairline go outside the bend, so they stay crisp on top of it.
     Modifier
         .then(HighlightElement(shapeProvider = ShapeProvider { shape }, highlight = dialTileHighlight))
         .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
+        .then(warp)
+}

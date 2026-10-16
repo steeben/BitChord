@@ -20,7 +20,7 @@ enum class DialTileStyle {
     /** A bevelled rim that catches the light along the top. */
     EDGE,
 
-    /** Liquid glass's own rim, with none of its blur: the tile shows through untouched. */
+    /** Liquid glass's own rim, bending the artwork slightly along the edge, with none of its blur. */
     GLASS,
 }
 
@@ -36,7 +36,8 @@ val LocalDialTileGlassEdge = staticCompositionLocalOf<((Shape) -> Modifier)?> { 
  * A dial tile's edge, as [LocalDialTileStyle] says: the hairline every
  * thumbnail has; a bevelled rim that catches the light — bright along the top,
  * fading down the sides, a faint return along the foot — with a soft sheen
- * just inside it; or liquid glass's rim, drawn over the art without blurring it.
+ * just inside it; or liquid glass's rim, bending the art along the edge without
+ * blurring it.
  */
 fun Modifier.dialTileBorder(shape: Shape): Modifier = composed {
     val glassEdge = LocalDialTileGlassEdge.current
