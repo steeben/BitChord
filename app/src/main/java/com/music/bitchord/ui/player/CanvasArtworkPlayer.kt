@@ -561,12 +561,34 @@ private object CanvasFrameMemory {
     }
 }
 
-/** The view's whole picture, at most [maxPx] on its longest edge; null without one. */
+/**
+ * The view's whole picture as it is shown, at most [maxPx] on its longest edge;
+ * null without one.
+ *
+ * getBitmap reads the surface back stretched to the bitmap and leaves the
+ * view's own transform out, so the crop is put back here. Kept as read, a
+ * 9:16 clip in a taller view came back a fifth too narrow, and stood in that
+ * way each time the player opened onto it until the clip's own frame took over.
+ */
 private fun TextureView.captureWhole(maxPx: Int): Bitmap? {
     if (width <= 0 || height <= 0) return null
     val scale = (maxPx.toFloat() / maxOf(width, height)).coerceAtMost(1f)
     return runCatching {
-        getBitmap((width * scale).roundToInt().coerceAtLeast(1), (height * scale).roundToInt().coerceAtLeast(1))
+        val w = (width * scale).roundToInt().coerceAtLeast(1)
+        val h = (height * scale).roundToInt().coerceAtLeast(1)
+        val raw = getBitmap(w, h) ?: return null
+        val transform = getTransform(null)
+        if (transform.isIdentity) return raw
+        // The transform is in the view's pixels; the bitmap is the view scaled.
+        val matrix = Matrix().apply {
+            setScale(1f / scale, 1f / scale)
+            postConcat(transform)
+            postScale(scale, scale)
+        }
+        Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { shown ->
+            Canvas(shown).drawBitmap(raw, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
+            raw.recycle()
+        }
     }.getOrNull()
 }
 
