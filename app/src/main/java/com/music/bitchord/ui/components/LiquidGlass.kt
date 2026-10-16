@@ -20,7 +20,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -150,6 +152,42 @@ fun Modifier.lightweightLiquidGlass(
         )
         .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
 }
+
+/**
+ * Glass's light and edge on a control that keeps its own solid fill — the
+ * detail pages' Play circle, beside glass buttons it should read as one set
+ * with. A sheen down from the top and the same rim as the glass buttons, plus
+ * the glass highlight while Liquid Glass is on. No frosted tint: the fill is
+ * the artwork's colour and stays it.
+ */
+@Composable
+fun Modifier.glassSheen(shape: CornerBasedShape): Modifier {
+    val useGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
+    val shapeProvider = ShapeProvider { shape }
+    return clip(shape)
+        .drawWithContent {
+            drawContent()
+            drawRect(GLASS_SHEEN)
+        }
+        .then(
+            if (useGlass) {
+                HighlightElement(
+                    shapeProvider = shapeProvider,
+                    highlight = { Highlight.Default },
+                )
+            } else {
+                Modifier
+            },
+        )
+        .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
+}
+
+/** The light a glass button catches across its top half. */
+private val GLASS_SHEEN = Brush.verticalGradient(
+    0f to Color.White.copy(alpha = 0.22f),
+    0.5f to Color.White.copy(alpha = 0.04f),
+    1f to Color.Transparent,
+)
 
 /**
  * Renders this composable as a liquid glass surface sampling [LocalAppBackdrop]:

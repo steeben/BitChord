@@ -169,6 +169,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Size
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.runtime.SideEffect
+import com.music.bitchord.ui.components.glassSheen
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -1812,6 +1813,8 @@ private fun PlayPill(
                     haptics.play(Haptic.Resume)
                     onClick()
                 }
+                // The glass buttons' light and rim, over the fill and the cut.
+                .glassSheen(CircleShape)
                 // Offscreen so the clear below cuts the circle drawn under it,
                 // not whatever the page has behind.
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
@@ -1848,6 +1851,8 @@ private fun PlayPill(
             .then(if (iconOnly) Modifier.size(size) else Modifier.height(size))
             .clip(CircleShape)
             .background(containerColor)
+            // The glass buttons' light and rim beside it, over its own colour.
+            .glassSheen(CircleShape)
             .clickable {
                 haptics.play(Haptic.Resume)
                 onClick()
