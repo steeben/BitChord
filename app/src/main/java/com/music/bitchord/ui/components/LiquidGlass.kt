@@ -275,7 +275,7 @@ private val DIAL_TILE_WARP_AMOUNT = 9.dp
  * Nothing is blurred; the middle of the tile is left as it is. The bend needs
  * Android 13; before that the tile keeps just the light and the hairline.
  */
-fun dialTileGlassEdge(shape: Shape): Modifier = composed {
+fun dialTileGlassEdge(shape: Shape): Modifier = Modifier.composed {
     val warp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shape is CornerBasedShape) {
         val shader = remember { RuntimeShader(RoundedRectRefractionShaderString) }
         Modifier.graphicsLayer {
