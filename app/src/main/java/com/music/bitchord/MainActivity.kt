@@ -154,9 +154,7 @@ import com.music.bitchord.ui.screens.RecentArtistsScreen
 import com.music.bitchord.ui.screens.ARTIST_DIAL_PAGE_KEY
 import com.music.bitchord.ui.screens.speedDialArtRequest
 import com.music.bitchord.ui.theme.Metropolis
-import com.music.bitchord.ui.components.HomeTitleAlert
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
+import com.music.bitchord.ui.components.HomeDialMenu
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
@@ -488,6 +486,7 @@ class MainActivity : AppCompatActivity() {
             val highPerformance by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
             val liquidGlassEnabled by AppSettings.liquidGlass.collectAsStateWithLifecycle()
             val cropThumbnails by CustomizationSettings.cropThumbnails.collectAsStateWithLifecycle()
+            val dialContouredEdge by CustomizationSettings.dialContouredEdge.collectAsStateWithLifecycle()
             val iosOverscrollFactory = rememberIosOverscrollFactory()
             val performanceRefreshRate by AppSettings.performanceRefreshRate.collectAsStateWithLifecycle()
             val composeView = LocalView.current
@@ -540,6 +539,7 @@ class MainActivity : AppCompatActivity() {
                     LocalLiquidGlassEnabled provides liquidGlassEnabled,
                     LocalAppBackdrop provides appBackdrop,
                     com.music.bitchord.ui.components.LocalCropThumbnails provides cropThumbnails,
+                    com.music.bitchord.ui.components.LocalDialContouredEdge provides dialContouredEdge,
                 ) {
                 // The window's width, measured rather than asked for.
                 //
@@ -881,8 +881,8 @@ private fun BitChordApp(
     val dialPinIcon by CustomizationSettings.dialPinIcon.collectAsStateWithLifecycle()
     var editingSpeedDial by remember { mutableStateOf(false) }
     val speedDialRows by CustomizationSettings.speedDialRows.collectAsStateWithLifecycle()
-    val homeTitleText by CustomizationSettings.homeTitle.collectAsStateWithLifecycle()
-    var editingHomeTitle by remember { mutableStateOf(false) }
+    // Home's "…" menu, of the dial's settings, and whether it is up.
+    var dialMenuOpen by remember { mutableStateOf(false) }
     // Which library the Library tab reads from — picked from the "…" menu in
     // its top bar and remembered — and whether that menu is up.
     val librarySource by CustomizationSettings.librarySource.collectAsStateWithLifecycle()
@@ -4659,6 +4659,18 @@ private fun BitChordApp(
                                     )
                                 }
                             }
+                            // Left of the account photo, on Home itself: the
+                            // dial's settings. The menu is [HomeDialMenu],
+                            // composed with the other frosted overlays below.
+                            if (homeRoot) {
+                                IconButton(onClick = { dialMenuOpen = true }) {
+                                    Icon(
+                                        Icons.Rounded.MoreHoriz,
+                                        contentDescription = stringResource(R.string.home_dial_menu),
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
                             // Left of the account photo, and only there while
                             // there is a batch to report on — see
                             // [TopBarDownloadButton], which decides that for
@@ -4694,8 +4706,8 @@ private fun BitChordApp(
                         refreshing = MainViewModel.Feed.HOME in refreshing,
                         pullFraction = { homePull.distanceFraction },
                         trailing = {
-                            // Says which page is up: the dial's own title (the
-                            // one holding it renames), then Artists, then Explore.
+                            // Says which page is up: the dial's own title,
+                            // then Artists, then Explore.
                             androidx.compose.animation.AnimatedContent(
                                 targetState = homePage,
                                 transitionSpec = {
@@ -4710,7 +4722,7 @@ private fun BitChordApp(
                                     .weight(1f, fill = false),
                             ) { page ->
                                 val titleText = when (page) {
-                                    HomePage.DIAL -> homeTitleText
+                                    HomePage.DIAL -> CustomizationSettings.DEFAULT_HOME_TITLE
                                     HomePage.ARTISTS -> stringResource(R.string.dial_page_artists)
                                     HomePage.EXPLORE -> stringResource(R.string.dial_page_explore)
                                 }
@@ -4725,13 +4737,6 @@ private fun BitChordApp(
                                     fontSize = 30.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = if (page == HomePage.DIAL) {
-                                        Modifier.pointerInput(Unit) {
-                                            detectTapGestures(onLongPress = { editingHomeTitle = true })
-                                        }
-                                    } else {
-                                        Modifier
-                                    },
                                 )
                             }
                         },
@@ -6139,6 +6144,15 @@ private fun BitChordApp(
         }
 
         run {
+            BackHandler(enabled = dialMenuOpen) { dialMenuOpen = false }
+            HomeDialMenu(
+                visible = dialMenuOpen,
+                hazeState = hazeState,
+                onDismiss = { dialMenuOpen = false },
+            )
+        }
+
+        run {
             BackHandler(enabled = libraryMenuOpen) { libraryMenuOpen = false }
             LibraryMenu(
                 visible = libraryMenuOpen,
@@ -6315,18 +6329,6 @@ private fun BitChordApp(
                     showListenBrainzLogin = false
                 },
                 onDismiss = { showListenBrainzLogin = false },
-            )
-        }
-
-        if (editingHomeTitle) {
-            HomeTitleAlert(
-                hazeState = hazeState,
-                current = homeTitleText,
-                onSave = {
-                    CustomizationSettings.setHomeTitle(it)
-                    editingHomeTitle = false
-                },
-                onDismiss = { editingHomeTitle = false },
             )
         }
 

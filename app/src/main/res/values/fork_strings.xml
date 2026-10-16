@@ -42,9 +42,6 @@
     <string name="youtube_music">YouTube Music</string>
     <string name="youtube_music_library_subtitle">Everything in your YouTube Music library</string>
     <string name="speed_dial_grid">Speed dial grid</string>
-    <string name="home_title_edit">Home title</string>
-    <string name="home_title_edit_desc">The text beside the logo on Home</string>
-    <string name="home_title_reset">Reset to BitChord Dial</string>
     <string name="mini_player_next_button">Show next button on miniplayer</string>
     <string name="mini_player_next_button_subtitle">Swiping the miniplayer sideways skips either way</string>
     <string name="crop_thumbnails">Crop thumbnails</string>
@@ -66,6 +63,8 @@
     <string name="dial_pin_icon">Pin icon on pinned tiles</string>
     <string name="dial_settings">Dial</string>
     <string name="dial_labels_default">Show tile names</string>
+    <string name="dial_contoured_edge">Contoured tile edges</string>
+    <string name="home_dial_menu">Dial options</string>
     <string name="check_for_updates">Check for updates</string>
     <string name="checking_for_updates">Checking…</string>
     <string name="update_ready">Version %1$s is ready. Tap to install</string>

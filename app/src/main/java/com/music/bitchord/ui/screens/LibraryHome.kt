@@ -723,7 +723,7 @@ fun LibraryChoiceMenu(
 }
 
 @Composable
-private fun MenuHeading(text: String) {
+internal fun MenuHeading(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
@@ -738,7 +738,7 @@ private fun MenuHeading(text: String) {
  * where the buttons that open them sit.
  */
 @Composable
-private fun GlassMenuPanel(
+internal fun GlassMenuPanel(
     visible: Boolean,
     hazeState: HazeState,
     onDismiss: () -> Unit,

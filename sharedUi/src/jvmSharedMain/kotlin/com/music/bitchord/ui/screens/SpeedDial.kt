@@ -90,7 +90,7 @@ import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.SearchPlayingBars
 import com.music.bitchord.ui.components.contextClick
 import com.music.bitchord.ui.components.longPressMenuClickable
-import com.music.bitchord.ui.components.thumbnailBorder
+import com.music.bitchord.ui.components.dialTileBorder
 import com.music.bitchord.ui.icons.BitChordIcons
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -662,7 +662,7 @@ private fun SpeedDialTile(
     Box(
         modifier = modifier
             .clip(shape)
-            .thumbnailBorder(shape)
+            .dialTileBorder(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
             .contextClick(onLongPress),
@@ -725,7 +725,7 @@ private fun HistoryTile(
     Box(
         modifier
             .clip(shape)
-            .thumbnailBorder(shape)
+            .dialTileBorder(shape)
             .background(DICE_GROUND)
             .clickable(onClickLabel = label, onClick = onClick),
     ) {
@@ -789,7 +789,7 @@ private fun LuckyDiceTile(
     Box(
         modifier
             .clip(shape)
-            .thumbnailBorder(shape)
+            .dialTileBorder(shape)
             .background(DICE_GROUND)
             .clickable(onClickLabel = label) {
                 if (rolling) return@clickable
