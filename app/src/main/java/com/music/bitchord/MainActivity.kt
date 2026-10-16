@@ -199,6 +199,7 @@ import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.CustomizationSettings
+import com.music.bitchord.data.settings.PlayedCollections
 import com.music.bitchord.data.settings.OrderedToggle
 import com.music.bitchord.data.settings.LibrarySource
 import com.music.bitchord.data.settings.speedDialId
@@ -1559,6 +1560,12 @@ private fun BitChordApp(
         if (allSongs.getOrNull(allIndex)?.isUnresolvedSpotify == true) return@playFrom
         val songs = allSongs.filterNot { it.isUnresolvedSpotify }
         val index = songs.indexOf(allSongs.getOrNull(allIndex)).coerceAtLeast(0)
+        // The page's own cover and line, for the dial to show it by once played.
+        if (source.type == PlaybackSourceType.BROWSE) {
+            viewModel.detailStack.value.lastOrNull { it.browseId == source.id }?.let { page ->
+                PlayedCollections.describe(page.browseId, page.title, page.subtitle, page.thumbnailUrl)
+            }
+        }
         playRequestGeneration++
         activeRadioSeed = null
         scope.launch {
@@ -2176,6 +2183,7 @@ private fun BitChordApp(
      */
     val withBrowseSongs: (BrowseTarget, (List<Song>) -> Unit) -> Unit = { target, action ->
         val stamp: (List<Song>) -> Unit = { songs ->
+            PlayedCollections.describe(target.browseId, target.title, target.subtitle, target.thumbnailUrl)
             action(
                 songs.map { song ->
                     song.copy(

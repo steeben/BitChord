@@ -297,11 +297,14 @@ object CustomizationSettings {
     /**
      * Up to [SPEED_DIAL_SIZE] items: pins first, then YouTube's own speed dial
      * when the feed has one, then recently played, then the rest of the feed.
+     * A song played from an album or playlist stands for that album or
+     * playlist, once, where its latest play would be (see [PlayedCollections]).
      */
     fun buildSpeedDial(pins: List<ShelfItem>, shelves: List<HomeShelf>): List<ShelfItem> {
         fun shelf(title: String) = shelves.firstOrNull { it.title.equals(title, ignoreCase = true) }?.items.orEmpty()
-        val official = shelf(SPEED_DIAL_TITLE)
-        val recents = shelf(RECENTS_TITLE)
+        fun asPlayed(items: List<ShelfItem>) = items.map { PlayedCollections.collectionFor(it.videoId) ?: it }
+        val official = asPlayed(shelf(SPEED_DIAL_TITLE))
+        val recents = asPlayed(shelf(RECENTS_TITLE))
         val rest = shelves
             .filterNot { it.title.equals(SPEED_DIAL_TITLE, true) || it.title.equals(RECENTS_TITLE, true) }
             .flatMap { it.items }
