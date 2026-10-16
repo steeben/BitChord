@@ -30,8 +30,8 @@ import dev.chrisbanes.haze.HazeState
 /**
  * What Home's "…" button opens, on the same glass as the Library's menu,
  * grown out of the top bar's right end: the dial's own settings — its grid,
- * the artists' dial, the die, the tile names, the pin badges, the contoured
- * edge — applied as they are touched.
+ * the artists' dial, the die, the tile names, the pin badges, how the tiles
+ * are edged — applied as they are touched.
  */
 @Composable
 fun HomeDialMenu(
@@ -44,7 +44,7 @@ fun HomeDialMenu(
     val feelingLucky by CustomizationSettings.feelingLucky.collectAsStateWithLifecycle()
     val pinIcon by CustomizationSettings.dialPinIcon.collectAsStateWithLifecycle()
     val labels by CustomizationSettings.dialLabels.collectAsStateWithLifecycle()
-    val contouredEdge by CustomizationSettings.dialContouredEdge.collectAsStateWithLifecycle()
+    val tileStyle by CustomizationSettings.dialTileStyle.collectAsStateWithLifecycle()
     GlassMenuPanel(visible = visible, hazeState = hazeState, onDismiss = onDismiss) {
         Column(Modifier.widthIn(min = 280.dp, max = 340.dp)) {
             MenuHeading(stringResource(R.string.speed_dial_grid))
@@ -60,7 +60,18 @@ fun HomeDialMenu(
             DialSwitch(stringResource(R.string.feeling_lucky_setting), feelingLucky, CustomizationSettings::setFeelingLucky)
             DialSwitch(stringResource(R.string.dial_labels_default), labels, CustomizationSettings::setDialLabels)
             DialSwitch(stringResource(R.string.dial_pin_icon), pinIcon, CustomizationSettings::setDialPinIcon)
-            DialSwitch(stringResource(R.string.dial_contoured_edge), contouredEdge, CustomizationSettings::setDialContouredEdge)
+            MenuHeading(stringResource(R.string.dial_tile_style))
+            SegmentedControl(
+                options = listOf(
+                    stringResource(R.string.dial_tile_style_none),
+                    stringResource(R.string.dial_tile_style_edge),
+                    stringResource(R.string.dial_tile_style_glass),
+                ),
+                selectedIndex = tileStyle.ordinal,
+                onSelect = { CustomizationSettings.setDialTileStyle(DialTileStyle.entries[it]) },
+                glass = true,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+            )
         }
     }
 }

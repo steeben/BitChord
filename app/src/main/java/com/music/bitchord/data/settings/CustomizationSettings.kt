@@ -3,6 +3,7 @@ package com.music.bitchord.data.settings
 import android.content.SharedPreferences
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
+import com.music.bitchord.ui.components.DialTileStyle
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -81,8 +82,8 @@ object CustomizationSettings {
     /** Whether pinned tiles on the dials carry the little pin badge. */
     val dialPinIcon = MutableStateFlow(true)
 
-    /** A contoured rim on the dials' tiles, catching the light along the top, instead of the plain hairline. */
-    val dialContouredEdge = MutableStateFlow(false)
+    /** How the dials' tiles are edged: the plain hairline, a contoured rim, or a glass rim. */
+    val dialTileStyle = MutableStateFlow(DialTileStyle.NONE)
     val miniPlayerShape = MutableStateFlow(MiniPlayerShape.CIRCULAR)
 
     /** How many rows of three tiles the speed dial shows per page: 3 or 4. */
@@ -155,7 +156,10 @@ object CustomizationSettings {
         dialHiddenLabels.value = p.getStringSet(KEY_DIAL_HIDDEN_LABELS, emptySet())?.toSet().orEmpty()
         dialPinIcon.value = p.getBoolean(KEY_DIAL_PIN_ICON, true)
         dialLabels.value = p.getBoolean(KEY_DIAL_LABELS, true)
-        dialContouredEdge.value = p.getBoolean(KEY_DIAL_CONTOURED_EDGE, false)
+        dialTileStyle.value = p.getString(KEY_DIAL_TILE_STYLE, null)
+            ?.let { name -> DialTileStyle.entries.firstOrNull { it.name == name } }
+            // The style's first form was one switch, for the contoured rim.
+            ?: if (p.getBoolean(KEY_DIAL_CONTOURED_EDGE, false)) DialTileStyle.EDGE else DialTileStyle.NONE
     }
 
     // ── Speed dial ──────────────────────────────────────────────────────
@@ -239,9 +243,9 @@ object CustomizationSettings {
         prefs?.edit()?.putBoolean(KEY_DIAL_PIN_ICON, value)?.apply()
     }
 
-    fun setDialContouredEdge(value: Boolean) {
-        dialContouredEdge.value = value
-        prefs?.edit()?.putBoolean(KEY_DIAL_CONTOURED_EDGE, value)?.apply()
+    fun setDialTileStyle(value: DialTileStyle) {
+        dialTileStyle.value = value
+        prefs?.edit()?.putString(KEY_DIAL_TILE_STYLE, value.name)?.remove(KEY_DIAL_CONTOURED_EDGE)?.apply()
     }
 
     private fun setHiddenFromDial(value: Set<String>) {
@@ -465,6 +469,7 @@ object CustomizationSettings {
     private const val KEY_DIAL_PIN_ICON = "custom_dial_pin_icon"
     private const val KEY_DIAL_LABELS = "custom_dial_labels"
     private const val KEY_DIAL_CONTOURED_EDGE = "custom_dial_contoured_edge"
+    private const val KEY_DIAL_TILE_STYLE = "custom_dial_tile_style"
     private const val KEY_START_PAGE = "custom_start_page"
     private const val KEY_KEEP_NAV_EXPANDED = "custom_keep_nav_expanded"
     private const val KEY_MINI_PLAYER_SHAPE = "custom_mini_player_shape"
