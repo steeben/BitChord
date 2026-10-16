@@ -1860,8 +1860,8 @@ private fun BitChordApp(
             }
         }
     }
-    val onSongSwipe: (Song) -> Unit = { song ->
-        if (AppSettings.swipeToPlayNext.value) playNext(song) else addToQueue(song)
+    val onSongSwipe: (Song, Boolean) -> Unit = { song, next ->
+        if (next) playNext(song) else addToQueue(song)
     }
 
     /**

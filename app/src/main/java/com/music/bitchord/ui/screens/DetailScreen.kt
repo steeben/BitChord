@@ -289,7 +289,7 @@ fun DetailScreen(
     isPlaying: Boolean,
     onSongClick: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
-    onSongSwipe: (Song) -> Unit,
+    onSongSwipe: (Song, Boolean) -> Unit,
     onShuffle: (List<Song>) -> Unit,
     onSectionItemClick: (ShelfItem) -> Unit,
     onArtistClick: (String, String) -> Unit,
@@ -854,7 +854,7 @@ fun DetailScreen(
                                 onSongClick(queue, position)
                             },
                             onLongPress = { onSongLongPress(song) },
-                            onSwipeToQueue = { onSongSwipe(song) },
+                            onSwipeToQueue = { onSongSwipe(song, it) },
                             rowBackground = Color.Transparent,
                             // The track's place on the release, not its place in
                             // what the filter — or a sort — left standing.

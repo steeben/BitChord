@@ -59,9 +59,6 @@ internal object DesktopAppUiHost : AppUiHost {
 
     private val persistence = DesktopPersistence()
 
-    override val swipeToPlayNext: StateFlow<Boolean> =
-        MutableStateFlow(persistence.boolean(KEY_SWIPE_PLAY_NEXT, false))
-
     private val _homeRecentsViewType = MutableStateFlow(
         runCatching { LibraryViewType.valueOf(persistence.string(KEY_HOME_RECENTS_VIEW, LibraryViewType.LIST.name)) }
             .getOrDefault(LibraryViewType.LIST),
@@ -96,7 +93,6 @@ internal object DesktopAppUiHost : AppUiHost {
         return ids
     }
 
-    private const val KEY_SWIPE_PLAY_NEXT = "swipe_play_next"
     private const val KEY_HOME_RECENTS_VIEW = "home_recents_view"
 }
 

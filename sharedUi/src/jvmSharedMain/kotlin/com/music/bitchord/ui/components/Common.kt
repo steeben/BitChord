@@ -38,7 +38,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import kotlin.math.abs
@@ -270,9 +269,9 @@ fun libraryGrid(available: Dp): LibraryGridSpec {
 /**
  * One track row, used by search, library and detail pages.
  *
- * Swiping it either way queues the track or plays it next, per
- * [AppSettings.swipeToPlayNext] — the row springs back rather than
- * dismissing, since nothing is being removed. Long-press opens the actions
+ * Swiping it right plays the track next, swiping it left adds it to the end
+ * of the queue — the row springs back rather than dismissing, since nothing
+ * is being removed. Long-press opens the actions
  * menu.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -295,7 +294,8 @@ fun SongRow(
     showMore: Boolean = true,
     /** False leaves the track's length off the end of the row. */
     showDuration: Boolean = true,
-    onSwipeToQueue: (() -> Unit)? = null,
+    /** Called with true for a swipe right (play next), false for a swipe left (queue). */
+    onSwipeToQueue: ((playNext: Boolean) -> Unit)? = null,
     /**
      * What the row paints over the swipe reveal as it slides back.
      *
@@ -352,7 +352,9 @@ fun SongRow(
                 // Only queue if the physical drag reached half the box width, ignoring short accidental flings.
                 if (abs(offset) >= boxWidth * 0.45f) {
                     haptics.play(Haptic.Select)
-                    currentOnSwipeToQueue?.invoke()
+                    // By the physical direction rather than the dismiss value,
+                    // so it matches the label the reveal is showing.
+                    currentOnSwipeToQueue?.invoke(offset > 0f)
                 }
             }
             false // never actually dismiss; snap back
@@ -381,7 +383,7 @@ fun SongRow(
         return
     }
 
-    // The row reveals "Queue" from the first pixel of the drag, but it only
+    // The row reveals its action from the first pixel of the drag, but it only
     // *commits* past 45% of the width — so without this the label is a promise
     // the finger can't check. One light tick at the crossing is the whole point:
     // let go now and it queues.
@@ -432,7 +434,6 @@ fun SongRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QueueSwipeBackground(swipeState: SwipeToDismissBoxState) {
-    val playNext by AppUi.host.swipeToPlayNext.collectAsStateWithLifecycle()
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -453,8 +454,10 @@ private fun QueueSwipeBackground(swipeState: SwipeToDismissBoxState) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        QueueSwipeLabel(playNext)
-        QueueSwipeLabel(playNext)
+        // A swipe right uncovers the left edge, and plays next; a swipe left
+        // uncovers the right edge, and queues.
+        QueueSwipeLabel(playNext = true)
+        QueueSwipeLabel(playNext = false)
     }
 }
 

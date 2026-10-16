@@ -3953,8 +3953,8 @@ fun BitChordDesktopApp() {
                                 }
                             },
                             onSongLongPress = ::openMenu,
-                            onSongSwipe = { song ->
-                                if (DesktopAppUiHost.swipeToPlayNext.value) playNext(song) else addToQueue(song)
+                            onSongSwipe = { song, next ->
+                                if (next) playNext(song) else addToQueue(song)
                             },
                             onTopResultPlay = { song ->
                                 recordSongSearch(song)

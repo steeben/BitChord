@@ -111,7 +111,7 @@ fun SearchScreen(
     onFocusHandled: () -> Unit,
     onSongClick: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
-    onSongSwipe: (Song) -> Unit,
+    onSongSwipe: (Song, Boolean) -> Unit,
     onTopResultPlay: (Song) -> Unit,
     onTopResultPlaylist: (Song) -> Unit,
     onBrowseClick: (BrowseItem) -> Unit,
@@ -344,7 +344,7 @@ fun SearchScreen(
                                         onSongClick(tracks, tracks.indexOf(row.song).coerceAtLeast(0))
                                     },
                                     onLongPress = { onSongLongPress(row.song) },
-                                    onSwipeToQueue = { onSongSwipe(row.song) },
+                                    onSwipeToQueue = { onSongSwipe(row.song, it) },
                                     isCurrent = row.song.isSameTrackAs(currentSong),
                                     isPlaying = isPlaying && row.song.isSameTrackAs(currentSong),
                                     searchPlayingStyle = true,
@@ -404,7 +404,7 @@ private fun LazyListScope.librarySearchResults(
     isPlaying: Boolean,
     onSongClick: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
-    onSongSwipe: (Song) -> Unit,
+    onSongSwipe: (Song, Boolean) -> Unit,
 ) {
     when (results) {
         null -> item(key = "library:empty") {
@@ -423,7 +423,7 @@ private fun LazyListScope.librarySearchResults(
                     song = song,
                     onClick = { onSongClick(tracks, index) },
                     onLongPress = { onSongLongPress(song) },
-                    onSwipeToQueue = { onSongSwipe(song) },
+                    onSwipeToQueue = { onSongSwipe(song, it) },
                     isCurrent = song.isSameTrackAs(currentSong),
                     isPlaying = isPlaying && song.isSameTrackAs(currentSong),
                     searchPlayingStyle = true,

@@ -14,9 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
  * either way. Installed once at start, beside [com.music.bitchord.ui.player.PlayerPlatform].
  */
 interface AppUiHost {
-    /** A swipe on a track row plays it next rather than adding it to the end of the queue. */
-    val swipeToPlayNext: StateFlow<Boolean>
-
     /** Home's Recents shelf as a paged list of rows or as a row of cards. */
     val homeRecentsViewType: StateFlow<LibraryViewType>
 
