@@ -63,7 +63,10 @@
     <string name="dial_pin_icon">Pin icon on pinned tiles</string>
     <string name="dial_settings">Dial</string>
     <string name="dial_labels_default">Show tile names</string>
-    <string name="dial_contoured_edge">Contoured tile edges</string>
+    <string name="dial_tile_style">Tile style</string>
+    <string name="dial_tile_style_none">None</string>
+    <string name="dial_tile_style_edge">Edge</string>
+    <string name="dial_tile_style_glass">Glass</string>
     <string name="home_dial_menu">Dial options</string>
     <string name="check_for_updates">Check for updates</string>
     <string name="checking_for_updates">Checking…</string>

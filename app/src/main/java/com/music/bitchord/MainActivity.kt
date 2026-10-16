@@ -158,6 +158,7 @@ import com.music.bitchord.ui.screens.ARTIST_DIAL_PAGE_KEY
 import com.music.bitchord.ui.screens.speedDialArtRequest
 import com.music.bitchord.ui.theme.Metropolis
 import com.music.bitchord.ui.components.HomeDialMenu
+import com.music.bitchord.ui.components.dialTileGlassEdge
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
@@ -489,7 +490,7 @@ class MainActivity : AppCompatActivity() {
             val highPerformance by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
             val liquidGlassEnabled by AppSettings.liquidGlass.collectAsStateWithLifecycle()
             val cropThumbnails by CustomizationSettings.cropThumbnails.collectAsStateWithLifecycle()
-            val dialContouredEdge by CustomizationSettings.dialContouredEdge.collectAsStateWithLifecycle()
+            val dialTileStyle by CustomizationSettings.dialTileStyle.collectAsStateWithLifecycle()
             val iosOverscrollFactory = rememberIosOverscrollFactory()
             val performanceRefreshRate by AppSettings.performanceRefreshRate.collectAsStateWithLifecycle()
             val composeView = LocalView.current
@@ -542,7 +543,8 @@ class MainActivity : AppCompatActivity() {
                     LocalLiquidGlassEnabled provides liquidGlassEnabled,
                     LocalAppBackdrop provides appBackdrop,
                     com.music.bitchord.ui.components.LocalCropThumbnails provides cropThumbnails,
-                    com.music.bitchord.ui.components.LocalDialContouredEdge provides dialContouredEdge,
+                    com.music.bitchord.ui.components.LocalDialTileStyle provides dialTileStyle,
+                    com.music.bitchord.ui.components.LocalDialTileGlassEdge provides ::dialTileGlassEdge,
                 ) {
                 // The window's width, measured rather than asked for.
                 //

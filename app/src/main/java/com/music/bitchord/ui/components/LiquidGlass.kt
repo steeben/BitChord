@@ -21,6 +21,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -214,3 +215,17 @@ fun Modifier.liquidGlass(
         backdropScale = GLASS_RESOLUTION_SCALE,
     )
 }
+
+/** The rim the dial's glass tiles wear: a little wider than a panel's, for their size. */
+private val DIAL_TILE_HIGHLIGHT = Highlight(width = 1.dp)
+private val dialTileHighlight: () -> Highlight = { DIAL_TILE_HIGHLIGHT }
+
+/**
+ * Liquid glass's edge alone, for the dial's tiles in their Glass style: the
+ * same angled light along the rim and the same hairline as [liquidGlass], but
+ * nothing sampled, blurred or bent, so the artwork shows through untouched.
+ */
+fun dialTileGlassEdge(shape: Shape): Modifier =
+    Modifier
+        .then(HighlightElement(shapeProvider = ShapeProvider { shape }, highlight = dialTileHighlight))
+        .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
