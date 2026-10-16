@@ -30,6 +30,7 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
@@ -148,6 +149,8 @@ import com.music.bitchord.ui.components.popupContentColor
 import com.music.bitchord.ui.components.popupSurface
 import com.music.bitchord.ui.components.PopupLayer
 import com.music.bitchord.ui.screens.SpeedDialIntro
+import com.music.bitchord.ui.screens.DialLaunch
+import com.music.bitchord.ui.screens.DialLaunchPage
 import com.music.bitchord.ui.screens.ARTIST_DIAL_SHELF_TITLE
 import com.music.bitchord.ui.screens.SpeedDialLucky
 import com.music.bitchord.ui.screens.RecentArtistsScreen
@@ -601,7 +604,7 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 private fun BitChordApp(
     darkTheme: Boolean,
@@ -3167,6 +3170,24 @@ private fun BitChordApp(
                         pageTransitionState.animateTo(pageKey)
                     }
                 }
+                // A dial tile's page is let go of once Home is back on screen
+                // after it closes, or once the page is gone some other way
+                // (another tab, a tap that opened nothing), so the tile shows again.
+                LaunchedEffect(pageTransitionState.currentState) {
+                    if (pageTransitionState.currentState == HOME_PAGE_KEY &&
+                        pageTransitionState.targetState == HOME_PAGE_KEY
+                    ) {
+                        DialLaunch.origin = null
+                    }
+                }
+                val launchedFrom = DialLaunch.origin
+                LaunchedEffect(launchedFrom, pageKey) {
+                    val origin = launchedFrom ?: return@LaunchedEffect
+                    if (pageKey == origin.key || detailStack.any { it.browseId == origin.key }) return@LaunchedEffect
+                    // Back on Home: its close is under way, and lets it go when done.
+                    if (pageKey == HOME_PAGE_KEY) delay(DialLaunch.CLOSE_MS * 2L)
+                    DialLaunch.origin = null
+                }
                 val currentLibraryBack by rememberUpdatedState(libraryBack)
                 // Library pages: the swipe slides this page off to the right and
                 // the one under it in from the left, following the finger;
@@ -3220,7 +3241,24 @@ private fun BitChordApp(
                         val from = libraryDepths[initialState]
                         val to = libraryDepths[targetState]
                         val tabSwap = initialState.startsWith(TAB_KEY) && targetState.startsWith(TAB_KEY)
+                        val dialZoom = !reduceAnimationSetting && DialLaunch.zooms(initialState, targetState, HOME_PAGE_KEY)
                         when {
+                            // A dial tile's page opening, as an app does from a
+                            // phone's home screen: the page grows out of the tile
+                            // (see [DialLaunchPage]) over Home, which sinks back
+                            // and fades. Closing, Home comes forward again under
+                            // the page shrinking back into its tile.
+                            dialZoom && initialState == HOME_PAGE_KEY ->
+                                EnterTransition.None togetherWith (
+                                    fadeOut(tween(DialLaunch.OPEN_MS * 7 / 10, easing = FastOutLinearInEasing)) +
+                                        scaleOut(tween(DialLaunch.OPEN_MS, easing = FastOutSlowInEasing), targetScale = DIAL_HOME_SINK)
+                                    )
+                            dialZoom -> (
+                                (
+                                    fadeIn(tween(DialLaunch.CLOSE_MS, easing = LinearOutSlowInEasing)) +
+                                        scaleIn(tween(DialLaunch.CLOSE_MS, easing = FastOutSlowInEasing), initialScale = DIAL_HOME_SINK)
+                                    ) togetherWith ExitTransition.None
+                                ).apply { targetContentZIndex = -1f }
                             from != null && to != null && from != to -> {
                                 val forward = to > from
                                 val slide = tween<IntOffset>(PAGE_SLIDE_MS, easing = FastOutSlowInEasing)
@@ -3277,6 +3315,16 @@ private fun BitChordApp(
                             }
                         },
                 ) { key ->
+                    // A page opened from a dial tile grows out of it, and shrinks back on closing.
+                    DialLaunchPage(
+                        key = key,
+                        zooming = !reduceAnimationSetting && DialLaunch.zooms(
+                            pageTransitionState.currentState,
+                            pageTransitionState.targetState,
+                            HOME_PAGE_KEY,
+                        ),
+                        visibility = transition,
+                    ) {
                     // Every branch below reads `key` rather than the state that
                     // produced it. The two are the same thing only for the page
                     // being entered: the one on its way out is still composed,
@@ -4183,6 +4231,7 @@ private fun BitChordApp(
                                 contentPadding = listPadding,
                             )
                         }
+                    }
                     }
                 }
 
@@ -6923,6 +6972,10 @@ private const val TAB_PLAYLISTS = 4
  * prefix has to be the one thing both the writing and the reading agree on.
  */
 private const val TAB_KEY = "tab:"
+private const val HOME_PAGE_KEY = "$TAB_KEY$TAB_HOME"
+
+/** How far Home sinks back while a dial tile's page opens over it. */
+private const val DIAL_HOME_SINK = 0.94f
 
 /** What the History page lists — see `historyMode`. */
 private enum class HistoryMode { YOUTUBE, DIAL_SONGS, DIAL_ARTISTS }

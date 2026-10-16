@@ -2,6 +2,7 @@ package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -86,6 +87,8 @@ fun Modifier.longPressMenuClickable(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)?,
     enabled: Boolean = true,
+    /** Given, for a caller that draws its own press (and so wants no ripple). */
+    interactionSource: MutableInteractionSource? = null,
 ): Modifier {
     val capture = remember { HoldCapture() }
     val graphicsContext = LocalGraphicsContext.current
@@ -103,7 +106,19 @@ fun Modifier.longPressMenuClickable(
     }
     return this
         .onPlaced { capture.coordinates = it }
-        .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = longClick)
+        .then(
+            if (interactionSource != null) {
+                Modifier.combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick,
+                    onLongClick = longClick,
+                )
+            } else {
+                Modifier.combinedClickable(enabled = enabled, onClick = onClick, onLongClick = longClick)
+            },
+        )
         .drawWithContent {
             drawContent()
             // Reading the counter is what subscribes this draw to a hold;

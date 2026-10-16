@@ -96,6 +96,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.floor
 import kotlin.math.roundToInt
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onPlaced
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.cancellation.CancellationException
 
 /** The title a shelf is drawn as the speed dial under. */
 internal const val SPEED_DIAL_SHELF_TITLE = "Speed dial"
@@ -257,7 +266,9 @@ internal fun SpeedDialShelf(
     val latestSlots by rememberUpdatedState(slots)
     val pageCount = (slots.size / perPage).coerceAtLeast(1)
     val latestPageCount by rememberUpdatedState(pageCount)
-    val pagerState = rememberPagerState { latestPageCount }
+    // Back from a page a tile here opened, on the page that tile is on, for
+    // the page to close back into it.
+    val pagerState = rememberPagerState(initialPage = DialLaunch.pageOf(shelf.title)) { latestPageCount }
     val latestPinned by rememberUpdatedState(pinnedCount)
     val latestOrder by rememberUpdatedState(order)
     val latestReorder by rememberUpdatedState(onReorder)
@@ -493,6 +504,8 @@ internal fun SpeedDialShelf(
                                         }
                                         alpha = when {
                                             dragId == id -> 0f
+                                            // Out as its page, as an open app's icon is.
+                                            DialLaunch.isOut(id) -> 0f
                                             entering -> (shown * 2.5f).coerceIn(0f, 1f)
                                             else -> shown.coerceIn(0f, 1f)
                                         }
@@ -529,7 +542,21 @@ internal fun SpeedDialShelf(
                                         showLabel = showLabels != (id in labelOverrides),
                                         current = currentSong != null && item.videoId == currentSong.videoId,
                                         isPlaying = isPlaying,
-                                        onClick = { onItemClick(item) },
+                                        onClick = { bounds, pressedScale ->
+                                            val opens = item.browseId
+                                            // An album, artist or playlist grows out of its tile.
+                                            if (item.videoId == null && opens != null && bounds != null) {
+                                                DialLaunch.origin = DialOrigin(
+                                                    key = opens,
+                                                    bounds = bounds,
+                                                    pressedScale = pressedScale,
+                                                    thumbnailUrl = item.thumbnailUrl,
+                                                    shelfTitle = shelf.title,
+                                                    page = page,
+                                                )
+                                            }
+                                            onItemClick(item)
+                                        },
                                         // A pinned tile's hold belongs to the drag above.
                                         onLongPress = if (onReorder != null && pinnedTile) {
                                             null
@@ -555,7 +582,7 @@ internal fun SpeedDialShelf(
                             showLabel = showLabels != (liftedId in labelOverrides),
                             current = false,
                             isPlaying = false,
-                            onClick = {},
+                            onClick = { _, _ -> },
                             onLongPress = null,
                             modifier = Modifier
                                 .offset {
@@ -652,19 +679,32 @@ private fun SpeedDialTile(
     showLabel: Boolean = true,
     current: Boolean,
     isPlaying: Boolean,
-    onClick: () -> Unit,
+    /** Given where the tile is on screen (full size) and how far in it was pressed when let go. */
+    onClick: (bounds: Rect?, pressedScale: Float) -> Unit,
     onLongPress: (() -> Unit)?,
     modifier: Modifier = Modifier,
     /** How far it is shaded over, read when drawing: see the dial's jiggle. */
     dim: () -> Float = { 0f },
 ) {
     val shape = RoundedCornerShape(10.dp)
+    val press = rememberTilePress()
+    val spot = remember { TileSpot() }
     Box(
         modifier = modifier
+            .onPlaced { spot.coordinates = it }
+            .tilePress(press)
             .clip(shape)
             .dialTileBorder(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
+            .longPressMenuClickable(
+                onClick = {
+                    press.tap {
+                        onClick(spot.coordinates?.takeIf { it.isAttached }?.boundsInRoot(), press.scale)
+                    }
+                },
+                onLongClick = onLongPress,
+                interactionSource = press.interactions,
+            )
             .contextClick(onLongPress),
     ) {
         val context = LocalPlatformContext.current
@@ -708,7 +748,7 @@ private fun SpeedDialTile(
             )
         }
         if (current && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
-        DimOverlay(dim)
+        DimOverlay { maxOf(dim(), press.shade) }
     }
 }
 
@@ -722,12 +762,18 @@ private fun HistoryTile(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(10.dp)
+    val press = rememberTilePress()
     Box(
         modifier
+            .tilePress(press)
             .clip(shape)
             .dialTileBorder(shape)
             .background(DICE_GROUND)
-            .clickable(onClickLabel = label, onClick = onClick),
+            .clickable(
+                interactionSource = press.interactions,
+                indication = null,
+                onClickLabel = label,
+            ) { press.tap(onClick) },
     ) {
         Icon(
             imageVector = Icons.Rounded.History,
@@ -747,9 +793,77 @@ private fun HistoryTile(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             )
         }
-        DimOverlay(dim)
+        DimOverlay { maxOf(dim(), press.shade) }
     }
 }
+
+/** Where a tile was last laid out, kept off the snapshot: only read when it is tapped. */
+private class TileSpot {
+    var coordinates: LayoutCoordinates? = null
+}
+
+/**
+ * A tile's push, like a button's: it sinks while the finger is on it, and a
+ * tap presses it all the way in before its action runs, then lets it spring
+ * back out. Held for a menu or a drag, it comes back up when let go.
+ */
+private class TilePress(private val scope: CoroutineScope) {
+    val interactions = MutableInteractionSource()
+    val depth = Animatable(0f)
+
+    /** Between a tap and its action: the press itself is the tap's, not the finger's. */
+    var tapping = false
+
+    /** The tile's scale and shade at the current depth, read when drawing. */
+    val scale: Float get() = 1f - PRESS_SHRINK * depth.value
+    val shade: Float get() = PRESS_SHADE * depth.value
+
+    fun tap(action: () -> Unit) {
+        tapping = true
+        scope.launch {
+            try {
+                depth.animateTo(1f, tween(PRESS_IN_MS))
+            } catch (interrupted: CancellationException) {
+                // Only another push took the animation over; the tap still counts.
+                ensureActive()
+            }
+            tapping = false
+            action()
+            depth.animateTo(0f, spring(dampingRatio = PRESS_BOUNCE, stiffness = Spring.StiffnessMediumLow))
+        }
+    }
+}
+
+@Composable
+private fun rememberTilePress(): TilePress {
+    val scope = rememberCoroutineScope()
+    val press = remember(scope) { TilePress(scope) }
+    LaunchedEffect(press) {
+        press.interactions.interactions.collect { interaction ->
+            if (press.tapping) return@collect
+            when (interaction) {
+                is PressInteraction.Press -> launch { press.depth.animateTo(1f, tween(PRESS_IN_MS)) }
+                is PressInteraction.Release, is PressInteraction.Cancel -> launch {
+                    press.depth.animateTo(0f, spring(dampingRatio = PRESS_BOUNCE, stiffness = Spring.StiffnessMediumLow))
+                }
+            }
+        }
+    }
+    return press
+}
+
+/** Shrinks the tile as far as it is pressed in. */
+private fun Modifier.tilePress(press: TilePress): Modifier = graphicsLayer {
+    val scale = press.scale
+    scaleX = scale
+    scaleY = scale
+}
+
+/** How far a pressed tile sinks and darkens, how quickly, and how much it bounces back out. */
+private const val PRESS_SHRINK = 0.08f
+private const val PRESS_SHADE = 0.18f
+private const val PRESS_IN_MS = 110
+private const val PRESS_BOUNCE = 0.45f
 
 /** A black film over a tile, as deep as [dim] says when it is drawn. */
 @Composable
@@ -786,12 +900,16 @@ private fun LuckyDiceTile(
     val spin = remember { Animatable(0f) }
     val settle = remember { Animatable(1f) }
     var rolling by remember { mutableStateOf(false) }
+    val press = rememberTilePress()
     Box(
         modifier
+            .tilePress(press)
             .clip(shape)
             .dialTileBorder(shape)
             .background(DICE_GROUND)
-            .clickable(onClickLabel = label) {
+            .clickable(interactionSource = press.interactions, indication = null, onClickLabel = label) {
+                // Pressed in and let out as it starts to roll; the roll itself doesn't wait.
+                press.tap {}
                 if (rolling) return@clickable
                 rolling = true
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -871,7 +989,7 @@ private fun LuckyDiceTile(
                 )
             }
         }
-        DimOverlay(dim)
+        DimOverlay { maxOf(dim(), press.shade) }
     }
 }
 
