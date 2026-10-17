@@ -35,8 +35,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.verticalDrag
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -3344,17 +3344,35 @@ fun NowPlayingScreen(
                                 // cover of — the same page the title opens.
                                 // Only long presses: a tap or a swipe here is
                                 // still the player's own.
+                                //
+                                // Not detectTapGestures, which consumes every
+                                // press it sees, long or not. That claimed the
+                                // taps a Canvas listens for to bring its
+                                // controls back, across the whole of the card's
+                                // slot in the middle of the screen; this
+                                // touches nothing short of an actual hold.
                                 val albumId = song.albumId
                                 if (albumId == null) {
                                     Modifier
                                 } else {
                                     Modifier.pointerInput(albumId) {
-                                        detectTapGestures(
-                                            onLongPress = {
-                                                haptics.play(Haptic.Expand)
-                                                onOpenAlbum(albumId)
-                                            },
-                                        )
+                                        awaitEachGesture {
+                                            awaitFirstDown(requireUnconsumed = false)
+                                            var released = false
+                                            withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                                waitForUpOrCancellation()
+                                                released = true
+                                            }
+                                            if (released) return@awaitEachGesture
+                                            haptics.play(Haptic.Expand)
+                                            onOpenAlbum(albumId)
+                                            // The rest of the hold is this
+                                            // gesture's, not a tap's.
+                                            do {
+                                                val event = awaitPointerEvent()
+                                                event.changes.forEach { it.consume() }
+                                            } while (event.changes.any { it.pressed })
+                                        }
                                     }
                                 }
                             },
