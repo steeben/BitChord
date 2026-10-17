@@ -251,6 +251,15 @@ private val QUEUE_CLOSE_TRAVEL = 320.dp
 
 private const val COMPACT_ACTIONS_SHRINK = 0.12f
 
+/** The empty band under the scrubber's timestamps, dropped under an open queue. */
+private val COMPACT_SCRUBBER_TRIM = 9.dp
+
+/**
+ * Taken off each side of the shrunken transport under an open queue: its touch
+ * targets stand well clear of the glyphs, and that air read as loose spacing.
+ */
+private val COMPACT_TRANSPORT_TRIM = 9.dp
+
 /** Lays this out scaled by [scale], taking only the scaled height, shrunk from its top centre. */
 private fun Modifier.shrinkBy(scale: () -> Float): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
@@ -261,6 +270,22 @@ private fun Modifier.shrinkBy(scale: () -> Float): Modifier = layout { measurabl
             scaleY = s
             transformOrigin = TransformOrigin(0.5f, 0f)
         }
+    }
+}
+
+/**
+ * Takes [top] and [bottom] off this one's height as [fraction] runs from 0 to 1,
+ * drawing it where it was. For the empty margins built into a control's own
+ * box — a touch target taller than its glyph, a label pulled up into a gap it
+ * still reserves — which an open queue would rather spend on the list.
+ */
+private fun Modifier.trimBy(top: Dp, bottom: Dp, fraction: () -> Float): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minHeight = 0))
+    val f = fraction().coerceIn(0f, 1f)
+    val cutTop = (top.toPx() * f).roundToInt()
+    val cutBottom = (bottom.toPx() * f).roundToInt()
+    layout(placeable.width, (placeable.height - cutTop - cutBottom).coerceAtLeast(0)) {
+        placeable.place(0, -cutTop)
     }
 }
 
@@ -3851,7 +3876,13 @@ fun NowPlayingScreen(
             }
             val transitionWindow by PlayerSettings.smartTransitionWindow.collectAsStateWithLifecycle()
             // Folded away with the compact Canvas controls.
-            Box(Modifier.collapseBy { canvasCompact.value }) {
+            // Under the queue, the gap the timestamps leave below themselves
+            // (see [PlayerScrubber]) goes too.
+            Box(
+                Modifier
+                    .collapseBy { canvasCompact.value }
+                    .trimBy(top = 0.dp, bottom = COMPACT_SCRUBBER_TRIM) { queueCompact.value },
+            ) {
             PlayerScrubber(
                 shown = shown,
                 durationMs = durationMs,
@@ -3886,7 +3917,11 @@ fun NowPlayingScreen(
             // and the volume bar folds away, so the queue gets the room.
             Spacer(Modifier.height(8.dp + controlSpread / 2).collapseBy { deckCompact() })
 
-            Box(Modifier.shrinkBy { 1f - COMPACT_TRANSPORT_SHRINK * deckCompact() }) {
+            Box(
+                Modifier
+                    .trimBy(COMPACT_TRANSPORT_TRIM, COMPACT_TRANSPORT_TRIM) { queueCompact.value }
+                    .shrinkBy { 1f - COMPACT_TRANSPORT_SHRINK * deckCompact() },
+            ) {
                 TransportRow(
                     isPlaying = isPlaying,
                     isLoading = isLoading || audioVersionSwitching,
@@ -3915,7 +3950,8 @@ fun NowPlayingScreen(
 
             // The volume slider already has 13dp below its drawn track.
             // Balance that invisible inset with the caption gap below the icons.
-            Spacer(Modifier.height(6.dp))
+            // Under the queue the volume bar is folded away, so nothing needs balancing.
+            Spacer(Modifier.height(6.dp).collapseBy { queueCompact.value })
 
             Box(
                 Modifier

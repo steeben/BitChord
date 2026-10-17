@@ -579,8 +579,9 @@ internal fun PlayerActionRow(
                 if (showQueueModes) {
                     // Always three-up, unlike the output/party capsule — so it
                     // always takes the narrower spacing. See
-                    // [PILL_SEGMENT_WIDTH_TRIPLE].
-                    Pill {
+                    // [PILL_SEGMENT_WIDTH_TRIPLE]. Glass like the output
+                    // capsule it stands in for.
+                    Pill(glass = LocalPlayerGlass.current) {
                         PillSegment(
                             icon = BitChordIcons.Shuffle,
                             contentDescription = stringResource(
@@ -1140,13 +1141,23 @@ private fun BottomGlyph(
     // costs no recomposition. Starts a full window in the past so the first tap
     // is never the one that gets swallowed.
     val lastTap = remember { mutableLongStateOf(-tapWindowMs) }
+    val glass = LocalPlayerGlass.current
     Box(
         modifier = Modifier
             .size(BOTTOM_ACTION_SIZE)
-            .clip(CircleShape)
-            .background(
-                if (highlighted) Color.White.copy(alpha = 0.20f) else Color.Transparent,
-            )
+            .let { sized ->
+                // Lit, it is a glass disc like the capsule beside it, with a
+                // faint tint so it still reads as on; unlit, just the glyph.
+                if (highlighted && glass != null) {
+                    glass.surface(sized, CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.06f))
+                } else {
+                    sized.clip(CircleShape).background(
+                        if (highlighted) Color.White.copy(alpha = 0.20f) else Color.Transparent,
+                    )
+                }
+            }
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
