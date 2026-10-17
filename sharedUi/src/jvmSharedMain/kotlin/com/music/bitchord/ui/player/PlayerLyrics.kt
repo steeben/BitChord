@@ -84,7 +84,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -432,6 +434,10 @@ private fun scrollLead(lines: List<LyricLine>, positionMs: Long): Long {
  * controls in and out on the same gesture.
  */
 private val CONTROLS_SCROLL_SLOP = 20.dp
+
+/** The bar the one-line strip shows through an instrumental break. */
+private val BREAK_BAR_WIDTH = 96.dp
+private val BREAK_BAR_HEIGHT = 3.dp
 
 private const val LYRICS_UNAVAILABLE_HOLD_MS = 5_000L
 private const val LYRICS_UNAVAILABLE_FADE_MS = 900
@@ -2645,10 +2651,42 @@ private fun CurrentLyricLine(
             },
             label = "currentLyricTransition",
             modifier = Modifier.weight(1f, fill = false),
-        ) { (_, lineItem, lineText) ->
+        ) { (lineIndex, lineItem, lineText) ->
             val itemInstrumental = lineItem == null || lineItem.isGap
             val swept = lineItem?.takeIf { !itemInstrumental && it.isWordSynced }
-            if (swept != null) {
+            // A break inside the song counts itself down rather than naming
+            // itself: a thin bar from the break's own stamp to the next sung
+            // line. The intro keeps its line of copy.
+            val breakSpan = if (itemInstrumental && lineItem != null && lineIndex >= firstSung) {
+                val until = lines.subList(lineIndex + 1, lines.size).firstOrNull { !it.isGap }?.timeMs
+                until?.takeIf { it > lineItem.timeMs }?.let { lineItem.timeMs to it }
+            } else {
+                null
+            }
+            if (breakSpan != null) {
+                val (from, until) = breakSpan
+                Box(
+                    modifier = Modifier
+                        .padding(vertical = 9.dp)
+                        .size(width = BREAK_BAR_WIDTH, height = BREAK_BAR_HEIGHT)
+                        .semantics { contentDescription = lineText }
+                        // Read in the draw pass, so the bar filling costs a
+                        // redraw of two rounded rects, not a recomposition.
+                        .drawBehind {
+                            val radius = CornerRadius(size.height / 2f)
+                            drawRoundRect(Color.White.copy(alpha = 0.22f), cornerRadius = radius)
+                            val through = ((clock.longValue - from).toFloat() / (until - from))
+                                .coerceIn(0f, 1f)
+                            if (through > 0f) {
+                                drawRoundRect(
+                                    Color.White.copy(alpha = 0.85f),
+                                    size = Size(size.width * through, size.height),
+                                    cornerRadius = radius,
+                                )
+                            }
+                        },
+                )
+            } else if (swept != null) {
                 SweptLyricLine(
                     line = swept,
                     clock = clock,
