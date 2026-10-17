@@ -44,17 +44,18 @@ import com.music.bitchord.data.model.artworkAt
 
 /**
  * Picks which of the covers an album's own files carry stands for the album —
- * see [AlbumArtChoices]. Tapping a cover keeps it and closes; the row under
+ * see [AlbumArtChoices]. Tapping a cover picks it; the row under
  * the grid goes back to the one Android chose.
  */
 @Composable
 fun AlbumArtPickerSheet(
     target: BrowseTarget,
-    onDone: () -> Unit,
+    /** The cover picked, or null to go back to the original. */
+    onPick: (String?) -> Unit,
 ) {
     val context = LocalContext.current
     val choices by AlbumArtChoices.choices.collectAsStateWithLifecycle()
-    val current = AlbumArtChoices.chosen(target.browseId, target.title, choices)
+    val current = choices.let { AlbumArtChoices.pickedCandidate(target.browseId, target.title) }
     val candidates by produceState<List<String>?>(null, target) {
         value = AlbumArtChoices.candidates(context, target.songs)
     }
@@ -100,8 +101,7 @@ fun AlbumArtPickerSheet(
                                 if (picked) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, shape) else Modifier,
                             )
                             .clickable {
-                                AlbumArtChoices.set(target.browseId, target.title, url)
-                                onDone()
+                                onPick(url)
                             },
                     ) {
                         AsyncImage(
@@ -132,8 +132,7 @@ fun AlbumArtPickerSheet(
         if (current != null) {
             Spacer(Modifier.height(8.dp))
             ActionRow(Icons.Rounded.Restore, stringResource(R.string.use_original_album_art)) {
-                AlbumArtChoices.clear(target.browseId, target.title)
-                onDone()
+                onPick(null)
             }
         }
         Spacer(Modifier.height(24.dp))

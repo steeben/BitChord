@@ -296,7 +296,9 @@ object LocalMediaRepository {
                             videoId = videoIdByUri[contentUri] ?: contentUri,
                             title = title,
                             artist = artist,
-                            thumbnailUrl = artworkUrl,
+                            // The album's picked cover, or this file's own
+                            // picture where it differs — see AlbumArtChoices.
+                            thumbnailUrl = AlbumArtChoices.songArtFor(contentUri) ?: artworkUrl,
                             durationText = durationText,
                             albumName = albumName,
                             localUri = contentUri,

@@ -14,6 +14,7 @@ import coil3.request.Options
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.screens.LIBRARY_GROUP_PREFIX
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,7 @@ import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.FileSystem
 import org.json.JSONObject
+import java.io.File
 import java.security.MessageDigest
 
 /**
@@ -33,7 +35,13 @@ import java.security.MessageDigest
  * holding a single with its own sleeve can end up wearing the single's. The
  * files themselves still carry their own pictures; [candidates] reads them,
  * and the one picked stands for the album wherever the app draws the album
- * (its page, its card). The songs are left alone: each keeps its own art.
+ * (its page, its card) and on every one of its songs that has no different
+ * picture of its own, so the rest of the album stops wearing the single's
+ * sleeve in the player and the queue. A song whose own file carries another
+ * picture — the single — shows that one instead.
+ *
+ * Both are saved as files under the app's own storage, since the media
+ * notification can't read a picture out of a track the way the app can.
  *
  * A device album has no id anything else knows it by, so it is keyed by its
  * name, which is also what the library groups it by. A YouTube Music album
@@ -42,6 +50,9 @@ import java.security.MessageDigest
 object AlbumArtChoices {
     private const val PREF_NAME = "bitchord_album_art"
     private const val KEY_CHOICES = "choices_json"
+    private const val KEY_PICKED = "picked_json"
+    private const val KEY_SONGS = "songs_json"
+    private const val DIR = "album_art"
 
     /** The scheme [TrackArtFetcher] answers: a track's own embedded picture. */
     const val TRACK_ART_SCHEME = "trackart"
@@ -52,14 +63,31 @@ object AlbumArtChoices {
     private val _choices = MutableStateFlow<Map<String, String>>(emptyMap())
     val choices = _choices.asStateFlow()
 
+    /** Album key to the candidate the pick was made from, to mark it in the picker. */
+    private var picked: Map<String, String> = emptyMap()
+
+    /** Album key to the art each of its device files was given: content uri to url. */
+    private var albumSongs: Map<String, Map<String, String>> = emptyMap()
+
+    /** A device file's content uri to the art it shows — see [songArtFor]. */
+    private val _songArt = MutableStateFlow<Map<String, String>>(emptyMap())
+    val songArt = _songArt.asStateFlow()
+
     fun init(context: Context) {
         val p = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         prefs = p
-        val raw = p.getString(KEY_CHOICES, null) ?: return
+        runCatching { _choices.value = p.getString(KEY_CHOICES, null)?.let(::readMap).orEmpty() }
+        runCatching { picked = p.getString(KEY_PICKED, null)?.let(::readMap).orEmpty() }
         runCatching {
-            val obj = JSONObject(raw)
-            _choices.value = obj.keys().asSequence().associateWith { obj.getString(it) }
+            val obj = JSONObject(p.getString(KEY_SONGS, null) ?: return@runCatching)
+            albumSongs = obj.keys().asSequence().associateWith { readMap(obj.getJSONObject(it).toString()) }
         }
+        _songArt.value = albumSongs.values.fold(emptyMap()) { all, songs -> all + songs }
+    }
+
+    private fun readMap(raw: String): Map<String, String> {
+        val obj = JSONObject(raw)
+        return obj.keys().asSequence().associateWith { obj.getString(it) }
     }
 
     fun keyOf(browseId: String?, title: String): String =
@@ -69,13 +97,67 @@ object AlbumArtChoices {
     fun chosen(browseId: String?, title: String, choices: Map<String, String> = _choices.value): String? =
         choices[keyOf(browseId, title)]
 
-    fun set(browseId: String?, title: String, url: String) = update(_choices.value + (keyOf(browseId, title) to url))
+    /** Which of the picker's candidates is the album's cover now. */
+    fun pickedCandidate(browseId: String?, title: String): String? {
+        val key = keyOf(browseId, title)
+        return picked[key] ?: _choices.value[key]
+    }
 
-    fun clear(browseId: String?, title: String) = update(_choices.value - keyOf(browseId, title))
+    /** The art a device file shows, when its album's cover was picked. */
+    fun songArtFor(contentUri: String?): String? = contentUri?.let { _songArt.value[it] }
 
-    private fun update(map: Map<String, String>) {
-        _choices.value = map
-        prefs?.edit()?.putString(KEY_CHOICES, JSONObject(map).toString())?.apply()
+    /**
+     * Makes [url], one of [candidates], [songs]' album's cover, and gives each
+     * of its device files either that or, where the file carries a different
+     * picture, its own.
+     */
+    suspend fun pick(context: Context, browseId: String?, title: String, url: String, songs: List<Song>) =
+        withContext(Dispatchers.IO) {
+            val key = keyOf(browseId, title)
+            val chosenBytes = trackArtContentUri(url)?.let { embeddedPicture(context, it) }
+            val chosenSha = chosenBytes?.let(::digest)
+            val cover = chosenBytes?.let { save(context, it, chosenSha!!) } ?: url
+            val perSong = LinkedHashMap<String, String>()
+            songs.forEach { song ->
+                val local = song.localUri?.takeIf { it.startsWith("content://") } ?: return@forEach
+                val own = embeddedPicture(context, local)
+                val ownSha = own?.let(::digest)
+                perSong[local] = if (own != null && ownSha != chosenSha) save(context, own, ownSha!!) else cover
+            }
+            _choices.value = _choices.value + (key to cover)
+            picked = picked + (key to url)
+            albumSongs = albumSongs + (key to perSong)
+            persist()
+        }
+
+    fun clear(browseId: String?, title: String) {
+        val key = keyOf(browseId, title)
+        _choices.value = _choices.value - key
+        picked = picked - key
+        albumSongs = albumSongs - key
+        persist()
+    }
+
+    private fun persist() {
+        _songArt.value = albumSongs.values.fold(emptyMap()) { all, songs -> all + songs }
+        prefs?.edit()
+            ?.putString(KEY_CHOICES, JSONObject(_choices.value).toString())
+            ?.putString(KEY_PICKED, JSONObject(picked).toString())
+            ?.putString(KEY_SONGS, JSONObject(albumSongs.mapValues { JSONObject(it.value) }).toString())
+            ?.apply()
+    }
+
+    /** Writes a picture once, named by its content, and returns its `file://` url. */
+    private fun save(context: Context, bytes: ByteArray, sha: String): String {
+        val folder = File(context.filesDir, DIR).apply { mkdirs() }
+        val file = File(folder, "$sha.img")
+        if (!file.exists()) file.writeBytes(bytes)
+        return Uri.fromFile(file).toString()
+    }
+
+    private fun trackArtContentUri(url: String): String? {
+        val prefix = "$TRACK_ART_SCHEME://"
+        return if (url.startsWith(prefix)) "content://" + url.removePrefix(prefix) else null
     }
 
     /** Whether [songs] could hold more than one cover worth choosing between. */
@@ -124,9 +206,26 @@ object AlbumArtChoices {
     }
 }
 
-/** [this] page with the album cover the user picked, if they picked one. */
-fun DetailPage.withChosenAlbumArt(choices: Map<String, String>): DetailPage {
+/** [this] song with the art its album's picked cover gave it, if any. */
+fun Song.withChosenArt(songArt: Map<String, String>): Song =
+    localUri?.let { songArt[it] }?.takeIf { it != thumbnailUrl }?.let { copy(thumbnailUrl = it) } ?: this
+
+/**
+ * [this] page with the album cover the user picked, if they picked one, and
+ * its songs wearing the art that pick gave them — so a song played from the
+ * page shows it in the player too.
+ */
+fun DetailPage.withChosenAlbumArt(
+    choices: Map<String, String>,
+    songArt: Map<String, String> = emptyMap(),
+): DetailPage {
     if (choices.isEmpty()) return this
+    val state = songs
+    val withArt = if (songArt.isNotEmpty() && state is UiState.Success) {
+        UiState.Success(state.data.map { it.withChosenArt(songArt) })
+    } else {
+        state
+    }
     val own = if (type == BrowseType.ALBUM) AlbumArtChoices.chosen(browseId, title, choices) else null
     val albumCards = sections.map { shelf ->
         shelf.copy(
@@ -140,7 +239,7 @@ fun DetailPage.withChosenAlbumArt(choices: Map<String, String>): DetailPage {
             },
         )
     }
-    return copy(thumbnailUrl = own ?: thumbnailUrl, sections = albumCards)
+    return copy(thumbnailUrl = own ?: thumbnailUrl, sections = albumCards, songs = withArt)
 }
 
 /**

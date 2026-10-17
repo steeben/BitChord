@@ -1077,6 +1077,7 @@ private fun BitChordApp(
     val localPlaylists by com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.collectAsStateWithLifecycle()
     val customCovers by com.music.bitchord.data.CustomCovers.covers.collectAsStateWithLifecycle()
     val albumArtChoices by com.music.bitchord.data.AlbumArtChoices.choices.collectAsStateWithLifecycle()
+    val albumSongArt by com.music.bitchord.data.AlbumArtChoices.songArt.collectAsStateWithLifecycle()
     val localPlaylistItems = localPlaylists.map { playlist ->
         ShelfItem(
             title = playlist.title,
@@ -3719,7 +3720,7 @@ private fun BitChordApp(
                             }
                         }
                         DetailScreen(
-                            page = page.withCustomCover(customCovers).withChosenAlbumArt(albumArtChoices),
+                            page = page.withCustomCover(customCovers).withChosenAlbumArt(albumArtChoices, albumSongArt),
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                             listState = pageDetailListState,
@@ -5946,7 +5947,20 @@ private fun BitChordApp(
             ) {
                 com.music.bitchord.ui.components.AlbumArtPickerSheet(
                     target = target,
-                    onDone = { albumArtPick = null },
+                    onPick = { url ->
+                        albumArtPick = null
+                        scope.launch {
+                            if (url == null) {
+                                com.music.bitchord.data.AlbumArtChoices.clear(target.browseId, target.title)
+                            } else {
+                                com.music.bitchord.data.AlbumArtChoices.pick(
+                                    context, target.browseId, target.title, url, target.songs,
+                                )
+                            }
+                            // The library's rows were read with the old art.
+                            viewModel.loadLibrarySongs()
+                        }
+                    },
                 )
             }
         }
