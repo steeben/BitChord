@@ -230,6 +230,7 @@ import com.music.bitchord.ui.screens.libraryExtraLinks
 import com.music.bitchord.ui.screens.LibraryHomeScreen
 import com.music.bitchord.ui.screens.LibraryMenu
 import com.music.bitchord.ui.screens.LibraryChoiceMenu
+import com.music.bitchord.ui.screens.LibraryDuplicatesScreen
 import com.music.bitchord.ui.screens.LibraryFolderSortMenu
 import com.music.bitchord.ui.screens.LibraryFeed
 import com.music.bitchord.ui.screens.LibrarySuggestion
@@ -421,6 +422,9 @@ private const val INITIAL_RADIO_TRACKS = 24
 
 /** How long the Library page waits on its songs and shelves before dealing without them. */
 private const val LIBRARY_DEAL_WAIT_MS = 15_000L
+
+/** The Settings sub-screen listing the All library's detected duplicates. */
+private const val LIBRARY_DUPLICATES_SCREEN = "library_duplicates"
 
 /** A Library page sliding in or out, side by side with the one it replaces. */
 private const val PAGE_SLIDE_MS = 340
@@ -2983,6 +2987,8 @@ private fun BitChordApp(
             // rather than throwing both away.
             if (detail == null && !showReplay) selectedTab = startTab
         }
+        // After Settings' own, so it is asked first: back leaves the page, not Settings.
+        BackHandler(enabled = settingsSubScreen == LIBRARY_DUPLICATES_SCREEN) { settingsSubScreen = null }
         BackHandler(
             enabled = detail == null && !showSettings && !showAccountScrobbling && !showSpotify &&
                 !showSources && !showListenTogether && !showEqualizer && !showReplay && selectedMoodGenre == null &&
@@ -3591,6 +3597,7 @@ private fun BitChordApp(
                             onAppLanguage = { showAppLanguage = true },
                             contentPadding = listPadding,
                             onShowUpdate = { showUpdateDialog = true },
+                            onLibraryDuplicates = { settingsSubScreen = LIBRARY_DUPLICATES_SCREEN },
                         )
                     } else if (page != null && page.browseId.isDeviceFolder()) {
                         // Local Music and Downloads — both the tabbed Songs / Artists /
@@ -4323,6 +4330,24 @@ private fun BitChordApp(
                             EqualizerScreen(contentPadding = listPadding)
                         }
                     }
+                    LIBRARY_DUPLICATES_SCREEN -> {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background,
+                        ) {
+                            // Read again each time the page opens, so a song added since shows.
+                            LaunchedEffect(Unit) { viewModel.loadLibraryDuplicates() }
+                            val duplicates by viewModel.libraryDuplicates.collectAsStateWithLifecycle()
+                            val duplicatesTitle = stringResource(R.string.library_duplicates)
+                            LibraryDuplicatesScreen(
+                                state = duplicates,
+                                contentPadding = listPadding,
+                                onPlayCopy = { song ->
+                                    playFrom(listOf(song), 0, QueueSource(duplicatesTitle, PlaybackSourceType.BROWSE))
+                                },
+                            )
+                        }
+                    }
                     "replay" -> {
                         if (showReplay && !showReplayShare) {
                             Surface(
@@ -4468,6 +4493,7 @@ private fun BitChordApp(
                         showSources -> stringResource(R.string.sources)
                         showListenTogether -> stringResource(R.string.listen_together)
                         showEqualizer -> stringResource(R.string.equalizer)
+                        settingsSubScreen == LIBRARY_DUPLICATES_SCREEN -> stringResource(R.string.library_duplicates)
                         showSettings -> stringResource(R.string.settings)
                         showReplay -> stringResource(R.string.replay)
                         detail != null && detailActiveShelf != null -> detailActiveShelf?.title.orEmpty()

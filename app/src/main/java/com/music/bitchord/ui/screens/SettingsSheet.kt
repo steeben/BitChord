@@ -197,6 +197,8 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     /** Opens the update dialog, once a check has found one. */
     onShowUpdate: () -> Unit = {},
+    /** Opens the page listing the All library's detected duplicates. */
+    onLibraryDuplicates: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -1327,17 +1329,23 @@ fun SettingsScreen(
                     icon = Icons.Rounded.FilterAlt,
                     title = hideDuplicatesTitle,
                     subtitle = stringResource(R.string.hide_combined_duplicates_subtitle),
+                    // The switch turns hiding on and off; the rest of the row
+                    // opens the duplicates it found, to sort out one by one.
                     trailing = {
-                        Switch(
-                            checked = hideCombinedDuplicates,
-                            onCheckedChange = AppSettings::setHideCombinedDuplicates,
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                checkedBorderColor = MaterialTheme.colorScheme.primary,
-                            ),
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(
+                                checked = hideCombinedDuplicates,
+                                onCheckedChange = AppSettings::setHideCombinedDuplicates,
+                                colors = SwitchDefaults.colors(
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Chevron()
+                        }
                     },
-                    onClick = { AppSettings.setHideCombinedDuplicates(!hideCombinedDuplicates) },
+                    onClick = onLibraryDuplicates,
                 )
             }
             val filterNonMusicAudioTitle = stringResource(R.string.filter_non_music_audio)

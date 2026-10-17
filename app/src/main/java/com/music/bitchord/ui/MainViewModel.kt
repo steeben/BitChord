@@ -94,6 +94,8 @@ import com.music.bitchord.ui.screens.LOCAL_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.ALL_LIBRARY_BROWSE_ID
 import com.music.bitchord.ui.screens.LIBRARY_GROUP_PREFIX
 import com.music.bitchord.ui.screens.libraryGroupId
+import com.music.bitchord.data.AlbumArtChoices
+import com.music.bitchord.data.DuplicateGroup
 import com.music.bitchord.data.LibraryDuplicates
 import com.music.bitchord.data.settings.LibrarySource
 import com.music.bitchord.data.settings.CustomizationSettings
@@ -1695,11 +1697,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         viewModelScope.launch {
-            AppSettings.hideCombinedDuplicates.drop(1).collect {
-                if (_detailStack.value.any { page -> page.browseId == ALL_LIBRARY_BROWSE_ID }) {
-                    reloadLocalDetail(ALL_LIBRARY_BROWSE_ID)
+            combine(AppSettings.hideCombinedDuplicates, AppSettings.duplicateChoices) { hide, choices -> hide to choices }
+                .drop(1)
+                .collect {
+                    if (_detailStack.value.any { page -> page.browseId == ALL_LIBRARY_BROWSE_ID }) {
+                        reloadLocalDetail(ALL_LIBRARY_BROWSE_ID)
+                    }
                 }
-            }
         }
         viewModelScope.launch {
             // Emptied from Settings while the folder sits open underneath.
@@ -3772,11 +3776,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * songs as well. A source that cannot be read (no storage permission, not
      * signed in, offline) is left out rather than failing the rest.
      *
-     * Listed device copies first, so when "hide detected duplicates" drops one
-     * of two copies of a song it is the stream that goes; see
-     * [LibraryDuplicates.withoutDetectedDuplicates].
+     * Device copies are listed first, so a song merged by "hide detected
+     * duplicates" keeps the place its file had; see
+     * [LibraryDuplicates.withDuplicatesMerged].
      */
-    private suspend fun combinedLibraryState(withYouTube: Boolean): UiState<List<Song>> = coroutineScope {
+    private suspend fun combinedLibrarySongs(withYouTube: Boolean): List<Song> = coroutineScope {
         val context = getApplication<Application>()
         val youTube = if (withYouTube && _signedIn.value) {
             async {
@@ -3790,15 +3794,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val downloads = runCatching { Downloads.getDownloadedSongs(context) }.getOrDefault(emptyList())
         val local = runCatching { LocalMediaRepository.getLocalMusic(context) }.getOrDefault(emptyList())
-        var songs = (downloads + local + youTube?.await().orEmpty()).distinctBy { it.videoId }
+        (downloads + local + youTube?.await().orEmpty()).distinctBy { it.videoId }
+    }
+
+    private suspend fun combinedLibraryState(withYouTube: Boolean): UiState<List<Song>> {
+        val context = getApplication<Application>()
+        var songs = combinedLibrarySongs(withYouTube)
         if (withYouTube && AppSettings.hideCombinedDuplicates.value) {
-            songs = with(LibraryDuplicates) { songs.withoutDetectedDuplicates() }
+            val choices = AppSettings.duplicateChoices.value
+            songs = withContext(Dispatchers.Default) {
+                with(LibraryDuplicates) {
+                    songs.withDuplicatesMerged(choices) { file -> AlbumArtChoices.songArtFor(file.localUri) }
+                }
+            }
         }
-        when {
+        return when {
             songs.isNotEmpty() -> UiState.Success(songs)
             !withYouTube && !LocalMediaRepository.hasStoragePermission(context) ->
                 UiState.Error(text(R.string.storage_required_read))
             else -> UiState.Error(text(R.string.library_source_empty))
+        }
+    }
+
+    private val _libraryDuplicates = MutableStateFlow<UiState<List<DuplicateGroup>>>(UiState.Loading)
+
+    /** Every set of copies of one song in the All library, for the duplicates page. */
+    val libraryDuplicates: StateFlow<UiState<List<DuplicateGroup>>> = _libraryDuplicates.asStateFlow()
+
+    /** Reads the All library's sources again and finds the copies in them. */
+    fun loadLibraryDuplicates() {
+        viewModelScope.launch {
+            val songs = combinedLibrarySongs(withYouTube = true)
+            _libraryDuplicates.value = UiState.Success(
+                withContext(Dispatchers.Default) { LibraryDuplicates.detect(songs) },
+            )
         }
     }
 

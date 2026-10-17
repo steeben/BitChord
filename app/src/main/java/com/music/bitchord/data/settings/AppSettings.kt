@@ -9,6 +9,7 @@ import android.net.NetworkCapabilities
 import androidx.media3.common.Player
 import com.music.bitchord.BuildConfig
 import com.music.bitchord.auth.AuthStore
+import com.music.bitchord.data.DuplicateChoices
 import com.music.bitchord.data.canvas.SpotifyToken
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.sources.SourceKind
@@ -560,6 +561,13 @@ object AppSettings {
     /** The All library leaves out a track it already has from another source. */
     val hideCombinedDuplicates = MutableStateFlow(true)
 
+    /**
+     * What the listener chose for particular sets of duplicates, from the
+     * page behind [hideCombinedDuplicates]. Keyed by the copies' ids, which
+     * for a file are this device's own, so it stays on this device.
+     */
+    val duplicateChoices = MutableStateFlow(DuplicateChoices())
+
     val localMusicSort = MutableStateFlow(LocalMusicSort.TITLE_ASC)
     val downloadedMusicSort = MutableStateFlow(LocalMusicSort.TITLE_ASC)
     val localMusicViewType = MutableStateFlow(LibraryViewType.LIST)
@@ -902,6 +910,11 @@ object AppSettings {
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
         filterNonMusicAudio.value = prefs.getBoolean(KEY_FILTER_NON_MUSIC_AUDIO, true)
         hideCombinedDuplicates.value = prefs.getBoolean(KEY_HIDE_COMBINED_DUPLICATES, true)
+        duplicateChoices.value = DuplicateChoices(
+            keptApart = prefs.getStringSet(KEY_DUPLICATES_KEPT_APART, null)?.toSet().orEmpty(),
+            playStream = prefs.getStringSet(KEY_DUPLICATES_PLAY_STREAM, null)?.toSet().orEmpty(),
+            fileDetails = prefs.getStringSet(KEY_DUPLICATES_FILE_DETAILS, null)?.toSet().orEmpty(),
+        )
         localMusicSort.value = readLocalMusicSort(KEY_LOCAL_MUSIC_SORT)
         downloadedMusicSort.value = readLocalMusicSort(KEY_DOWNLOADED_MUSIC_SORT)
         localMusicViewType.value = readLibraryViewType(KEY_LOCAL_MUSIC_VIEW_TYPE)
@@ -1662,6 +1675,16 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_HIDE_COMBINED_DUPLICATES, value).apply()
     }
 
+    fun setDuplicateChoices(value: DuplicateChoices) {
+        if (value == duplicateChoices.value) return
+        duplicateChoices.value = value
+        prefs.edit()
+            .putStringSet(KEY_DUPLICATES_KEPT_APART, value.keptApart)
+            .putStringSet(KEY_DUPLICATES_PLAY_STREAM, value.playStream)
+            .putStringSet(KEY_DUPLICATES_FILE_DETAILS, value.fileDetails)
+            .apply()
+    }
+
     fun setFilterNonMusicAudio(value: Boolean) {
         filterNonMusicAudio.value = value
         prefs.edit().putBoolean(KEY_FILTER_NON_MUSIC_AUDIO, value).apply()
@@ -1936,6 +1959,9 @@ object AppSettings {
         "downloaded_collections",
         KEY_LOCAL_MUSIC_FOLDER_URI,
         KEY_LAST_VERSION_CODE,
+        KEY_DUPLICATES_KEPT_APART,
+        KEY_DUPLICATES_PLAY_STREAM,
+        KEY_DUPLICATES_FILE_DETAILS,
     )
 
     const val DEFAULT_CACHE_LIMIT_BYTES = 512L * 1024 * 1024
@@ -2020,6 +2046,9 @@ object AppSettings {
     private const val KEY_REPLAY_GENRES = "replay_genres"
     private const val KEY_FILTER_NON_MUSIC_AUDIO = "filter_non_music_audio"
     private const val KEY_HIDE_COMBINED_DUPLICATES = "hide_combined_duplicates"
+    private const val KEY_DUPLICATES_KEPT_APART = "duplicates_kept_apart"
+    private const val KEY_DUPLICATES_PLAY_STREAM = "duplicates_play_stream"
+    private const val KEY_DUPLICATES_FILE_DETAILS = "duplicates_file_details"
     private const val KEY_SHOW_CACHE_FOLDER = "show_cache_folder"
     private const val KEY_LOCAL_MUSIC_SORT = "local_music_sort"
     private const val KEY_DOWNLOADED_MUSIC_SORT = "downloaded_music_sort"
