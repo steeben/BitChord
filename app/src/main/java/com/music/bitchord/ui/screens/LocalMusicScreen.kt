@@ -1939,12 +1939,13 @@ private fun Modifier.playingGlow(current: Boolean): Modifier {
         animationSpec = androidx.compose.animation.core.tween(450),
         label = "playingGlow",
     )
+    val accent = PlayingAccent
     return this.drawBehind {
         if (strength > 0f) {
             drawRect(
                 brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                    0f to PlayingAccent.copy(alpha = 0.22f * strength),
-                    0.7f to PlayingAccent.copy(alpha = 0.06f * strength),
+                    0f to accent.copy(alpha = 0.22f * strength),
+                    0.7f to accent.copy(alpha = 0.06f * strength),
                     1f to Color.Transparent,
                 ),
             )

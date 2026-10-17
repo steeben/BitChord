@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.components
 
+import com.music.bitchord.ui.theme.LocalNowPlayingTint
 import com.music.bitchord.ui.LocalPullToRefreshEnabled
 import com.music.bitchord.ui.AppUiHost
 import com.music.bitchord.ui.AppUi
@@ -673,8 +674,12 @@ fun Modifier.hangIntoGutter(outset: Dp): Modifier = layout { measurable, constra
     layout(width, placeable.height) { placeable.place(0, 0) }
 }
 
-/** The accent a current song's title takes in lists that mark it with [SearchPlayingBars]. */
-val PlayingAccent = Color(0xFFFB4A62)
+/**
+ * The accent a current song's title takes in lists that mark it with [SearchPlayingBars]:
+ * the app's accent, the same one the nav pill and library icons use.
+ */
+val PlayingAccent: Color
+    @Composable get() = LocalNowPlayingTint.current ?: MaterialTheme.colorScheme.primary
 
 @Composable
 fun SearchPlayingBars(modifier: Modifier = Modifier) {
